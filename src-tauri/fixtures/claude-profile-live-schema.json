@@ -1,0 +1,34 @@
+{
+  "account": {
+    "uuid": "<redacted>",
+    "full_name": "<redacted>",
+    "display_name": "Example model root_0_2",
+    "email": "person@example.test",
+    "has_claude_max": true,
+    "has_claude_pro": true,
+    "created_at": "2026-10-16T10:00:00Z"
+  },
+  "organization": {
+    "uuid": "<redacted>",
+    "name": "<redacted>",
+    "organization_type": "<redacted>",
+    "billing_type": "<redacted>",
+    "rate_limit_tier": "pro",
+    "seat_tier": "<redacted>",
+    "has_extra_usage_enabled": true,
+    "subscription_status": "<redacted>",
+    "subscription_created_at": "2026-10-16T10:00:00Z",
+    "cc_onboarding_flags": {},
+    "claude_code_trial_ends_at": null,
+    "claude_code_trial_duration_days": null,
+    "payment_auth_hosted_invoice_url": null,
+    "claude_ai_completion_feedback_enabled": true,
+    "claude_ai_safety_feedback_enabled": true
+  },
+  "application": {
+    "uuid": "<redacted>",
+    "name": "<redacted>",
+    "slug": "<redacted>"
+  },
+  "enabled_plugins": []
+}

@@ -1,0 +1,4 @@
+verifyDepsBeforeRun: false
+updateNotifier: false
+allowBuilds:
+  esbuild: true

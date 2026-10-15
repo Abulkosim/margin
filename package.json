@@ -1,0 +1,39 @@
+{
+  "name": "margin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude and Codex usage, across accounts, in your menu bar.",
+  "license": "MIT",
+  "author": "abulkosim <abulkosimkattaev@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Abulkosim/usagebar.git"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/unit/*.test.ts",
+    "test:e2e": "playwright test",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "vue": "3.5.39",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@tauri-apps/cli": "2.12.3",
+    "@types/node": "24.19.0",
+    "@vitejs/plugin-vue": "6.0.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vue-tsc": "3.3.7"
+  }
+}

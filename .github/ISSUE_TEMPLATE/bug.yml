@@ -1,0 +1,35 @@
+name: Bug report
+description: Report an incorrect value, broken state, or platform issue.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include tokens, credential files, account IDs, or unredacted emails.
+  - type: input
+    id: version
+    attributes:
+      label: Margin version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and architecture
+      placeholder: macOS 15, Apple Silicon / Windows 11, x64, 150% scaling
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Area
+      options: [Claude, Codex, Both providers, Interface or tray, Installation]
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include steps, expected behavior, and the exact visible error. Redact screenshots.
+    validations:
+      required: true
