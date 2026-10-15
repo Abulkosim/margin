@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Margin",
+  "version": "0.1.0",
+  "identifier": "com.abulkosim.margin",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
+    "windows": [{
+      "label": "main",
+      "title": "Margin",
+      "width": 420,
+      "height": 660,
+      "minWidth": 360,
+      "minHeight": 420,
+      "visible": false,
+      "resizable": false,
+      "decorations": false,
+      "transparent": true,
+      "shadow": true,
+      "alwaysOnTop": true,
+      "skipTaskbar": true,
+      "center": true
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost ws://localhost:1420 ws://127.0.0.1:1420; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Claude and Codex usage at a glance",
+    "longDescription": "A private, read-only menu bar companion for Claude and Codex. Track quota windows, reset times, and multiple accounts from one quiet place.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": { "minimumSystemVersion": "12.0", "signingIdentity": "-" },
+    "windows": { "nsis": { "displayLanguageSelector": false, "installMode": "currentUser" } }
+  }
+}

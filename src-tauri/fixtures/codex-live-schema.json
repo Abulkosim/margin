@@ -1,0 +1,54 @@
+{
+  "user_id": "<redacted>",
+  "account_id": "<redacted>",
+  "email": "person@example.test",
+  "plan_type": "pro",
+  "rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {
+      "used_percent": 34.0,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 1,
+      "reset_at": 1792144800
+    },
+    "secondary_window": null
+  },
+  "code_review_rate_limit": null,
+  "additional_rate_limits": null,
+  "model_usage": {
+    "redacted_key_0": {
+      "available": true,
+      "available_at": null,
+      "credits_would_enable": true
+    }
+  },
+  "credits": {
+    "has_credits": false,
+    "unlimited": false,
+    "overage_limit_reached": true,
+    "balance": null,
+    "approx_local_messages": null,
+    "approx_cloud_messages": null
+  },
+  "spend_control": {
+    "reached": true,
+    "individual_limit": {
+      "source": "<redacted>",
+      "unit": "<redacted>",
+      "limit": "<redacted>",
+      "used": "<redacted>",
+      "remaining": "<redacted>",
+      "used_percent": 34.0,
+      "remaining_percent": 1,
+      "reset_after_seconds": 1,
+      "reset_at": 1792144800
+    }
+  },
+  "rate_limit_reached_type": null,
+  "promo": null,
+  "rate_limit_reset_credits": {
+    "available_count": 1,
+    "applicable_available_count": 1
+  }
+}

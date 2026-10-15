@@ -1,0 +1,73 @@
+import { z } from 'zod'
+
+export const providerSchema = z.enum(['claude', 'codex'])
+export const accountIdSchema = z.string().min(1).brand<'AccountId'>()
+export const settingsSchema = z.object({
+  theme: z.enum(['system', 'light', 'dark']),
+  pollIntervalSeconds: z.number().int().min(30).max(3600),
+  idlePollIntervalSeconds: z.number().int().min(30).max(86400),
+  notifications: z.boolean(),
+  thresholds: z.array(z.number().int().min(1).max(100)).min(1).max(10)
+    .refine(values => values.every((value, index) => index === 0 || value > (values[index - 1] ?? 0)), 'Thresholds must be distinct and increasing'),
+  trayMode: z.enum(['pinned', 'lowest']),
+  pinnedAccountId: accountIdSchema.nullable(),
+  autostart: z.boolean(),
+}).refine(value => value.idlePollIntervalSeconds >= value.pollIntervalSeconds, 'Background refresh must be slower than active refresh')
+export const usageWindowSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  usedPercent: z.number().min(0).max(100),
+  resetsAt: z.string().datetime({ offset: true }).nullable(),
+  windowSeconds: z.number().int().nonnegative().nullable(),
+})
+export const accountSchema = z.object({
+  id: accountIdSchema,
+  provider: providerSchema,
+  label: z.string(),
+  color: z.string(),
+  source: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('configDir'), path: z.string() }),
+    z.object({ kind: z.literal('keychain') }),
+  ]),
+  identity: z.object({ email: z.string().nullable(), plan: z.string().nullable() }),
+  snapshot: z.object({
+    windows: z.array(usageWindowSchema),
+    fetchedAt: z.string().datetime({ offset: true }),
+    extraUsage: z.object({
+      spent: z.number().nonnegative(),
+      limit: z.number().nonnegative().nullable(),
+      currency: z.string(),
+    }).nullable(),
+  }).nullable(),
+  error: z.object({
+    kind: z.string(),
+    message: z.string(),
+    retryAfterSeconds: z.number().nonnegative().nullable(),
+  }).nullable(),
+  refreshing: z.boolean(),
+})
+export const appStateSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  accounts: z.array(accountSchema),
+  settings: settingsSchema,
+  refreshing: z.boolean(),
+  notice: z.string().nullable().default(null),
+})
+
+export type Provider = z.infer<typeof providerSchema>
+export type AccountId = z.infer<typeof accountIdSchema>
+export type Account = z.infer<typeof accountSchema>
+export type Settings = z.infer<typeof settingsSchema>
+export type UsageWindow = z.infer<typeof usageWindowSchema>
+export type AppState = z.infer<typeof appStateSchema>
+
+export const defaultSettings: Settings = {
+  theme: 'system',
+  pollIntervalSeconds: 60,
+  idlePollIntervalSeconds: 300,
+  notifications: false,
+  thresholds: [80, 95, 100],
+  trayMode: 'pinned',
+  pinnedAccountId: null,
+  autostart: false,
+}

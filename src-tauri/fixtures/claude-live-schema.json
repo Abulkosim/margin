@@ -1,0 +1,125 @@
+{
+  "five_hour": {
+    "utilization": 34.0,
+    "resets_at": "2026-10-16T10:00:00Z",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null,
+    "locked_reason": null
+  },
+  "seven_day": {
+    "utilization": 34.0,
+    "resets_at": "2026-10-16T10:00:00Z",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null,
+    "locked_reason": null
+  },
+  "seven_day_oauth_apps": null,
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "seven_day_cowork": null,
+  "seven_day_omelette": null,
+  "tangelo": null,
+  "iguana_necktie": null,
+  "omelette_promotional": null,
+  "nimbus_quill": null,
+  "cinder_cove": null,
+  "copper_kite": null,
+  "brass_thimble": null,
+  "harbor_lantern": null,
+  "wattle_ember": null,
+  "amber_ladder": null,
+  "granite_teacup": null,
+  "amber_cistern": null,
+  "juniper_tide": null,
+  "cedar_ember": {
+    "eligible": true,
+    "ineligible_reason": "<redacted>",
+    "at_limit": true,
+    "exhausted": [],
+    "grants": [],
+    "next_grant_id": null,
+    "weekly_resets_at": null,
+    "cooldown_until": null,
+    "event_props": null
+  },
+  "starry_waterfall": null,
+  "amber_gauge": null,
+  "extra_usage": {
+    "is_enabled": true,
+    "monthly_limit": null,
+    "used_credits": null,
+    "utilization": null,
+    "currency": "USD",
+    "decimal_places": 2,
+    "disabled_reason": "<redacted>",
+    "user_disabled": true,
+    "spend_limit_reached": true,
+    "credits_ever_enabled": true,
+    "daily": null,
+    "weekly": null
+  },
+  "limits": [
+    {
+      "kind": "<redacted>",
+      "group": "session",
+      "percent": 34.0,
+      "severity": "<redacted>",
+      "resets_at": "2026-10-16T10:00:00Z",
+      "scope": null,
+      "is_active": true
+    },
+    {
+      "kind": "<redacted>",
+      "group": "weekly",
+      "percent": 34.0,
+      "severity": "<redacted>",
+      "resets_at": "2026-10-16T10:00:00Z",
+      "scope": null,
+      "is_active": true
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 34.0,
+      "severity": "<redacted>",
+      "resets_at": "2026-10-16T10:00:00Z",
+      "scope": {
+        "model": {
+          "id": null,
+          "display_name": "Example model root_24_2_5_0_1"
+        },
+        "surface": null
+      },
+      "is_active": true
+    }
+  ],
+  "spend": {
+    "used": {
+      "amount_minor": 1,
+      "currency": "USD",
+      "exponent": 1
+    },
+    "limit": null,
+    "percent": 34.0,
+    "severity": "<redacted>",
+    "enabled": true,
+    "disabled_reason": "<redacted>",
+    "cap": null,
+    "balance": null,
+    "auto_reload": null,
+    "disclaimer": "<redacted>",
+    "can_purchase_credits": true,
+    "can_toggle": true
+  },
+  "member_dashboard_available": true,
+  "seven_day_breakdown": null,
+  "weekly_scoped_shares": [
+    {
+      "limit_index": 1,
+      "used_percent_of_weekly": 1,
+      "allowance_percent_of_weekly": 1
+    }
+  ]
+}
