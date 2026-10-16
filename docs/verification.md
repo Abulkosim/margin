@@ -4,18 +4,18 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current status
 
-**v0.1.1 is in development.** This update replaces platform-rendered controls with Reka UI selects, tooltips, switches, tabs, and account-removal confirmation. It keeps Margin's existing visual direction and provider behavior. The v0.1.0 results below are historical evidence, not verification of this update.
+**v0.1.1 is published.** This update replaces platform-rendered controls with Reka UI selects, tooltips, switches, tabs, and account-removal confirmation. It keeps Margin's existing visual direction and provider behavior. The v0.1.0 results below are historical evidence, not verification of this update.
 
 | v0.1.1 check | Status | Evidence or remaining work |
 | --- | --- | --- |
 | Version consistency | Passed locally | `node scripts/check-release.mjs v0.1.1` passed. Package, Cargo manifest, Cargo lock entry, and Tauri versions all match `0.1.1`; Reka UI remains pinned to `2.11.0`. |
-| Frontend build and unit tests | Passed locally | `pnpm build` and all 17 Node unit tests passed. |
-| Browser interaction and appearance | Passed locally | All 48 Playwright cases passed: 24 Chromium and 24 WebKit. Covers select keyboard/typeahead navigation, complete visibility of long-list options, tooltip dismissal, switches, tabs, confirmation focus, failed saves/removals, and both themes. Failure scenarios use a mocked desktop bridge. |
-| Rust regression checks | Passed locally | All 70 Rust unit tests, formatting, and strict Clippy with `-D warnings` passed. |
-| Native macOS controls | Passed in local debug app | Light/dark menus were visually inspected. Keyboard selection changed refresh from 1 to 2 minutes, saved, and restored trigger focus; the original interval was restored. Escape closed the select while keeping Settings open. The removal dialog focused Keep account; Escape preserved the account and Settings, then restored trigger focus. Light appearance was restored. Native notifications and autostart remained off and were not tested. |
-| macOS universal and Windows x64 CI | Pending | Record a successful run for the final v0.1.1 revision. |
+| Frontend build and unit tests | Passed locally and in CI | `pnpm build` and all 17 Node unit tests passed. |
+| Browser interaction and appearance | Passed locally and in CI | All 48 Playwright cases passed: 24 Chromium and 24 WebKit. Covers select keyboard/typeahead navigation, complete visibility of long-list options, tooltip dismissal, switches, tabs, confirmation focus, failed saves/removals, and both themes. Failure scenarios use a mocked desktop bridge. |
+| Rust regression checks | Passed locally and in CI | All 70 Rust unit tests, formatting, and strict Clippy with `-D warnings` passed. |
+| Native macOS controls | Passed in debug and release apps | Light/dark menus were visually inspected. Keyboard selection changed refresh from 1 to 2 minutes, saved, and restored trigger focus; the original interval was restored. Escape closed the select while keeping Settings open. The removal dialog focused Keep account; Escape preserved the account and Settings, then restored trigger focus. Light appearance was restored. The downloaded universal release app was installed and launched with both existing accounts and the pinned account preserved. Its version read 0.1.1; custom menus, keyboard saves, focus return, and Escape behavior passed again. The original one-minute refresh interval was restored. Native notifications and autostart remained off and were not tested. |
+| macOS universal and Windows x64 CI | Passed | [Main run 38847806220](https://github.com/Abulkosim/usagebar/actions/runs/38847806220) and [tag run 38848296438](https://github.com/Abulkosim/usagebar/actions/runs/38848296438) passed for release commit `ba4a557`. Both native jobs passed Rust checks and produced installers; the tag run prepared the release draft. |
 | Screenshots | Verified locally | Five 840×1320 browser previews were generated and visually inspected: light/dark overview, light settings, and light/dark open settings menus. All show sample data; see [screenshot notes](screenshots.md). |
-| Release artifacts and publication | Pending | Tag only after checks pass, verify downloaded assets, then publish. README downloads still point to v0.1.0. |
+| Release artifacts and publication | Published | [v0.1.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.1) includes a universal DMG, x64 EXE/MSI, and checksums. All SHA-256 values match. The DMG passed integrity checks, strict ad-hoc signature verification, version validation, and Intel/Apple Silicon architecture checks; it matches the installed tag artifact byte-for-byte. Windows installer formats and the MSI x64 template were verified. |
 
 ## Published baseline: v0.1.0
 
@@ -87,4 +87,4 @@ Confirm CLI credential files are unchanged after normal use. Treat account email
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkosimkattaev@gmail.com>`.
 
-The release commit is pushed to `main` and tagged `v0.1.0`. The GitHub description, provider/platform topics, screenshots, and installation documentation are updated. Both main and tag CI runs passed. [Margin v0.1.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.0) is published with all three installers and checksums.
+Release commit `ba4a557` is pushed to `main` and tagged `v0.1.1`. The GitHub description, provider/platform topics, sample screenshots, and installation documentation are updated. Both release-commit and tag CI runs passed. [Margin v0.1.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.1) is published as the latest release with all three installers and checksums. The previous release remains available for rollback.

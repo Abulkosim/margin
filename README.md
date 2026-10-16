@@ -31,16 +31,16 @@ v0.1.1 settings previews with sample data.
 - **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The published v0.1.0 release was verified with a packaged macOS app and live Claude/Codex requests. macOS universal and Windows x64 builds passed [CI](https://github.com/Abulkosim/usagebar/actions/runs/38840596545). Interactive Windows testing is planned in a VM; see [verification status](docs/verification.md) for completed checks and current development work.
+The published v0.1.1 release includes styled Reka UI controls and passed 48 browser tests across Chromium and WebKit. The packaged Mac app was verified locally; macOS universal and Windows x64 builds passed [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38848296438). Interactive Windows testing remains planned in a VM; see [verification status](docs/verification.md).
 
 ## Install
 
-Download **v0.1.0** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
+Download **v0.1.1** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_x64_en-US.msi) |
 
 To run from source, see [Develop](#develop).
 

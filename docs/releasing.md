@@ -8,7 +8,7 @@ Releases are unsigned by a verified publisher. macOS uses ad-hoc signing for App
 2. Commit both `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Frontend installs use `--frozen-lockfile`; Rust checks and builds use `--locked`.
 3. Set the same version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
 4. Update `.github/RELEASE_NOTES.md` with the actual changes, limitations, and unsigned installation guidance.
-5. Run `node scripts/check-release.mjs v0.1.0`, substituting the intended version.
+5. Run `node scripts/check-release.mjs v0.1.1`, substituting the intended version.
 6. Push the release commit and confirm all checks on `main` pass. Create and push the matching annotated tag.
 
 Never put real credential files, token values, account IDs, or unredacted provider responses into commits, artifacts, screenshots, or release notes.
