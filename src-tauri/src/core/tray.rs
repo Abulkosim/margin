@@ -17,6 +17,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
+#[cfg(not(target_os = "macos"))]
 use tauri_plugin_positioner::{Position, WindowExt};
 
 #[derive(Default)]
@@ -87,6 +88,61 @@ fn layout(work: Bounds, anchor: Option<Bounds>, scale: f64, macos: bool) -> Layo
         },
         arrow_x,
     }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn cocoa_layout(work: Bounds, anchor: Option<Bounds>) -> Layout {
+    let flip = |rect: Bounds| Bounds {
+        y: -rect.y - rect.height,
+        ..rect
+    };
+    let placed = layout(flip(work), anchor.map(flip), 1.0, true);
+    Layout {
+        frame: flip(placed.frame),
+        arrow_x: placed.arrow_x,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow) -> Option<f64> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSScreen, NSWindow};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+    let mtm = MainThreadMarker::new()?;
+    let bounds = |rect: NSRect| Bounds {
+        x: rect.origin.x,
+        y: rect.origin.y,
+        width: rect.size.width,
+        height: rect.size.height,
+    };
+    let pointer = window.ns_window().ok()?;
+    // Keep AppKit geometry in points on the main thread, including mixed-DPI moves.
+    let native = unsafe { &*pointer.cast::<NSWindow>() };
+    let tray_geometry = app.tray_by_id("margin").and_then(|tray| {
+        tray.with_inner_tray_icon(move |tray| {
+            let mtm = MainThreadMarker::new()?;
+            let tray_window = tray.ns_status_item()?.button(mtm)?.window()?;
+            let screen = tray_window.screen()?;
+            Some((bounds(screen.visibleFrame()), bounds(tray_window.frame())))
+        })
+        .ok()
+        .flatten()
+    });
+    let (work, anchor) = match tray_geometry {
+        Some((work, anchor)) => (work, Some(anchor)),
+        None => {
+            let screen = native.screen().or_else(|| NSScreen::mainScreen(mtm))?;
+            (bounds(screen.visibleFrame()), None)
+        }
+    };
+    let placed = cocoa_layout(work, anchor);
+    let content_rect = NSRect::new(
+        NSPoint::new(placed.frame.x, placed.frame.y),
+        NSSize::new(placed.frame.width, placed.frame.height),
+    );
+    native.setFrame_display(native.frameRectForContentRect(content_rect), true);
+    placed.arrow_x
 }
 
 fn limiting_window(account: &Account) -> Option<&UsageWindow> {
@@ -276,63 +332,71 @@ fn fit_backdrop(window: &tauri::WebviewWindow) {
 }
 
 pub fn show(app: &AppHandle, settings: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || show_on_main_thread(&handle, settings));
+}
+
+fn show_on_main_thread(app: &AppHandle, settings: bool) {
     if let Some(window) = app.get_webview_window("main") {
         #[cfg(target_os = "macos")]
-        let position = Position::TrayBottomCenter;
+        let arrow_x = place_macos_window(app, &window);
         #[cfg(not(target_os = "macos"))]
-        let position = Position::TrayCenter;
-        if window.move_window_constrained(position).is_err() {
-            let _ = window.center();
-        }
-        let anchor = app
-            .tray_by_id("margin")
-            .and_then(|tray| tray.rect().ok().flatten())
-            .map(|rect| {
-                (
-                    rect.position.to_physical::<f64>(1.0),
-                    rect.size.to_physical::<f64>(1.0),
-                )
-            })
-            .filter(|(_, size)| size.width > 0.0 && size.height > 0.0);
-        let monitor = anchor
-            .and_then(|(position, _)| {
-                window
-                    .monitor_from_point(position.x, position.y)
-                    .ok()
-                    .flatten()
-            })
-            .or_else(|| window.current_monitor().ok().flatten());
-        let mut arrow_x = None;
-        if let Some(monitor) = monitor {
-            let work = monitor.work_area();
-            let placed = layout(
-                Bounds {
-                    x: f64::from(work.position.x),
-                    y: f64::from(work.position.y),
-                    width: f64::from(work.size.width),
-                    height: f64::from(work.size.height),
-                },
-                anchor.map(|(position, size)| Bounds {
-                    x: position.x,
-                    y: position.y,
-                    width: size.width,
-                    height: size.height,
-                }),
-                monitor.scale_factor(),
-                cfg!(target_os = "macos"),
-            );
-            let resized = window.set_size(tauri::PhysicalSize::new(
-                placed.frame.width as u32,
-                placed.frame.height as u32,
-            ));
-            let positioned = window.set_position(tauri::PhysicalPosition::new(
-                placed.frame.x as i32,
-                placed.frame.y as i32,
-            ));
-            if resized.is_ok() && positioned.is_ok() {
-                arrow_x = placed.arrow_x;
+        let arrow_x = {
+            let position = Position::TrayCenter;
+            if window.move_window_constrained(position).is_err() {
+                let _ = window.center();
             }
-        }
+            let anchor = app
+                .tray_by_id("margin")
+                .and_then(|tray| tray.rect().ok().flatten())
+                .map(|rect| {
+                    (
+                        rect.position.to_physical::<f64>(1.0),
+                        rect.size.to_physical::<f64>(1.0),
+                    )
+                })
+                .filter(|(_, size)| size.width > 0.0 && size.height > 0.0);
+            let monitor = anchor
+                .and_then(|(position, _)| {
+                    window
+                        .monitor_from_point(position.x, position.y)
+                        .ok()
+                        .flatten()
+                })
+                .or_else(|| window.current_monitor().ok().flatten());
+            let mut arrow_x = None;
+            if let Some(monitor) = monitor {
+                let work = monitor.work_area();
+                let placed = layout(
+                    Bounds {
+                        x: f64::from(work.position.x),
+                        y: f64::from(work.position.y),
+                        width: f64::from(work.size.width),
+                        height: f64::from(work.size.height),
+                    },
+                    anchor.map(|(position, size)| Bounds {
+                        x: position.x,
+                        y: position.y,
+                        width: size.width,
+                        height: size.height,
+                    }),
+                    monitor.scale_factor(),
+                    cfg!(target_os = "macos"),
+                );
+                let resized = window.set_size(tauri::PhysicalSize::new(
+                    placed.frame.width as u32,
+                    placed.frame.height as u32,
+                ));
+                let positioned = window.set_position(tauri::PhysicalPosition::new(
+                    placed.frame.x as i32,
+                    placed.frame.y as i32,
+                ));
+                if resized.is_ok() && positioned.is_ok() {
+                    arrow_x = placed.arrow_x;
+                }
+            }
+            arrow_x
+        };
         if let Ok(mut placement) = app.state::<Visibility>().placement.lock() {
             placement.revision = placement.revision.saturating_add(1);
             placement.arrow_x = arrow_x;
@@ -489,6 +553,103 @@ mod tests {
         assert_eq!(full[3], 0);
         assert_ne!(unknown, empty);
         assert_ne!(full, empty);
+    }
+
+    #[test]
+    fn cocoa_coordinates_keep_content_size_across_retina_and_external_screens() {
+        for (work, tray, expected_x, expected_y) in [
+            (
+                Bounds {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1440.0,
+                    height: 875.0,
+                },
+                Bounds {
+                    x: 1368.0,
+                    y: 875.0,
+                    width: 24.0,
+                    height: 25.0,
+                },
+                1020.0,
+                215.0,
+            ),
+            (
+                Bounds {
+                    x: 1440.0,
+                    y: -180.0,
+                    width: 1920.0,
+                    height: 1055.0,
+                },
+                Bounds {
+                    x: 3288.0,
+                    y: 875.0,
+                    width: 24.0,
+                    height: 25.0,
+                },
+                2940.0,
+                215.0,
+            ),
+            (
+                Bounds {
+                    x: -1920.0,
+                    y: -180.0,
+                    width: 1920.0,
+                    height: 1055.0,
+                },
+                Bounds {
+                    x: -1872.0,
+                    y: 875.0,
+                    width: 24.0,
+                    height: 25.0,
+                },
+                -1920.0,
+                215.0,
+            ),
+            (
+                Bounds {
+                    x: 0.0,
+                    y: 900.0,
+                    width: 1920.0,
+                    height: 1055.0,
+                },
+                Bounds {
+                    x: 1848.0,
+                    y: 1955.0,
+                    width: 24.0,
+                    height: 25.0,
+                },
+                1500.0,
+                1295.0,
+            ),
+        ] {
+            let placed = cocoa_layout(work, Some(tray));
+            assert_eq!(placed.frame.width, 420.0);
+            assert_eq!(placed.frame.height, 660.0);
+            assert_eq!(placed.frame.x, expected_x);
+            assert_eq!(placed.frame.y, expected_y);
+            assert_eq!(placed.frame.y + placed.frame.height, tray.y);
+            assert_eq!(
+                placed.frame.x + placed.arrow_x.unwrap(),
+                tray.x + tray.width / 2.0
+            );
+        }
+    }
+
+    #[test]
+    fn cocoa_small_work_area_and_missing_tray_stay_within_screen() {
+        let work = Bounds {
+            x: -360.0,
+            y: 900.0,
+            width: 360.0,
+            height: 440.0,
+        };
+        let placed = cocoa_layout(work, None);
+        assert_eq!(placed.frame.x, work.x);
+        assert_eq!(placed.frame.y, work.y);
+        assert_eq!(placed.frame.width, work.width);
+        assert_eq!(placed.frame.height, work.height);
+        assert_eq!(placed.arrow_x, None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "margin"
-version = "0.2.0"
+version = "0.2.1"
 description = "Claude and Codex usage at a glance"
 authors = ["abulkosim <abulkasimkattaev@gmail.com>"]
 edition = "2021"
@@ -36,9 +36,16 @@ tauri-plugin-updater = { version = "=2.14.0", default-features = false, features
 [dev-dependencies]
 tauri = { version = "2.12.4", features = ["test"] }
 
+[[test]]
+name = "native_geometry"
+harness = false
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSRunningApplication", "NSGraphics"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSView", "NSVisualEffectView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSView", "NSVisualEffectView", "NSWindow", "NSScreen", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSArray", "NSGeometry"] }
 
 [profile.release]
