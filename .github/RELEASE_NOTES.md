@@ -18,7 +18,9 @@ Updater signatures are separate from OS publisher certificates. These builds rem
 
 ## Verification
 
-Release verification is in progress. This draft will be updated with completed checks before publication.
+[Release CI](https://github.com/Abulkosim/usagebar/actions/runs/38864063245) passed: 75 Rust tests, 26 frontend unit tests, 68 browser cases, 14 release-script tests, strict Clippy, and macOS universal/Windows x64 packaging.
+
+A native test reproduced the 210 × 330 point failure and verified the fix at 420 × 660 on the connected 2× Retina and 1× external screens. The exact signed universal Mac update installed successfully in a test app and rendered without clipping. Altered downloads and mismatched versions were rejected. All release checksums and updater signatures passed.
 
 The owner reported successful Windows testing of v0.1.1. Interactive Windows self-updating and privileged macOS installation remain unverified. See the [verification record](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md).
 

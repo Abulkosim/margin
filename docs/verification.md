@@ -2,7 +2,9 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Patch candidate: v0.2.1
+## Current release: v0.2.1
+
+**[v0.2.1 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1).** Verified on 2026-10-16.
 
 The owner reported clipping only on the external monitor; reopening restored the correct size. The previous macOS path sized in physical pixels using the target monitor scale, while Tao converted that size using the window’s current scale before an asynchronous move. A 1× destination with a 2× source could therefore produce a 210 × 330 point window. Its monitor lookup also mixed physical tray coordinates with a logical-point API.
 
@@ -10,9 +12,11 @@ The patch obtains the tray status item’s actual screen, calculates in Cocoa po
 
 - 75 Rust unit tests passed, including Cocoa geometry for displays to either side/above the main screen, arrow alignment, and small work areas. Formatting and strict Clippy passed.
 - The opt-in native test used one hidden disposable AppKit window on this Mac’s real 2× built-in and 1× external screens. It reproduced 210 × 330 points under the old conversion, then verified 420 × 660 points and the expected backing scale on each screen. No visible window or display preference was changed.
-- The native debug build rendered the full overview at 420 × 660, with the tray arrow and no outer scrollbars. The owner’s reported first-open interaction still needs confirmation after installation.
+- The native debug build rendered the full overview and Settings at 420 × 660, with the tray arrow and no outer scrollbars. The optimized production build also rendered without clipping at 840 × 1320 physical pixels on Retina. The owner’s reported first-open interaction still needs confirmation after installation.
 - The installed v0.2.0 app’s explicit update check successfully reported “You’re up to date” against the published manifest.
-- Release CI and exact signed artifact verification are pending.
+- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/38863357727) passed: frontend/browser checks, Rust checks, macOS universal packaging, and Windows x64 packaging. [Signed release CI](https://github.com/Abulkosim/usagebar/actions/runs/38864063245) also passed. All nine uploaded asset digests matched local files; all eight listed checksums, three updater signatures, signed versions, and manifest targets passed. The DMG passed integrity verification and matched the updater-installed app.
+- The exact universal signed archive passed the real updater installation smoke test, including tamper/version rejection, both architectures, and strict ad-hoc signature validation. It launched without clipping.
+- The owner’s installed v0.2.0 app found v0.2.1 through Settings, installed it with **Install and restart**, and relaunched with both accounts and the pinned account preserved. The installed version is 0.2.1; its executable and plist match the verified universal release, and strict codesign verification passed. The previous installation is backed up locally. This verifies the user-level macOS UI update flow; Windows and privileged macOS updating remain unverified.
 
 Run the optional real-display check in a macOS desktop session:
 
@@ -130,4 +134,4 @@ Commit identities were corrected on 2026-10-16. Every existing commit kept its o
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkasimkattaev@gmail.com>`.
 
-Release commit `e27c77e` is pushed to `main` and tagged `v0.2.0`. Main and tag CI passed. [Margin v0.2.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.0) is published as the latest release with installers, updater signatures, the update manifest, and checksums. v0.1.1 remains available for manual rollback. The README and release notes explain the one-time manual upgrade and the distinction between free updater signatures and OS publisher certificates.
+Release commit `075b489` is pushed to `main` and tagged `v0.2.1`. Main and tag CI passed. [Margin v0.2.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1) is published as the latest release with installers, updater signatures, the update manifest, and checksums. The installed app was upgraded through its own UI. v0.2.0 remains available for manual rollback.
