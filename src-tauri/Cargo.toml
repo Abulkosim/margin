@@ -2,7 +2,7 @@
 name = "margin"
 version = "0.1.1"
 description = "Claude and Codex usage at a glance"
-authors = ["abulkosim <abulkosimkattaev@gmail.com>"]
+authors = ["abulkosim <abulkasimkattaev@gmail.com>"]
 edition = "2021"
 rust-version = "1.90"
 license = "MIT"

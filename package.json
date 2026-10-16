@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Claude and Codex usage, across accounts, in your menu bar.",
   "license": "MIT",
-  "author": "abulkosim <abulkosimkattaev@gmail.com>",
+  "author": "abulkosim <abulkasimkattaev@gmail.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/Abulkosim/usagebar.git"
