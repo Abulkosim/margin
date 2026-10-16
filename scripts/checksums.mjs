@@ -1,17 +1,23 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { readdir, writeFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { releaseAssetNames } from './updater-manifest.mjs'
 
 const directory = process.argv[2] ?? 'release-artifacts'
+const manifest = JSON.parse(await readFile(join(directory, 'latest.json'), 'utf8'))
+const assets = releaseAssetNames(manifest.version)
+const required = new Set([
+  ...Object.values(assets),
+  ...[assets.mac, assets.nsis, assets.msi].map((name) => `${name}.sig`),
+  'latest.json',
+])
 const entries = (await readdir(directory, { withFileTypes: true }))
-  .filter((entry) => entry.isFile() && /\.(dmg|exe|msi)$/.test(entry.name))
+  .filter((entry) => entry.name !== 'SHA256SUMS.txt')
   .sort((a, b) => a.name.localeCompare(b.name))
 
-for (const extension of ['.dmg', '-setup.exe', '.msi']) {
-  if (!entries.some((entry) => entry.name.endsWith(extension))) {
-    throw new Error(`Missing ${extension} installer; release is incomplete.`)
-  }
+if (entries.length !== required.size || entries.some((entry) => !entry.isFile() || !required.has(entry.name))) {
+  throw new Error('Release assets must match the complete signed updater asset set.')
 }
 
 const lines = []
@@ -22,4 +28,4 @@ for (const entry of entries) {
   lines.push(`${hash.digest('hex')}  ${entry.name}`)
 }
 await writeFile(join(directory, 'SHA256SUMS.txt'), `${lines.join('\n')}\n`, 'utf8')
-console.log(`Recorded SHA-256 checksums for ${lines.length} installers.`)
+console.log(`Recorded SHA-256 checksums for ${lines.length} release assets.`)

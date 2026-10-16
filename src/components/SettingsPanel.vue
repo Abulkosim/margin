@@ -5,18 +5,21 @@ import { version } from '../../package.json'
 import { accountIdSchema, providerSchema, type Account, type AccountId, type Provider, type Settings } from '../lib/model'
 import { accountSource, providerName } from '../lib/format'
 import AppIcon from './AppIcon.vue'
+import UpdateSettings from './settings/UpdateSettings.vue'
+import type { UpdateState } from '../lib/updater'
 import AppSelect from './ui/AppSelect.vue'
 import AppSwitch from './ui/AppSwitch.vue'
 import AppTooltip from './ui/AppTooltip.vue'
 
 const props = defineProps<{
+  updateState: UpdateState; updateBusy: boolean; demo: boolean;
   accounts: Account[]; settings: Settings; busy: boolean; initialTab: 'general' | 'accounts';
   save: (settings: Settings) => Promise<boolean>;
   add: (provider: Provider, path: string) => Promise<boolean>;
   remove: (id: AccountId) => Promise<boolean>;
   rename: (id: AccountId, label: string) => Promise<boolean>;
 }>()
-defineEmits<{ back: []; discover: [] }>()
+defineEmits<{ back: []; discover: []; checkUpdate: []; installUpdate: [] }>()
 const tab = ref(props.initialTab)
 const adding = ref(false)
 const provider = ref<Provider>('claude')
@@ -190,6 +193,7 @@ async function confirmRemove(): Promise<void> {
           <h2>Startup</h2>
           <div class="setting-row"><div><span id="autostart-label" class="setting-label">Launch at login</span><p>Ready when you are.</p></div><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
         </section>
+        <UpdateSettings :state="updateState" :busy="updateBusy" :demo="demo" @check="$emit('checkUpdate')" @install="$emit('installUpdate')"/>
         <p class="settings-footnote"><AppIcon name="margin" :size="13"/>Margin {{ version }}<span>Made for a little more clarity.</span></p>
       </TabsContent>
 

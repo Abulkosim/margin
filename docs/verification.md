@@ -2,7 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current status
+## Next release: v0.2.0
+
+In preparation on 2026-10-16. Adds explicit in-app update checks and signed installation through GitHub Releases, plus a desktop-only shadow correction. The owner approved the dedicated updater key and release-only GitHub Actions secret. The public key is configured; release preflight passes. The local signed installation smoke test passed; CI release builds remain in progress.
+
+- Frontend: production build, 26 unit tests, and 68 Chromium/WebKit browser cases passed locally. New cases cover updater errors, progress, retry, stale IPC, duplicate clicks, navigation, and transparent native window edges.
+- Release scripts: 14 tests passed, including a real Tauri-generated signature, altered bytes, signed-version mismatch, wrong keys, installer-family selection, and unexpected-file rejection.
+- Native compilation, strict Clippy, and all 73 Rust tests passed locally. The debug app bundle launched on macOS. The corrected panel edges were visually checked in dark and light themes; the original dark preference was restored. Updates displayed version 0.2.0, made an explicit check, and showed a recoverable error because the public manifest is not published yet. Native notification/autostart settings remained off. The real updater plugin then downloaded and installed the signed local arm64 app into a disposable bundle. Corrupted bytes and mismatched signed versions were rejected before replacement; the previous test app remained intact. The installed bundle reported 0.2.0 and passed strict ad-hoc signature verification. The exact universal CI artifact still needs the same smoke test before publication.
+- The updater key was created with owner-only local permissions and stored in the repository’s encrypted Actions secret. Only trusted release-tag builds receive it. No paid service or certificate was configured.
+
+## Published release: v0.1.1
 
 **v0.1.1 is published.** This update replaces platform-rendered controls with Reka UI selects, tooltips, switches, tabs, and account-removal confirmation. It keeps Margin's existing visual direction and provider behavior. The v0.1.0 results below are historical evidence, not verification of this update.
 
@@ -12,6 +21,7 @@ Status must describe checks actually run, not the presence of test code. Record 
 | Frontend build and unit tests | Passed locally and in CI | `pnpm build` and all 17 Node unit tests passed. |
 | Browser interaction and appearance | Passed locally and in CI | All 48 Playwright cases passed: 24 Chromium and 24 WebKit. Covers select keyboard/typeahead navigation, complete visibility of long-list options, tooltip dismissal, switches, tabs, confirmation focus, failed saves/removals, and both themes. Failure scenarios use a mocked desktop bridge. |
 | Rust regression checks | Passed locally and in CI | All 70 Rust unit tests, formatting, and strict Clippy with `-D warnings` passed. |
+| Windows owner testing | Passed, owner-reported | On 2026-10-16 the owner reported checking the Windows app and finding everything okay. Exact OS build and per-scenario results were not supplied. A subsequent macOS screenshot identified the dark perimeter addressed in v0.2.0. |
 | Native macOS controls | Passed in debug and release apps | Light/dark menus were visually inspected. Keyboard selection changed refresh from 1 to 2 minutes, saved, and restored trigger focus; the original interval was restored. Escape closed the select while keeping Settings open. The removal dialog focused Keep account; Escape preserved the account and Settings, then restored trigger focus. Light appearance was restored. The downloaded universal release app was installed and launched with both existing accounts and the pinned account preserved. Its version read 0.1.1; custom menus, keyboard saves, focus return, and Escape behavior passed again. The original one-minute refresh interval was restored. Native notifications and autostart remained off and were not tested. |
 | macOS universal and Windows x64 CI | Passed | [Main run 38847806220](https://github.com/Abulkosim/usagebar/actions/runs/38847806220) and [tag run 38848296438](https://github.com/Abulkosim/usagebar/actions/runs/38848296438) passed for the original release commit `ba4a557`. Both native jobs passed Rust checks and produced installers; the tag run prepared the release draft. |
 | Screenshots | Verified locally | Five 840×1320 browser previews were generated and visually inspected: light/dark overview, light settings, and light/dark open settings menus. All show sample data; see [screenshot notes](screenshots.md). |
@@ -45,6 +55,8 @@ Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, 
 Live probes did not log or save tokens, raw identities, or personal usage values. Public screenshots use explicit sample accounts. The main and tag CI runs passed. Release downloads passed SHA-256 verification, DMG integrity, strict ad-hoc signature, universal architecture, and Windows installer-format checks. Interactive Windows and DPI checks are planned separately in the owner's VM.
 
 ## Native smoke checks
+
+The Windows cells below are the original detailed checklist. The owner subsequently reported successful Windows testing for v0.1.1 on 2026-10-16; individual scenario results and display-scale values were not recorded. Do not treat that report as validation of v0.2.0 installation or updating.
 
 Use downloaded release artifacts and at least one authenticated account from each provider. Use a dedicated custom configuration folder for failure scenarios. Never replace a working CLI credential file just to test Margin.
 

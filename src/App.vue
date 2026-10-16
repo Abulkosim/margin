@@ -8,9 +8,11 @@ import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import { accountIsStale, relativeAge } from './lib/format'
 import { useMargin } from './lib/margin'
+import { useUpdater } from './lib/updater'
 import type { Account, Provider } from './lib/model'
 
 const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, hideWindow } = useMargin()
+const updater = useUpdater({ demo, desktop })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
 const viewportWidth = ref(window.innerWidth)
@@ -160,7 +162,7 @@ onUnmounted(() => {
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/>{{ status }}</span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
-        <SettingsPanel v-else :accounts="state.accounts" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover"/>
+        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
         <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
       </div>

@@ -1,6 +1,7 @@
 mod commands;
 pub mod core;
 mod runtime;
+mod updates;
 
 use crate::core::{poller, tray};
 use runtime::Runtime;
@@ -19,7 +20,9 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(tray::Visibility::default())
+        .manage(updates::Updates::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
             commands::get_popover_placement,
@@ -30,6 +33,9 @@ pub fn run() {
             commands::rename_account,
             commands::save_settings,
             commands::hide_window,
+            updates::get_update_status,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

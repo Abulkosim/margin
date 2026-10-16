@@ -48,7 +48,9 @@ jobs:
       - name: Check types and production build
         run: pnpm build
       - name: Run unit tests
-        run: pnpm test
+        run: |
+          pnpm test
+          node --test scripts/*.test.mjs
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: Run browser tests
@@ -116,14 +118,34 @@ jobs:
       - name: Test providers and core
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build native installers
+        if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') || github.repository != 'Abulkosim/usagebar'
         env:
           BUILD_TARGET: ${{ matrix.target }}
           BUILD_BUNDLES: ${{ matrix.bundles }}
-        run: pnpm tauri build --target "$BUILD_TARGET" --bundles "$BUILD_BUNDLES" --ci -- --locked
+        run: pnpm tauri build --target "$BUILD_TARGET" --bundles "$BUILD_BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":false}}' --ci -- --locked
+      - name: Build signed release artifacts
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar'
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          BUILD_BUNDLES: ${{ matrix.bundles }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            echo "Configure the updater signing secret before tagging a release."
+            exit 1
+          fi
+          pnpm tauri build --target "$BUILD_TARGET" --bundles "$BUILD_BUNDLES" --ci -- --locked
       - name: Collect installers
         env:
           BUILD_TARGET: ${{ matrix.target }}
-        run: node scripts/collect-artifacts.mjs "$BUILD_TARGET"
+          SIGNED_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar' }}
+        run: |
+          if [[ "$SIGNED_RELEASE" == "true" ]]; then
+            node scripts/collect-artifacts.mjs "$BUILD_TARGET" --updater
+          else
+            node scripts/collect-artifacts.mjs "$BUILD_TARGET"
+          fi
       - name: Preserve installers
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -147,7 +169,7 @@ jobs:
 
   release:
     name: Prepare draft release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar'
     needs: [frontend, native]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -166,6 +188,11 @@ jobs:
           pattern: installers-*
           path: release-artifacts/
           merge-multiple: true
+      - name: Verify updater signatures and generate manifest
+        env:
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/updater-manifest.mjs release-artifacts "$RELEASE_TAG"
       - name: Generate release checksums
         run: node scripts/checksums.mjs release-artifacts
       - name: Create or update draft
