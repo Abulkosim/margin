@@ -184,6 +184,9 @@ button:disabled:hover {
   max-height: none;
   padding: 14px 6px 6px;
 }
+.desktop-stage .popover {
+  box-shadow: none;
+}
 .desktop-stage .popover-arrow {
   top: 9px;
 }

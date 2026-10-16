@@ -31,7 +31,7 @@ v0.1.1 settings previews with sample data.
 - **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The published v0.1.1 release includes styled Reka UI controls and passed 48 browser tests across Chromium and WebKit. The packaged Mac app was verified locally; macOS universal and Windows x64 builds passed [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38848296438). Interactive Windows testing remains planned in a VM; see [verification status](docs/verification.md).
+The published v0.1.1 release includes styled Reka UI controls and passed 48 browser tests across Chromium and WebKit. The packaged Mac app was verified locally; macOS universal and Windows x64 builds passed [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38848296438). The owner has also tested v0.1.1 on Windows and reports it works correctly; see [verification status](docs/verification.md).
 
 ## Install
 
