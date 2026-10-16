@@ -32,16 +32,16 @@ Settings menus with sample data.
 - **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
 - **Settings:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The published [v0.2.1 release](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1) fixes clipped popovers when moving between Retina and external displays on macOS. [Release CI](https://github.com/Abulkosim/usagebar/actions/runs/38864063245) passed on macOS and Windows; the signed Mac update was installed through Margin’s update controls. See the [verification record](docs/verification.md) for completed checks.
+[v0.2.2](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2) simplifies the app’s wording and adds a [changelog for every release](CHANGELOG.md). It includes the external-monitor sizing fix from v0.2.1. macOS and Windows [release checks](https://github.com/Abulkosim/usagebar/actions/runs/38866794042) passed; the Mac update was installed and checked. See the [verification record](docs/verification.md).
 
 ## Install
 
-Download **v0.2.1** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
+Download **v0.2.2** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.2.1/Margin_0.2.1_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.2.1/Margin_0.2.1_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.2.1/Margin_0.2.1_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.2.2/Margin_0.2.2_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.2.2/Margin_0.2.2_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.2.2/Margin_0.2.2_x64_en-US.msi) |
 
 Already using v0.1.1 or earlier? Install the latest release once manually. Future releases can be installed from **Settings → General → Updates**. Checking and installing are explicit actions; Margin does not check or download in the background. Updater signatures are separate from OS publisher certificates, so the first-launch guidance below still applies.
 

@@ -2,14 +2,20 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Release candidate: v0.2.2
+## Current release: v0.2.2
+
+**[v0.2.2 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2).** Verified on 2026-10-16.
 
 This release simplifies interface copy and adds per-version changelogs based on Git tags and published release dates. GitHub release notes and updater notes now use the same Markdown file. The native sizing fix is unchanged.
 
 - Production frontend build, 26 frontend unit tests, 68 Chromium/WebKit browser cases, 75 Rust tests, and 14 release-script tests passed locally.
 - All four historical release dates and changelog links were checked against repository history. The new changelog is included in release preflight checks.
 - Five public WebKit screenshots were refreshed at 420 × 660 CSS pixels and 2× scale. Light/dark overviews and Settings menus were visually checked; all retain the sample-data label. The browser entry and empty state were also inspected.
-- Signed release builds and exact artifact checks are pending.
+- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/38865976350) and [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38866794042) passed, including strict Clippy and both native installer builds.
+- All eight listed checksums and all nine remote asset digests matched. All three updater signatures, signed versions, and five manifest targets passed. The GitHub release body and manifest notes match `changelogs/v0.2.2.md`.
+- The exact signed universal Mac archive passed the real updater smoke test: altered files and mismatched versions were rejected, and valid installation passed version, both architectures, and strict ad-hoc signature checks. The DMG passed integrity checks and contains the same app.
+- The downloaded release launched with “Usage remaining” and the shorter Settings copy, without clipping. The installed v0.2.1 app then found and installed v0.2.2 through **Install and restart**. Accounts, the pinned account, theme, polling intervals, and disabled notification/autostart preferences were preserved. Settings shows version 0.2.2 and a new check reports “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
+- The four older GitHub release descriptions were replaced with their concise historical changelogs. Their published installers, manifests, signatures, and tags were not changed. Interactive Windows updating and privileged macOS installation remain unverified.
 
 ## Previous release: v0.2.1
 
@@ -143,4 +149,4 @@ Commit identities were corrected on 2026-10-16. Every existing commit kept its o
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkasimkattaev@gmail.com>`.
 
-Release commit `075b489` is pushed to `main` and tagged `v0.2.1`. Main and tag CI passed. [Margin v0.2.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1) is published as the latest release with installers, updater signatures, the update manifest, and checksums. The installed app was upgraded through its own UI. v0.2.0 remains available for manual rollback.
+Release commit `e13f59d` is pushed to `main` and tagged `v0.2.2`. Main and tag CI passed. [Margin v0.2.2](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2) is published as the latest release with installers, updater signatures, the changelog-backed update manifest, and checksums. The installed app was upgraded through its own UI. v0.2.1 remains available for rollback.
