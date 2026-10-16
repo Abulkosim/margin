@@ -79,7 +79,7 @@ test('updates require explicit check and install, preserve focus, and survive Se
   await expect(updates.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
   await expect(action).toHaveAttribute('aria-disabled', 'true')
   await page.evaluate(() => window.__UPDATE_TEST__?.emit({ revision: 3, state: { kind: 'installing', version: '0.3.0' } }))
-  await expect(updates.getByRole('status')).toHaveText('Installing. Margin will restart shortly.')
+  await expect(updates.getByRole('status')).toHaveText('Installing. Margin will restart.')
   await expect(updates.getByRole('progressbar')).toHaveCount(0)
 })
 
@@ -97,7 +97,7 @@ test('failed update request keeps keyboard focus and offers a safe retry', async
   await expect(action).toHaveAttribute('aria-disabled', 'false')
   await page.keyboard.press('Enter')
   await page.evaluate(() => window.__UPDATE_TEST__?.finish({ revision: 2, state: { kind: 'current' } }))
-  await expect(updates.getByRole('status')).toHaveText('You’re up to date.')
+  await expect(updates.getByRole('status')).toHaveText('Up to date.')
   await expect(action).toBeFocused()
 })
 
@@ -127,7 +127,7 @@ test('preview explains desktop-only updates without invoking the bridge', async 
   await page.goto('/?demo=1')
   await openUpdates(page)
   const updates = page.getByRole('region', { name: 'Updates', exact: true })
-  await expect(updates.getByRole('status')).toHaveText('Updates are available in the desktop app.')
+  await expect(updates.getByRole('status')).toHaveText('Update checks require the desktop app.')
   const action = updates.getByRole('button')
   await expect(action).toHaveAttribute('aria-disabled', 'true')
   await action.focus()

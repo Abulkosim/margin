@@ -123,3 +123,10 @@ src/
 - Inspect real files on this machine (`~/.claude`, `~/.codex`) before writing parsers. Redact when logging.
 - Hit the real endpoints early with the owner's own token to confirm shapes; save sanitized responses as fixtures.
 - Keep the owner posted in short lines. Show screenshots. Decide small things yourself.
+
+## Copy and changelogs
+
+- Use short, practical wording. Name the action or information; remove slogans and filler. Use “Usage remaining,” not “Your headroom.”
+- Write one `changelogs/vX.Y.Z.md` per release and link it from `CHANGELOG.md`. Use the actual release date and a few concrete user-facing changes, checked against Git history.
+- GitHub release notes and updater notes come from that version’s changelog. Keep test logs and implementation detail in `docs/verification.md`.
+- Refresh public sample-data screenshots when visible copy changes.

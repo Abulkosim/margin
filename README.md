@@ -7,7 +7,7 @@ See remaining quota and reset times across multiple accounts, right from your me
 [![CI](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-747a87)](LICENSE)
 
-[Download](https://github.com/Abulkosim/usagebar/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Develop](#develop)
+[Download](https://github.com/Abulkosim/usagebar/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Changelog](CHANGELOG.md) · [Develop](#develop)
 
 <p>
   <img src="docs/images/overview-dark.png" alt="Margin dark browser preview showing sample Claude and Codex accounts" width="300" />
@@ -17,20 +17,20 @@ See remaining quota and reset times across multiple accounts, right from your me
 Browser previews with sample accounts. [Settings preview](docs/images/settings-light.png).
 
 <p>
-  <img src="docs/images/settings-menu-light.png" alt="Margin v0.1.1 light settings preview with a styled account menu and sample accounts" width="260" />
-  <img src="docs/images/settings-menu-dark.png" alt="Margin v0.1.1 dark settings preview with a styled account menu and sample accounts" width="260" />
+  <img src="docs/images/settings-menu-light.png" alt="Margin light settings preview with a styled account menu and sample accounts" width="260" />
+  <img src="docs/images/settings-menu-dark.png" alt="Margin dark settings preview with a styled account menu and sample accounts" width="260" />
 </p>
 
-v0.1.1 settings previews with sample data.
+Settings menus with sample data.
 
 ## What it does
 
 - **Multiple accounts:** discover existing CLI sign-ins or add a configuration folder for each account.
-- **Quota at a glance:** remaining percentages and reset countdowns for reported session, weekly, and model-specific windows. Extra-usage spend appears when Claude reports it.
-- **One quiet tray indicator:** follow a pinned account or the account with the least remaining quota.
-- **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
+- **Usage:** remaining percentages and reset countdowns for reported session, weekly, and model-specific windows. Extra-usage spend appears when Claude reports it.
+- **Tray indicator:** follow a pinned account or the account with the least remaining quota.
+- **Last known usage:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
-- **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
+- **Settings:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
 The published [v0.2.1 release](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1) fixes clipped popovers when moving between Retina and external displays on macOS. [Release CI](https://github.com/Abulkosim/usagebar/actions/runs/38864063245) passed on macOS and Windows; the signed Mac update was installed through Margin’s update controls. See the [verification record](docs/verification.md) for completed checks.
 

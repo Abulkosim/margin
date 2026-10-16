@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Margin",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.abulkosim.margin",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -40,7 +40,7 @@
     "targets": "all",
     "category": "Productivity",
     "shortDescription": "Claude and Codex usage at a glance",
-    "longDescription": "A private, read-only menu bar companion for Claude and Codex. Track quota windows, reset times, and multiple accounts from one quiet place.",
+    "longDescription": "Track Claude and Codex usage across multiple accounts. See remaining quota and reset times in the macOS menu bar or Windows system tray.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

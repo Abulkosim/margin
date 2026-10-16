@@ -158,7 +158,7 @@ async function confirmRemove(): Promise<void> {
 <template>
   <AlertDialogRoot :open="removeTarget !== null" @update:open="closeRemove">
     <TabsRoot :model-value="tab" class="settings-view" @update:model-value="setTab">
-      <header class="settings-header"><button class="icon-button back-button" aria-label="Back to overview" @click="$emit('back')"><AppIcon name="back" :size="18"/></button><h1>Settings</h1><span class="settings-autosave">Saved automatically</span></header>
+      <header class="settings-header"><button class="icon-button back-button" aria-label="Back to overview" @click="$emit('back')"><AppIcon name="back" :size="18"/></button><h1>Settings</h1><span class="settings-autosave">Saves automatically</span></header>
       <TabsList class="settings-tabs" aria-label="Settings sections">
         <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="accounts">Accounts <span>{{ accounts.length }}</span></TabsTrigger>
@@ -170,7 +170,7 @@ async function confirmRemove(): Promise<void> {
           <div class="theme-options"><button v-for="theme in themes" :key="theme.id" class="theme-option" :class="{ selected: settings.theme === theme.id }" :aria-pressed="settings.theme === theme.id" :disabled="busy" @click="patchSettings({ theme: theme.id })"><span class="theme-thumbnail" :class="`thumbnail-${theme.id}`"><span/><span/><span/></span><span><AppIcon :name="theme.icon" :size="13"/>{{ theme.label }}</span><span v-if="settings.theme === theme.id" class="theme-check"><AppIcon name="check" :size="10"/></span></button></div>
         </section>
         <section class="settings-section">
-          <h2>Menu bar &amp; refresh</h2>
+          <h2>Tray &amp; refresh</h2>
           <div class="setting-row">
             <div><label for="tray-account">Tray account</label><p>Shows the lowest remaining window.</p></div>
             <AppSelect id="tray-account" :model-value="selectedMode" :options="trayOptions" :disabled="busy" @update:model-value="setTray"/>
@@ -186,19 +186,19 @@ async function confirmRemove(): Promise<void> {
         </section>
         <section class="settings-section">
           <h2>Notifications</h2>
-          <div class="setting-row"><div><span id="notification-label" class="setting-label">Usage reminders</span><p>A heads-up as a window fills up.</p></div><AppSwitch :model-value="settings.notifications" aria-labelledby="notification-label" :disabled="busy" @update:model-value="patchSettings({ notifications: $event })"/></div>
+          <div class="setting-row"><span id="notification-label" class="setting-label">Usage alerts</span><AppSwitch :model-value="settings.notifications" aria-labelledby="notification-label" :disabled="busy" @update:model-value="patchSettings({ notifications: $event })"/></div>
           <div class="threshold-options" :class="{ 'is-disabled': !settings.notifications }"><span>Notify at</span><button v-for="threshold in [80, 95, 100]" :key="threshold" class="threshold-chip" :class="{ selected: settings.thresholds.includes(threshold) }" :aria-pressed="settings.thresholds.includes(threshold)" :aria-label="`Notify at ${threshold}% used`" :disabled="busy || !settings.notifications" @click="toggleThreshold(threshold)"><AppIcon v-if="settings.thresholds.includes(threshold)" name="check" :size="11"/>{{ threshold }}%</button><span>used</span></div>
         </section>
         <section class="settings-section">
           <h2>Startup</h2>
-          <div class="setting-row"><div><span id="autostart-label" class="setting-label">Launch at login</span><p>Ready when you are.</p></div><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
+          <div class="setting-row"><span id="autostart-label" class="setting-label">Launch at login</span><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
         </section>
         <UpdateSettings :state="updateState" :busy="updateBusy" :demo="demo" @check="$emit('checkUpdate')" @install="$emit('installUpdate')"/>
-        <p class="settings-footnote"><AppIcon name="margin" :size="13"/>Margin {{ version }}<span>Made for a little more clarity.</span></p>
+        <p class="settings-footnote">Version {{ version }}</p>
       </TabsContent>
 
       <TabsContent value="accounts" class="settings-content accounts-settings">
-        <div class="section-heading"><div><h2>Your accounts</h2><p>Connected through your local CLI.</p></div><button class="text-button discover-button" :disabled="busy" @click="$emit('discover')"><AppIcon name="refresh" :size="13"/>Find accounts</button></div>
+        <div class="section-heading"><div><h2>Your accounts</h2><p>From your CLI logins.</p></div><button class="text-button discover-button" :disabled="busy" @click="$emit('discover')"><AppIcon name="refresh" :size="13"/>Find accounts</button></div>
         <div v-if="!accounts.length" class="settings-empty"><AppIcon name="folder" :size="28"/><p>No accounts connected.</p><span>Find a signed-in Claude or Codex account, or add a config folder below.</span></div>
         <article v-for="account in accounts" :key="account.id" class="managed-account">
           <div class="managed-account-heading"><span class="provider-mark small" :class="account.provider"><AppIcon :name="account.provider" :size="17"/></span><div class="managed-account-copy"><h3>{{ account.label }}</h3><p>{{ account.identity.email ?? providerName(account.provider) }}</p></div><AppTooltip text="Rename account"><button class="icon-button" :aria-label="`Rename ${account.label}`" :disabled="busy" @click="startRename(account)"><AppIcon name="edit" :size="14"/></button></AppTooltip><AppTooltip text="Remove account"><button class="icon-button remove-button" :aria-label="`Remove ${account.label}`" :disabled="busy" @click="openRemove(account, $event)"><AppIcon name="trash" :size="14"/></button></AppTooltip></div>
@@ -207,7 +207,7 @@ async function confirmRemove(): Promise<void> {
         </article>
         <button v-if="!adding" ref="addAccountButton" class="add-account-button" :disabled="busy" @click="openAdd"><AppIcon name="plus" :size="16"/>Add account</button>
         <form v-else class="add-account-form" @submit.prevent="submitAccount"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="adding = false"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="provider === 'claude' ? '~/.claude-work' : '~/.codex-work'" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><p id="path-help">The folder containing {{ provider === 'claude' ? '.credentials.json' : 'auth.json' }}. Sign in with the CLI first.</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
-        <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Your credentials stay on this device. Margin reads usage without changing your CLI accounts.</p></div>
+        <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Margin reads your CLI credentials without changing them.</p></div>
       </TabsContent>
     </TabsRoot>
 
@@ -216,7 +216,7 @@ async function confirmRemove(): Promise<void> {
         <AlertDialogContent class="confirm-dialog" @escape-key-down="escapeRemove" @close-auto-focus="restoreRemoveFocus">
           <span class="dialog-icon"><AppIcon name="trash" :size="20"/></span>
           <AlertDialogTitle as="h2">Remove {{ removeTarget?.label }}?</AlertDialogTitle>
-          <AlertDialogDescription as="p">This removes the account from Margin. Your CLI credentials stay untouched.</AlertDialogDescription>
+          <AlertDialogDescription as="p">Removes the account from Margin. CLI credentials are not deleted.</AlertDialogDescription>
           <p v-if="removeFailed" class="field-error" role="alert">Couldn’t remove this account. Try again.</p>
           <div class="dialog-actions"><AlertDialogCancel class="button" tabindex="0" :disabled="busy">Keep account</AlertDialogCancel><button ref="removeButton" class="button button-danger" tabindex="0" :disabled="busy" @click="confirmRemove">Remove account</button></div>
         </AlertDialogContent>

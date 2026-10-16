@@ -24,7 +24,7 @@ for (const [name, actual] of Object.entries({
   if (actual !== version) throw new Error(`${name} version must match ${tag}.`)
 }
 
-for (const path of ['pnpm-lock.yaml', 'src-tauri/Cargo.lock']) {
+for (const path of ['pnpm-lock.yaml', 'src-tauri/Cargo.lock', `changelogs/${tag}.md`]) {
   await access(path).catch(() => {
     throw new Error(`Commit ${path} before tagging a release.`)
   })

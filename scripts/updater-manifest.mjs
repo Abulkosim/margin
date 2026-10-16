@@ -52,7 +52,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     version: config.version,
     publicKey: config.plugins?.updater?.pubkey,
     repository,
-    notes: await readFile('.github/RELEASE_NOTES.md', 'utf8'),
+    notes: await readFile(`changelogs/${tag}.md`, 'utf8'),
   })
   await writeFile(join(directory, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Verified three signed artifacts and generated updater manifest for ${tag}.`)

@@ -7,8 +7,8 @@ Releases are unsigned by a verified publisher. macOS uses ad-hoc signing for App
 1. Run frontend checks and the macOS native smoke checks in [verification.md](verification.md).
 2. Commit both `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Frontend installs use `--frozen-lockfile`; Rust checks and builds use `--locked`.
 3. Set the same version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
-4. Update `.github/RELEASE_NOTES.md` with the actual changes, limitations, and unsigned installation guidance.
-5. Run `node --test scripts/*.test.mjs` and `node scripts/check-release.mjs v0.2.0`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement.
+4. Write `changelogs/vX.Y.Z.md` and add it to `CHANGELOG.md`. Use the release date and a few short bullets describing user-visible changes. Link to installation instructions instead of repeating them. The release workflow uses this file for GitHub release notes and the update manifest.
+5. Run `node --test scripts/*.test.mjs` and `node scripts/check-release.mjs v0.2.2`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement.
 6. Push the release commit and confirm all checks on `main` pass. Create and push the matching annotated tag.
 
 Never put real credential files, token values, account IDs, or unredacted provider responses into commits, artifacts, screenshots, or release notes.
@@ -44,7 +44,7 @@ Before the first updater release:
 On macOS, download the draft's `Margin.app.tar.gz` and `.sig` into an artifact directory, then run:
 
 ```sh
-MARGIN_UPDATE_ARTIFACT_DIR="$PWD/.cache/release-v0.2.0" MARGIN_REQUIRE_UNIVERSAL=1 cargo test --manifest-path src-tauri/Cargo.toml --test updater_install --locked -- --ignored --nocapture
+MARGIN_UPDATE_ARTIFACT_DIR="$PWD/.cache/release-v0.2.2" MARGIN_REQUIRE_UNIVERSAL=1 cargo test --manifest-path src-tauri/Cargo.toml --test updater_install --locked -- --ignored --nocapture
 ```
 
 This ignored integration test uses the pinned updater plugin and real public key with a loopback-only fixture server. It rejects altered bytes and mismatched signed versions before replacing a disposable old app, checks the installed version, verifies ad-hoc signing and both Mac architectures, and retains the installed copy under `.cache/upgrade-smoke/` for a launch check. It never opens the installed Margin app or CLI credentials. The fixture allows HTTP only inside the test; production still requires HTTPS. Run it against the exact CI release artifact before publishing. For an early local architecture-only build, omit `MARGIN_REQUIRE_UNIVERSAL`; the test still requires the current Mac architecture. It does not exercise the app's user interface, privileged installation, or Windows installation.
@@ -53,6 +53,6 @@ This ignored integration test uses the pinned updater plugin and real public key
 
 v0.1.1 and earlier have no updater and need one manual upgrade to the first updater-enabled release. Publish the complete asset set together; a draft does not replace the current public update endpoint. Never edit a published release's signed files or reuse a version. To stop offering a bad release, mark it as a prerelease so the latest-release endpoint returns to the previous stable release, then ship a higher fixed version. Clients already updated do not automatically downgrade.
 
-## Roll back v0.2.0
+## Roll back v0.2.2
 
-If a regression blocks normal use, quit Margin and reinstall [v0.1.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.1). v0.2.0 does not change the settings schema; keep the existing local settings. CLI credentials remain untouched. v0.1.1 has no updater, so a rollback to it also requires a later manual upgrade. Report the failed interaction and platform, then ship the fix as a new patch release.
+Quit Margin and reinstall [v0.2.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1). Both versions use the same settings format; keep the existing local settings. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.

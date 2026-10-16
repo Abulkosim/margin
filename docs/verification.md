@@ -2,7 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.2.1
+## Release candidate: v0.2.2
+
+This release simplifies interface copy and adds per-version changelogs based on Git tags and published release dates. GitHub release notes and updater notes now use the same Markdown file. The native sizing fix is unchanged.
+
+- Production frontend build, 26 frontend unit tests, 68 Chromium/WebKit browser cases, 75 Rust tests, and 14 release-script tests passed locally.
+- All four historical release dates and changelog links were checked against repository history. The new changelog is included in release preflight checks.
+- Five public WebKit screenshots were refreshed at 420 × 660 CSS pixels and 2× scale. Light/dark overviews and Settings menus were visually checked; all retain the sample-data label. The browser entry and empty state were also inspected.
+- Signed release builds and exact artifact checks are pending.
+
+## Previous release: v0.2.1
 
 **[v0.2.1 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1).** Verified on 2026-10-16.
 
