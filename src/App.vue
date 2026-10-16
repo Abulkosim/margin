@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { z } from 'zod'
+import { TooltipProvider } from 'reka-ui'
+import AppTooltip from './components/ui/AppTooltip.vue'
 import AccountCard from './components/AccountCard.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -94,6 +96,10 @@ async function connectPopoverPlacement(): Promise<void> {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
+  if (document.querySelector('[role="alertdialog"]')) {
+    if ((event.metaKey || event.ctrlKey) && [',', 'r'].includes(event.key.toLowerCase())) event.preventDefault()
+    return
+  }
   if (event.key === 'Escape') {
     if (page.value === 'settings') page.value = 'overview'
     else void hideWindow()
@@ -125,6 +131,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <TooltipProvider :delay-duration="350">
   <div class="preview-stage" :class="{ 'desktop-stage': desktop && !demo }">
     <div v-if="!desktop && !demo" class="desktop-gate">
       <span class="gate-logo"><AppIcon name="margin" :size="36"/></span>
@@ -140,7 +147,7 @@ onUnmounted(() => {
       <div class="popover">
         <div v-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
         <template v-if="page === 'overview'">
-          <header class="app-header"><div class="wordmark"><AppIcon name="margin" :size="20"/><span>margin</span></div><div class="header-actions"><button class="icon-button refresh-button" :class="{ pulsing: refreshing }" aria-label="Refresh usage" :title="refreshing ? 'Checking usage' : 'Refresh usage (⌘R)'" :disabled="busy || refreshing" @click="refresh"><AppIcon name="refresh" :size="16"/></button><button class="icon-button" aria-label="Open settings" title="Settings (⌘,)" @click="openSettings()"><AppIcon name="settings" :size="18"/></button></div></header>
+          <header class="app-header"><div class="wordmark"><AppIcon name="margin" :size="20"/><span>margin</span></div><div class="header-actions"><AppTooltip :text="refreshing ? 'Checking usage' : `Refresh usage (${isWindows ? 'Ctrl+R' : '⌘R'})`"><button class="icon-button refresh-button" :class="{ pulsing: refreshing }" aria-label="Refresh usage" :disabled="busy || refreshing" @click="refresh"><AppIcon name="refresh" :size="16"/></button></AppTooltip><AppTooltip :text="`Settings (${isWindows ? 'Ctrl+,' : '⌘,'})`"><button class="icon-button" aria-label="Open settings" @click="openSettings()"><AppIcon name="settings" :size="18"/></button></AppTooltip></div></header>
           <div class="overview-heading"><div><h1>Your headroom</h1><p>{{ state.accounts.length ? `${state.accounts.length} ${state.accounts.length === 1 ? 'account' : 'accounts'}` : 'A little clarity for your day' }}<template v-if="state.accounts.length"><span class="middot">·</span>Usage remaining</template></p></div><span v-if="state.accounts.length" class="overview-symbol" aria-hidden="true"><span/><span/><span/></span></div>
           <div v-if="state.accounts.length > 1" class="account-filters" role="group" aria-label="Filter by provider"><button v-for="option in filterOptions" :key="option.id" :class="{ active: filter === option.id }" :aria-pressed="filter === option.id" @click="filter = option.id">{{ option.label }}<span>{{ counts[option.id] }}</span></button></div>
 
@@ -159,4 +166,5 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+  </TooltipProvider>
 </template>

@@ -33,3 +33,7 @@ Require green frontend and native CI jobs before publishing. A Windows build pro
 ## Updates
 
 The updater is deferred. Do not advertise automatic updates or publish an updater manifest until a signing key, verification path, and tested upgrade flow are configured. macOS notarization and Windows Authenticode signing are separate from Tauri updater signatures.
+
+## Roll back v0.1.1
+
+If a control regression blocks normal use, quit Margin and reinstall [v0.1.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.0). v0.1.1 does not change the settings schema; keep the existing local settings. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.

@@ -4,6 +4,21 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current status
 
+**v0.1.1 is in development.** This update replaces platform-rendered controls with Reka UI selects, tooltips, switches, tabs, and account-removal confirmation. It keeps Margin's existing visual direction and provider behavior. The v0.1.0 results below are historical evidence, not verification of this update.
+
+| v0.1.1 check | Status | Evidence or remaining work |
+| --- | --- | --- |
+| Version consistency | Passed locally | `node scripts/check-release.mjs v0.1.1` passed. Package, Cargo manifest, Cargo lock entry, and Tauri versions all match `0.1.1`; Reka UI remains pinned to `2.11.0`. |
+| Frontend build and unit tests | Passed locally | `pnpm build` and all 17 Node unit tests passed. |
+| Browser interaction and appearance | Passed locally | All 48 Playwright cases passed: 24 Chromium and 24 WebKit. Covers select keyboard/typeahead navigation, complete visibility of long-list options, tooltip dismissal, switches, tabs, confirmation focus, failed saves/removals, and both themes. Failure scenarios use a mocked desktop bridge. |
+| Rust regression checks | Passed locally | All 70 Rust unit tests, formatting, and strict Clippy with `-D warnings` passed. |
+| Native macOS controls | Passed in local debug app | Light/dark menus were visually inspected. Keyboard selection changed refresh from 1 to 2 minutes, saved, and restored trigger focus; the original interval was restored. Escape closed the select while keeping Settings open. The removal dialog focused Keep account; Escape preserved the account and Settings, then restored trigger focus. Light appearance was restored. Native notifications and autostart remained off and were not tested. |
+| macOS universal and Windows x64 CI | Pending | Record a successful run for the final v0.1.1 revision. |
+| Screenshots | Verified locally | Five 840×1320 browser previews were generated and visually inspected: light/dark overview, light settings, and light/dark open settings menus. All show sample data; see [screenshot notes](screenshots.md). |
+| Release artifacts and publication | Pending | Tag only after checks pass, verify downloaded assets, then publish. README downloads still point to v0.1.0. |
+
+## Published baseline: v0.1.0
+
 Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and packaged macOS smoke tests passed. [CI run 38840596545](https://github.com/Abulkosim/usagebar/actions/runs/38840596545) passed all frontend, macOS universal, and Windows x64 jobs for release commit `a03e880`. The [v0.1.0 tag run](https://github.com/Abulkosim/usagebar/actions/runs/38841132411) passed all jobs and prepared the release assets.
 
 | Area | Status | Evidence or remaining work |

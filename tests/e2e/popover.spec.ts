@@ -68,8 +68,9 @@ test('settings save theme and notification preferences', async ({ page }, info) 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.getByRole('switch', { name: 'Usage reminders' }).click()
   await expect(page.getByRole('switch', { name: 'Usage reminders' })).toHaveAttribute('aria-checked', 'true')
-  await page.getByLabel('Refresh while open', { exact: true }).selectOption('120')
-  await expect(page.getByLabel('Refresh while open', { exact: true })).toHaveValue('120')
+  await page.getByRole('combobox', { name: 'Refresh while open', exact: true }).click()
+  await page.getByRole('option', { name: '2 minutes', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: 'Refresh while open', exact: true })).toContainText('2 minutes')
   await info.attach('settings-light', { body: await page.screenshot(), contentType: 'image/png' })
 })
 
@@ -85,7 +86,9 @@ test('removing an account requires the in-app confirmation', async ({ page }) =>
   await expect(dialog).toHaveCount(0)
   await page.getByRole('button', { name: 'Remove Personal', exact: true }).click()
   await dialog.getByRole('button', { name: 'Remove account', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Personal', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add account', exact: true })).toBeFocused()
 })
 
 test('small displays retain navigation without horizontal overflow', async ({ page }) => {

@@ -1,19 +1,21 @@
-Margin brings Claude Code and Codex usage to the macOS menu bar and Windows system tray, across multiple accounts.
+Margin v0.1.1 gives settings and account actions a consistent appearance across macOS and Windows, using Reka UI controls styled for Margin.
+
+**Draft — release verification is in progress.**
 
 <p>
-  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.0/docs/images/overview-dark.png" alt="Margin dark interface with sample Claude and Codex accounts" width="300" />
-  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.0/docs/images/overview-light.png" alt="Margin light interface with sample Claude and Codex accounts" width="300" />
+  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.1/docs/images/settings-menu-light.png" alt="Margin light settings preview with a styled account menu and sample accounts" width="260" />
+  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.1/docs/images/settings-menu-dark.png" alt="Margin dark settings preview with a styled account menu and sample accounts" width="260" />
 </p>
 
 Browser interface previews with sample data.
 
-## Included
+## Changed
 
-- Existing CLI account discovery and custom configuration folders.
-- Remaining quota and reset countdowns for session, weekly, and model-specific windows; Claude extra-usage spend when available.
-- A tray indicator for a pinned account or the account with the least remaining quota.
-- Last-known readings with clear stale states after failed requests.
-- Light, dark, and system themes; configurable polling; optional threshold notifications and launch at login.
+- Custom select menus with matching surfaces, selected states, and keyboard navigation.
+- Styled switches and tabs that follow the app's light, dark, and system themes.
+- Tooltips for compact actions, with consistent spacing and typography.
+- Account-removal confirmation with explicit cancel and remove actions.
+- Consistent fields and focus states within the existing layout and color palette.
 
 ## Downloads
 
@@ -25,10 +27,10 @@ These builds have no verified publisher signature. macOS bundles use ad-hoc sign
 
 ## Verification and limits
 
-Local checks passed: 70 Rust unit tests, strict Clippy, 17 frontend unit tests, and 26 browser tests across Chromium and WebKit. The packaged macOS app displayed live Claude and Codex usage, including scoped windows, and preserved appearance settings across restart. Live Claude usage/profile and Codex usage requests succeeded.
+Local checks passed: production build, 17 frontend unit tests, 70 Rust unit tests, formatting, strict Clippy, and all 48 browser tests across Chromium and WebKit. Native macOS debug checks passed for light/dark menus, keyboard selection and saved refresh intervals, Escape handling, and account-removal confirmation focus. Five sample screenshots were refreshed and visually inspected.
 
-The [release CI run](https://github.com/Abulkosim/usagebar/actions/runs/38841132411) passed every job, including macOS universal and Windows x64 builds. All downloaded installer checksums match. The Mac package passed DMG integrity, strict ad-hoc signature, universal architecture, installation, launch, and restart checks. Windows installer formats were verified.
+macOS/Windows CI and release artifacts still need final verification. See the [verification record](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for recorded results. Save/removal failure cases were exercised through a mocked desktop bridge; native OS notifications and launch at login were not tested in this update.
 
-Interactive Windows testing, including taskbar placement and 125%, 150%, and 200% scaling, is planned in the owner's VM. See [verification status](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for recorded results and remaining checks.
+Interactive Windows testing, including taskbar placement and 125%, 150%, and 200% scaling, remains planned in the owner's VM.
 
-Margin reads existing CLI OAuth credentials. Tokens and provider requests stay in Rust. It does not rotate CLI tokens, change active accounts, or spend reset credits. Provider endpoints are undocumented and may change; failed requests preserve the last successful reading. Independent OAuth login and automatic updates are not included.
+Margin reads existing CLI OAuth credentials. Tokens and provider requests stay in Rust. It does not rotate CLI tokens, change active accounts, or spend reset credits. Independent OAuth login and automatic updates are not included.

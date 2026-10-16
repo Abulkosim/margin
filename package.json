@@ -1,6 +1,6 @@
 {
   "name": "margin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Claude and Codex usage, across accounts, in your menu bar.",
@@ -24,6 +24,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "reka-ui": "2.11.0",
     "vue": "3.5.39",
     "zod": "4.6.5"
   },

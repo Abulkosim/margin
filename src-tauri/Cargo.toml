@@ -1,6 +1,6 @@
 [package]
 name = "margin"
-version = "0.1.0"
+version = "0.1.1"
 description = "Claude and Codex usage at a glance"
 authors = ["abulkosim <abulkosimkattaev@gmail.com>"]
 edition = "2021"
