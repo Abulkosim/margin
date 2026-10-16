@@ -4,29 +4,30 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current status
 
-Verification on 2026-10-16. Frontend and Rust checks pass locally; native app and release checks are underway.
+Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and an initial packaged macOS smoke test passed. [CI run 38812812498](https://github.com/Abulkosim/usagebar/actions/runs/38812812498) passed all frontend, macOS universal, and Windows x64 jobs for commit `ab0cd94`. Subsequent changes need a fresh run; tag and release checks are pending.
 
 | Area | Status | Evidence or remaining work |
 | --- | --- | --- |
-| Dependency installation and locks | Passed locally | Online installation with pnpm 11.25.0 succeeded. The pnpm lock was regenerated with the normal resolver; Tauri CLI 2.12.3 is an exact development dependency. Cargo resolved the native dependencies and generated its lockfile. |
-| Frontend typecheck and production build | Passed locally | `pnpm build`, including `vue-tsc --noEmit`, passed on macOS. |
-| Frontend unit tests | Passed locally | `pnpm test`: 17 passed, 0 failed. Includes IPC failures, out-of-order responses, subscription races, stale readings, countdowns, and settings validation. |
-| Browser interaction | Passed locally | All 20 Playwright tests passed across Chromium and WebKit, using explicitly labeled demo accounts. |
+| Dependency installation and locks | Passed locally | Normal dependency resolution and a subsequent frozen offline installation with pnpm 11.25.0 passed. Tauri CLI 2.12.3 is an exact development dependency. Both pnpm and Cargo lockfiles are present. |
+| Frontend typecheck and production build | Passed locally and in CI | `pnpm build`, including `vue-tsc --noEmit`, passed locally on macOS and in CI. |
+| Frontend unit tests | Passed locally and in CI | `pnpm test`: 17 passed, 0 failed. Includes IPC failures, out-of-order responses, subscription races, stale readings, countdowns, and settings validation. |
+| Browser interaction | Passed locally and in CI | All 26 Playwright tests passed locally across Chromium and WebKit, using sample accounts and a mocked desktop bridge. The initial CI run passed the prior 20-test suite. Placement checks cover screen-edge arrows, stale responses, and Windows framing. |
 | Browser screenshots | Verified locally | WebKit captures at 840×1320 pixels: dark and light overview plus light settings. All three were visually inspected and contain sample accounts only; see `docs/images/`. |
-| Rust core and provider unit tests | Passed locally | All 61 Rust unit tests passed. Five provider fixtures are synthetic; fixture tests do not establish live endpoint compatibility. |
-| Rust formatting and Clippy | Passed locally | Rust 1.99.1: formatting check and strict `cargo clippy --all-targets -- -D warnings` passed. |
-| Claude live usage | Unverified | No successful live endpoint request recorded. |
-| Codex live usage | Unverified | No successful live endpoint request recorded. |
-| macOS tray and native popover | In progress | Native launch and tray interaction being checked; no completed result recorded yet. |
-| Windows compile and installers | Unverified | Workflow prepared; no successful run recorded. |
+| Rust core and provider unit tests | Passed locally and in CI | All 70 Rust unit tests passed locally, including 35 provider tests and tray geometry at 100/125/150/200% scaling. The initial CI run passed the prior 65-test suite. Synthetic fixtures cover edge cases; sanitized live-schema fixtures preserve verified response structure with account-specific values replaced. Native checks passed on macOS and Windows runners. |
+| Rust formatting and Clippy | Passed locally and in CI | Rust 1.99.1 locally: formatting check and strict `cargo clippy --all-targets --locked -- -D warnings` passed. Both native CI jobs passed the same checks. |
+| Claude live usage and profile | Passed locally | Read-only OAuth usage and profile requests returned HTTP 200. The usage query with `cedar_ember=1` was accepted; session, weekly, and scoped windows were verified. |
+| Codex live usage | Passed locally | Read-only OAuth usage request returned HTTP 200. A weekly primary window with no secondary window was verified and rendered without inventing a session window. |
+| macOS packaged app | Initial smoke passed locally | On macOS 26.6.2, the packaged app launched and displayed live Claude and Codex usage, including scoped windows. Appearance changes were saved to the local store; the bundle passed strict signature verification. The final debug bundle also handled a live Claude rate limit while refreshing Codex. This Mac reported a hidden tray rectangle with zero height; such anchors now fall back to a centered panel without an arrow. Visible tray anchoring and the broader native checks below remain pending. |
+| macOS universal build and DMG | Passed in CI | Apple Silicon/Intel app and DMG built. The downloaded DMG passed integrity verification; its app passed strict ad-hoc signature verification and contained both `arm64` and `x86_64` executable slices. |
+| Windows compile and installers | Passed in CI | Windows x64 Rust checks and NSIS/MSI packaging passed. Downloaded EXE and MSI file formats were verified; interactive installation remains pending. |
 | Windows native UI and DPI | Planned | Owner will test in a VM after the first CI-built release. |
 | App icon files | Passed locally | PNG, ICNS, and ICO files decoded with Pillow. Native tray appearance remains unverified. |
 | Release helper scripts | Passed locally | Node syntax checks and isolated fixtures: version/lock rejection, required installer formats, duplicate rejection, allowlisted copying, and SHA-256 verification. |
-| Workflow YAML and action pins | Verified locally | Workflow, Dependabot, and issue form parse. All seven action pins were checked against official upstream refs; annotated tags were resolved to their commit SHAs. Native assets build before Rust checks. GitHub execution remains unverified. |
+| Workflow YAML and action pins | Verified locally and in CI | Workflow, Dependabot, and issue form parse. All seven action pins were checked against official upstream refs; annotated tags were resolved to their commit SHAs. Native assets build before Rust checks. All three build/test jobs executed successfully. |
 | Release preflight | Passed locally | `node scripts/check-release.mjs v0.1.0` confirms matching application versions and both dependency lockfiles. |
 | Release automation | Unverified | No pushed tag or successful release run recorded. |
 
-Earlier environment restrictions are resolved. Live provider requests, native macOS behavior, and GitHub CI results still need recorded outcomes. Windows compilation and packaging run in CI; interactive Windows and DPI checks are planned separately in the owner's VM.
+Live probes did not log or save tokens, raw identities, or personal usage values. Public screenshots use explicit sample accounts. The initial CI build and downloaded installers are verified; the tag-triggered draft release still needs a recorded outcome. Interactive Windows and DPI checks are planned separately in the owner's VM.
 
 ## Native smoke checks
 
@@ -71,4 +72,4 @@ Confirm CLI credential files are unchanged after normal use. Treat account email
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkosimkattaev@gmail.com>`.
 
-Git is initialized on `main`, the remote is configured, and the GitHub description and topics are updated. First push, CI, and release are pending.
+The initial commit is pushed to `main`, the GitHub description and topics are updated, and the first CI run passed. A release tag and published release are pending.

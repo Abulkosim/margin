@@ -5,6 +5,7 @@ use super::{
 };
 use crate::runtime::{AppState, Runtime};
 use chrono::Utc;
+use serde::Serialize;
 use std::{
     f64::consts::{FRAC_PI_2, TAU},
     sync::{Arc, Mutex},
@@ -29,6 +30,63 @@ struct Presentation {
 pub struct Visibility {
     pub last_blur: Mutex<Option<Instant>>,
     presentation: Mutex<Presentation>,
+    pub placement: Mutex<PopoverPlacement>,
+}
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PopoverPlacement {
+    pub revision: u64,
+    pub arrow_x: Option<f64>,
+}
+
+#[derive(Clone, Copy)]
+struct Bounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+struct Layout {
+    frame: Bounds,
+    arrow_x: Option<f64>,
+}
+
+fn layout(work: Bounds, anchor: Option<Bounds>, scale: f64, macos: bool) -> Layout {
+    let anchor = anchor.filter(|rect| rect.width > 0.0 && rect.height > 0.0);
+    let width = (420.0 * scale).round().min(work.width);
+    let height = (660.0 * scale).round().min(work.height);
+    let (x, y) = match anchor {
+        Some(tray) => {
+            let above = tray.y - height;
+            let y = if macos || above < work.y {
+                tray.y + tray.height
+            } else {
+                above
+            };
+            (tray.x + tray.width / 2.0 - width / 2.0, y)
+        }
+        None => (
+            work.x + (work.width - width) / 2.0,
+            work.y + (work.height - height) / 2.0,
+        ),
+    };
+    let x = x.clamp(work.x, work.x + work.width - width).round();
+    let y = y.clamp(work.y, work.y + work.height - height).round();
+    let arrow_x = anchor.filter(|_| macos).and_then(|tray| {
+        let offset = (tray.x + tray.width / 2.0 - x) / scale;
+        (offset >= 26.0 && offset <= width / scale - 26.0).then_some(offset)
+    });
+    Layout {
+        frame: Bounds {
+            x,
+            y,
+            width,
+            height,
+        },
+        arrow_x,
+    }
 }
 
 fn limiting_window(account: &Account) -> Option<&UsageWindow> {
@@ -179,6 +237,44 @@ pub fn update(app: &AppHandle, state: &AppState) {
     });
 }
 
+#[cfg(target_os = "macos")]
+fn fit_backdrop(window: &tauri::WebviewWindow) {
+    use objc2::ClassType;
+    use objc2_app_kit::{NSAutoresizingMaskOptions, NSVisualEffectView, NSWindow};
+    use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
+
+    let window = window.clone();
+    let handle = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(pointer) = handle.ns_window() else {
+            return;
+        };
+        // Tauri owns this NSWindow; access stays on its main thread while the handle lives.
+        let native = unsafe { &*pointer.cast::<NSWindow>() };
+        let Some(content) = native.contentView() else {
+            return;
+        };
+        let bounds = content.bounds();
+        let frame = NSRect::new(
+            NSPoint::new(6.0, if content.isFlipped() { 14.0 } else { 6.0 }),
+            NSSize::new(
+                (bounds.size.width - 12.0).max(0.0),
+                (bounds.size.height - 20.0).max(0.0),
+            ),
+        );
+        for view in content.subviews() {
+            if view.isKindOfClass(NSVisualEffectView::class()) {
+                view.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable
+                        | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+                view.setFrame(frame);
+            }
+        }
+        native.invalidateShadow();
+    });
+}
+
 pub fn show(app: &AppHandle, settings: bool) {
     if let Some(window) = app.get_webview_window("main") {
         #[cfg(target_os = "macos")]
@@ -196,7 +292,8 @@ pub fn show(app: &AppHandle, settings: bool) {
                     rect.position.to_physical::<f64>(1.0),
                     rect.size.to_physical::<f64>(1.0),
                 )
-            });
+            })
+            .filter(|(_, size)| size.width > 0.0 && size.height > 0.0);
         let monitor = anchor
             .and_then(|(position, _)| {
                 window
@@ -205,38 +302,44 @@ pub fn show(app: &AppHandle, settings: bool) {
                     .flatten()
             })
             .or_else(|| window.current_monitor().ok().flatten());
+        let mut arrow_x = None;
         if let Some(monitor) = monitor {
             let work = monitor.work_area();
-            let scale = monitor.scale_factor();
-            let width = (420.0 * scale).round().min(f64::from(work.size.width));
-            let height = (660.0 * scale).round().min(f64::from(work.size.height));
-            let _ = window.set_size(tauri::PhysicalSize::new(width as u32, height as u32));
-            let left = f64::from(work.position.x);
-            let top = f64::from(work.position.y);
-            let right = left + f64::from(work.size.width);
-            let bottom = top + f64::from(work.size.height);
-            let (x, y) = match anchor {
-                Some((tray_position, tray_size)) => {
-                    let above = tray_position.y - height;
-                    let y = if cfg!(target_os = "macos") || above < top {
-                        tray_position.y + tray_size.height
-                    } else {
-                        above
-                    };
-                    (tray_position.x + tray_size.width / 2.0 - width / 2.0, y)
-                }
-                None => (
-                    left + (right - left - width) / 2.0,
-                    top + (bottom - top - height) / 2.0,
-                ),
-            };
-            let x = x.clamp(left, (right - width).max(left));
-            let y = y.clamp(top, (bottom - height).max(top));
-            let _ = window.set_position(tauri::PhysicalPosition::new(
-                x.round() as i32,
-                y.round() as i32,
+            let placed = layout(
+                Bounds {
+                    x: f64::from(work.position.x),
+                    y: f64::from(work.position.y),
+                    width: f64::from(work.size.width),
+                    height: f64::from(work.size.height),
+                },
+                anchor.map(|(position, size)| Bounds {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width,
+                    height: size.height,
+                }),
+                monitor.scale_factor(),
+                cfg!(target_os = "macos"),
+            );
+            let resized = window.set_size(tauri::PhysicalSize::new(
+                placed.frame.width as u32,
+                placed.frame.height as u32,
             ));
+            let positioned = window.set_position(tauri::PhysicalPosition::new(
+                placed.frame.x as i32,
+                placed.frame.y as i32,
+            ));
+            if resized.is_ok() && positioned.is_ok() {
+                arrow_x = placed.arrow_x;
+            }
         }
+        if let Ok(mut placement) = app.state::<Visibility>().placement.lock() {
+            placement.revision = placement.revision.saturating_add(1);
+            placement.arrow_x = arrow_x;
+            let _ = window.emit("popover_placement_changed", placement.clone());
+        }
+        #[cfg(target_os = "macos")]
+        fit_backdrop(&window);
         let _ = window.show();
         let _ = window.set_focus();
         if settings {
@@ -386,5 +489,120 @@ mod tests {
         assert_eq!(full[3], 0);
         assert_ne!(unknown, empty);
         assert_ne!(full, empty);
+    }
+
+    #[test]
+    fn retina_arrow_tracks_tray_after_right_edge_clamping() {
+        let work = Bounds {
+            x: 0.0,
+            y: 50.0,
+            width: 2880.0,
+            height: 1750.0,
+        };
+        let tray = Bounds {
+            x: 2736.0,
+            y: 0.0,
+            width: 48.0,
+            height: 50.0,
+        };
+        let placed = layout(work, Some(tray), 2.0, true);
+        assert_eq!(placed.frame.x, 2040.0);
+        assert_eq!(placed.frame.y, 50.0);
+        assert_eq!(placed.arrow_x, Some(360.0));
+        assert_eq!(placed.frame.x + placed.arrow_x.unwrap() * 2.0, 2760.0);
+    }
+
+    #[test]
+    fn left_monitor_coordinates_keep_arrow_aligned() {
+        let work = Bounds {
+            x: -1920.0,
+            y: 25.0,
+            width: 1920.0,
+            height: 1055.0,
+        };
+        let tray = Bounds {
+            x: -1872.0,
+            y: 0.0,
+            width: 24.0,
+            height: 25.0,
+        };
+        let placed = layout(work, Some(tray), 1.0, true);
+        assert_eq!(placed.frame.x, -1920.0);
+        assert_eq!(placed.arrow_x, Some(60.0));
+    }
+
+    #[test]
+    fn unavailable_or_outside_anchor_has_no_misleading_arrow() {
+        let work = Bounds {
+            x: 0.0,
+            y: 25.0,
+            width: 1280.0,
+            height: 775.0,
+        };
+        let centered = layout(work, None, 1.0, true);
+        assert_eq!(centered.frame.x, 430.0);
+        assert_eq!(centered.arrow_x, None);
+        let hidden = Bounds {
+            x: 0.0,
+            y: 800.0,
+            width: 34.0,
+            height: 0.0,
+        };
+        let fallback = layout(work, Some(hidden), 1.0, true);
+        assert_eq!(fallback.frame.x, centered.frame.x);
+        assert_eq!(fallback.frame.y, centered.frame.y);
+        assert_eq!(fallback.arrow_x, None);
+        let edge = Bounds {
+            x: 1260.0,
+            y: 0.0,
+            width: 20.0,
+            height: 25.0,
+        };
+        assert_eq!(layout(work, Some(edge), 1.0, true).arrow_x, None);
+    }
+
+    #[test]
+    fn windows_taskbar_placement_respects_each_scale() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let work = Bounds {
+                x: -1920.0 * scale,
+                y: 0.0,
+                width: 1920.0 * scale,
+                height: 1040.0 * scale,
+            };
+            let tray = Bounds {
+                x: -80.0 * scale,
+                y: 1040.0 * scale,
+                width: 24.0 * scale,
+                height: 40.0 * scale,
+            };
+            let placed = layout(work, Some(tray), scale, false);
+            assert_eq!(placed.frame.width, 420.0 * scale);
+            assert_eq!(placed.frame.height, 660.0 * scale);
+            assert_eq!(placed.frame.x + placed.frame.width, 0.0);
+            assert_eq!(placed.frame.y + placed.frame.height, tray.y);
+            assert_eq!(placed.arrow_x, None);
+        }
+    }
+
+    #[test]
+    fn top_taskbar_places_window_below_and_small_displays_fit() {
+        let work = Bounds {
+            x: 0.0,
+            y: 40.0,
+            width: 360.0,
+            height: 440.0,
+        };
+        let tray = Bounds {
+            x: 300.0,
+            y: 0.0,
+            width: 24.0,
+            height: 40.0,
+        };
+        let placed = layout(work, Some(tray), 1.5, false);
+        assert_eq!(placed.frame.x, 0.0);
+        assert_eq!(placed.frame.y, 40.0);
+        assert_eq!(placed.frame.width, 360.0);
+        assert_eq!(placed.frame.height, 440.0);
     }
 }

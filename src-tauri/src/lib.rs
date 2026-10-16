@@ -22,6 +22,7 @@ pub fn run() {
         .manage(tray::Visibility::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            commands::get_popover_placement,
             commands::refresh_accounts,
             commands::discover_accounts,
             commands::add_account,

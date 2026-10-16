@@ -12,6 +12,17 @@ pub async fn get_state(runtime: State<'_, Arc<Runtime>>) -> Result<AppState, Str
 }
 
 #[tauri::command]
+pub fn get_popover_placement(
+    visibility: State<'_, crate::core::tray::Visibility>,
+) -> Result<crate::core::tray::PopoverPlacement, String> {
+    visibility
+        .placement
+        .lock()
+        .map(|placement| placement.clone())
+        .map_err(|_| "Popover position is unavailable.".into())
+}
+
+#[tauri::command]
 pub async fn refresh_accounts(runtime: State<'_, Arc<Runtime>>) -> Result<(), String> {
     poller::refresh(&runtime).await;
     Ok(())
