@@ -4,20 +4,20 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current status
 
-Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and an initial packaged macOS smoke test passed. [CI run 38812812498](https://github.com/Abulkosim/usagebar/actions/runs/38812812498) passed all frontend, macOS universal, and Windows x64 jobs for commit `ab0cd94`. Subsequent changes need a fresh run; tag and release checks are pending.
+Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and packaged macOS smoke tests passed. [CI run 38840596545](https://github.com/Abulkosim/usagebar/actions/runs/38840596545) passed all frontend, macOS universal, and Windows x64 jobs for release commit `a03e880`. The [v0.1.0 tag run](https://github.com/Abulkosim/usagebar/actions/runs/38841132411) passed all jobs and prepared the release assets.
 
 | Area | Status | Evidence or remaining work |
 | --- | --- | --- |
 | Dependency installation and locks | Passed locally | Normal dependency resolution and a subsequent frozen offline installation with pnpm 11.25.0 passed. Tauri CLI 2.12.3 is an exact development dependency. Both pnpm and Cargo lockfiles are present. |
 | Frontend typecheck and production build | Passed locally and in CI | `pnpm build`, including `vue-tsc --noEmit`, passed locally on macOS and in CI. |
 | Frontend unit tests | Passed locally and in CI | `pnpm test`: 17 passed, 0 failed. Includes IPC failures, out-of-order responses, subscription races, stale readings, countdowns, and settings validation. |
-| Browser interaction | Passed locally and in CI | All 26 Playwright tests passed locally across Chromium and WebKit, using sample accounts and a mocked desktop bridge. The initial CI run passed the prior 20-test suite. Placement checks cover screen-edge arrows, stale responses, and Windows framing. |
+| Browser interaction | Passed locally and in CI | All 26 Playwright tests passed locally and in CI across Chromium and WebKit, using sample accounts and a mocked desktop bridge. Placement checks cover screen-edge arrows, stale responses, and Windows framing. |
 | Browser screenshots | Verified locally | WebKit captures at 840×1320 pixels: dark and light overview plus light settings. All three were visually inspected and contain sample accounts only; see `docs/images/`. |
-| Rust core and provider unit tests | Passed locally and in CI | All 70 Rust unit tests passed locally, including 35 provider tests and tray geometry at 100/125/150/200% scaling. The initial CI run passed the prior 65-test suite. Synthetic fixtures cover edge cases; sanitized live-schema fixtures preserve verified response structure with account-specific values replaced. Native checks passed on macOS and Windows runners. |
+| Rust core and provider unit tests | Passed locally and in CI | All 70 Rust unit tests passed locally and on both native CI runners, including 35 provider tests and tray geometry at 100/125/150/200% scaling. Synthetic fixtures cover edge cases; sanitized live-schema fixtures preserve verified response structure with account-specific values replaced. Native checks passed on macOS and Windows runners. |
 | Rust formatting and Clippy | Passed locally and in CI | Rust 1.99.1 locally: formatting check and strict `cargo clippy --all-targets --locked -- -D warnings` passed. Both native CI jobs passed the same checks. |
 | Claude live usage and profile | Passed locally | Read-only OAuth usage and profile requests returned HTTP 200. The usage query with `cedar_ember=1` was accepted; session, weekly, and scoped windows were verified. |
 | Codex live usage | Passed locally | Read-only OAuth usage request returned HTTP 200. A weekly primary window with no secondary window was verified and rendered without inventing a session window. |
-| macOS packaged app | Initial smoke passed locally | On macOS 26.6.2, the packaged app launched and displayed live Claude and Codex usage, including scoped windows. Appearance changes were saved to the local store; the bundle passed strict signature verification. The final debug bundle also handled a live Claude rate limit while refreshing Codex. This Mac reported a hidden tray rectangle with zero height; such anchors now fall back to a centered panel without an arrow. Visible tray anchoring and the broader native checks below remain pending. |
+| macOS packaged app | Initial smoke passed locally | On macOS 26.6.2, the packaged app launched and displayed live Claude and Codex usage, including scoped windows. The final universal release artifact was installed in the user Applications folder, launched, quit, and restarted. Dark appearance persisted across restart, then the original light preference was restored. The bundle passed strict signature verification. The final debug bundle also handled a live Claude rate limit while refreshing Codex. This Mac reported a hidden tray rectangle with zero height; such anchors now fall back to a centered panel without an arrow. Visible tray anchoring and the broader native checks below remain pending. |
 | macOS universal build and DMG | Passed in CI | Apple Silicon/Intel app and DMG built. The downloaded DMG passed integrity verification; its app passed strict ad-hoc signature verification and contained both `arm64` and `x86_64` executable slices. |
 | Windows compile and installers | Passed in CI | Windows x64 Rust checks and NSIS/MSI packaging passed. Downloaded EXE and MSI file formats were verified; interactive installation remains pending. |
 | Windows native UI and DPI | Planned | Owner will test in a VM after the first CI-built release. |
@@ -25,9 +25,9 @@ Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, 
 | Release helper scripts | Passed locally | Node syntax checks and isolated fixtures: version/lock rejection, required installer formats, duplicate rejection, allowlisted copying, and SHA-256 verification. |
 | Workflow YAML and action pins | Verified locally and in CI | Workflow, Dependabot, and issue form parse. All seven action pins were checked against official upstream refs; annotated tags were resolved to their commit SHAs. Native assets build before Rust checks. All three build/test jobs executed successfully. |
 | Release preflight | Passed locally | `node scripts/check-release.mjs v0.1.0` confirms matching application versions and both dependency lockfiles. |
-| Release automation | Unverified | No pushed tag or successful release run recorded. |
+| Release automation | Passed | The annotated `v0.1.0` tag triggered all checks and produced a draft with a universal DMG, x64 EXE/MSI, and `SHA256SUMS.txt`. All downloaded checksums match; the Mac release asset matches the installed tag artifact byte-for-byte. |
 
-Live probes did not log or save tokens, raw identities, or personal usage values. Public screenshots use explicit sample accounts. The initial CI build and downloaded installers are verified; the tag-triggered draft release still needs a recorded outcome. Interactive Windows and DPI checks are planned separately in the owner's VM.
+Live probes did not log or save tokens, raw identities, or personal usage values. Public screenshots use explicit sample accounts. The main and tag CI runs passed. Release downloads passed SHA-256 verification, DMG integrity, strict ad-hoc signature, universal architecture, and Windows installer-format checks. Interactive Windows and DPI checks are planned separately in the owner's VM.
 
 ## Native smoke checks
 
@@ -41,12 +41,12 @@ Use downloaded release artifacts and at least one authenticated account from eac
 | Light, dark, and system themes; reduced-motion preference | Pending | Pending |
 | Tray icon contrast on light/dark menu bars or taskbars | Pending | Pending |
 | Settings remain usable at small display sizes and with keyboard navigation | Pending | Pending |
-| Multiple accounts retain labels, pins, and last-known readings after restart | Pending | Pending |
+| Multiple accounts retain labels, pins, and last-known readings after restart | Observed with both existing accounts | Pending |
 | Claude and Codex values match fresh provider responses; reset countdowns agree | Pending | Pending |
 | Offline, expired-token, malformed-response, and rate-limit states preserve last good values | Pending | Pending |
-| One failing account does not prevent another account refreshing | Pending | Pending |
+| One failing account does not prevent another account refreshing | Observed: Claude rate-limited while Codex refreshed | Pending |
 | Notification thresholds deduplicate; permission denial is handled | Pending | Pending |
-| Launch at login reflects OS registration and can be disabled | Pending | Pending |
+| Launch at login reflects OS registration and can be disabled | Pending explicit approval for the native toggle test; remains off | Pending |
 | Suspend/resume and display changes do not strand the popover | Pending | Pending |
 | Retina layout and popover placement follow the menu-bar icon | Pending | N/A |
 | 100%, 125%, 150%, and 200% scaling; taskbar and secondary monitor placement | N/A | Pending |
@@ -72,4 +72,4 @@ Confirm CLI credential files are unchanged after normal use. Treat account email
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkosimkattaev@gmail.com>`.
 
-The initial commit is pushed to `main`, the GitHub description and topics are updated, and the first CI run passed. A release tag and published release are pending.
+The release commit is pushed to `main` and tagged `v0.1.0`. The GitHub description, provider/platform topics, screenshots, and installation documentation are updated. Both main and tag CI runs passed. [Margin v0.1.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.0) is published with all three installers and checksums.

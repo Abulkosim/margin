@@ -25,9 +25,9 @@ These builds have no verified publisher signature. macOS bundles use ad-hoc sign
 
 ## Verification and limits
 
-Local checks passed: 70 Rust unit tests, strict Clippy, 17 frontend unit tests, and 26 browser tests across Chromium and WebKit. The packaged macOS app displayed live Claude and Codex usage, including scoped windows, and saved appearance settings. Live Claude usage/profile and Codex usage requests succeeded.
+Local checks passed: 70 Rust unit tests, strict Clippy, 17 frontend unit tests, and 26 browser tests across Chromium and WebKit. The packaged macOS app displayed live Claude and Codex usage, including scoped windows, and preserved appearance settings across restart. Live Claude usage/profile and Codex usage requests succeeded.
 
-The initial [CI run](https://github.com/Abulkosim/usagebar/actions/runs/38812812498) passed frontend checks and macOS universal / Windows x64 builds. Downloaded artifacts passed DMG integrity, strict ad-hoc signature, universal architecture, and Windows installer format checks. Release assets are prepared only after all tag checks pass.
+The [release CI run](https://github.com/Abulkosim/usagebar/actions/runs/38841132411) passed every job, including macOS universal and Windows x64 builds. All downloaded installer checksums match. The Mac package passed DMG integrity, strict ad-hoc signature, universal architecture, installation, launch, and restart checks. Windows installer formats were verified.
 
 Interactive Windows testing, including taskbar placement and 125%, 150%, and 200% scaling, is planned in the owner's VM. See [verification status](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for recorded results and remaining checks.
 
