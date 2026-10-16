@@ -7,7 +7,7 @@ See remaining quota and reset times across multiple accounts, right from your me
 [![CI](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-747a87)](LICENSE)
 
-[Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Develop](#develop)
+[Download](https://github.com/Abulkosim/usagebar/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Develop](#develop)
 
 <p>
   <img src="docs/images/overview-dark.png" alt="Margin dark browser preview showing sample Claude and Codex accounts" width="300" />
@@ -24,11 +24,18 @@ Browser previews with sample accounts. [Settings preview](docs/images/settings-l
 - **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The packaged macOS app and live Claude/Codex requests have been verified locally. macOS universal and Windows x64 builds passed [CI](https://github.com/Abulkosim/usagebar/actions/runs/38812812498). Interactive Windows testing is planned in a VM; see [verification status](docs/verification.md) for completed checks and remaining work.
+The packaged macOS app and live Claude/Codex requests have been verified locally. macOS universal and Windows x64 builds passed [CI](https://github.com/Abulkosim/usagebar/actions/runs/38840596545). Interactive Windows testing is planned in a VM; see [verification status](docs/verification.md) for completed checks and remaining work.
 
 ## Install
 
-Release packages will be listed in [GitHub Releases](https://github.com/Abulkosim/usagebar/releases). To run from source, see [Develop](#develop).
+Download **v0.1.0** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
+
+| Platform | Download |
+| --- | --- |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.1.0/Margin_0.1.0_x64_en-US.msi) |
+
+To run from source, see [Develop](#develop).
 
 ### macOS
 
