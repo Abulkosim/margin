@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { z } from 'zod'
 import AccountCard from './components/AccountCard.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -8,6 +9,16 @@ import { useMargin } from './lib/margin'
 import type { Account, Provider } from './lib/model'
 
 const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, hideWindow } = useMargin()
+const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
+const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
+const viewportWidth = ref(window.innerWidth)
+const isWindows = navigator.userAgent.includes('Windows')
+const nativeArrowX = computed(() => {
+  const x = popoverPlacement.value.arrowX
+  if (!desktop || demo || isWindows || x === null) return null
+  return x >= 26 && x <= viewportWidth.value - 26 ? x : null
+})
+const nativeArrowStyle = computed(() => nativeArrowX.value === null ? undefined : { left: `${nativeArrowX.value - 6}px` })
 const page = ref<'overview' | 'settings'>('overview')
 const settingsTab = ref<'general' | 'accounts'>('general')
 const filter = ref<'all' | Provider>('all')
@@ -21,6 +32,7 @@ const staleCount = computed(() => state.value.accounts.filter(account => account
 const counts = computed(() => ({ all: state.value.accounts.length, claude: state.value.accounts.filter(account => account.provider === 'claude').length, codex: state.value.accounts.filter(account => account.provider === 'codex').length }))
 const filterOptions: { id: 'all' | Provider; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'claude', label: 'Claude' }, { id: 'codex', label: 'Codex' }]
 let stopSettingsListener: (() => void) | undefined
+let stopPlacementListener: (() => void) | undefined
 let destroyed = false
 const latestFetch = computed(() => {
   const timestamps = state.value.accounts.flatMap(account => account.snapshot ? [account.snapshot.fetchedAt] : [])
@@ -40,7 +52,7 @@ watch(counts, value => {
 
 watchEffect(() => {
   document.documentElement.dataset.theme = dark.value ? 'dark' : 'light'
-  document.documentElement.dataset.platform = navigator.userAgent.includes('Windows') ? 'windows' : 'mac'
+  document.documentElement.dataset.platform = isWindows ? 'windows' : 'mac'
   document.documentElement.style.colorScheme = dark.value ? 'dark' : 'light'
 })
 
@@ -55,6 +67,30 @@ async function togglePin(account: Account): Promise<void> {
 }
 
 function syncSystemTheme(event: MediaQueryListEvent): void { systemDark.value = event.matches }
+function syncViewportWidth(): void { viewportWidth.value = window.innerWidth }
+
+function acceptPopoverPlacement(payload: unknown): void {
+  if (destroyed) return
+  const result = popoverPlacementSchema.safeParse(payload)
+  if (!result.success) {
+    popoverPlacement.value = { ...popoverPlacement.value, arrowX: null }
+    return
+  }
+  if (result.data.revision >= popoverPlacement.value.revision) popoverPlacement.value = result.data
+}
+
+async function connectPopoverPlacement(): Promise<void> {
+  const tauri = window.__TAURI__
+  if (!tauri) return
+  try {
+    const unlisten = await tauri.event.listen('popover_placement_changed', event => acceptPopoverPlacement(event.payload))
+    if (destroyed) { unlisten(); return }
+    stopPlacementListener = unlisten
+    acceptPopoverPlacement(await tauri.core.invoke('get_popover_placement'))
+  } catch {
+    if (!destroyed) popoverPlacement.value = { ...popoverPlacement.value, arrowX: null }
+  }
+}
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
@@ -69,14 +105,23 @@ function onKeydown(event: KeyboardEvent): void {
 onMounted(async () => {
   media.addEventListener('change', syncSystemTheme)
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', syncViewportWidth)
   if (!desktop || demo) return
+  void connectPopoverPlacement()
   try {
     const unlisten = await window.__TAURI__?.event.listen('open_settings', () => openSettings())
     if (destroyed) unlisten?.()
     else stopSettingsListener = unlisten
   } catch { }
 })
-onUnmounted(() => { destroyed = true; stopSettingsListener?.(); media.removeEventListener('change', syncSystemTheme); window.removeEventListener('keydown', onKeydown) })
+onUnmounted(() => {
+  destroyed = true
+  stopSettingsListener?.()
+  stopPlacementListener?.()
+  media.removeEventListener('change', syncSystemTheme)
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', syncViewportWidth)
+})
 </script>
 
 <template>
@@ -91,7 +136,7 @@ onUnmounted(() => { destroyed = true; stopSettingsListener?.(); media.removeEven
     </div>
 
     <div v-else class="app-shell" :class="{ 'is-preview': demo }">
-      <div v-if="demo" class="popover-arrow" aria-hidden="true"/>
+      <div v-if="demo || nativeArrowX !== null" class="popover-arrow" :style="demo ? undefined : nativeArrowStyle" aria-hidden="true"/>
       <div class="popover">
         <div v-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
         <template v-if="page === 'overview'">

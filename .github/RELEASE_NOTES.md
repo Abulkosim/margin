@@ -1,11 +1,34 @@
-Claude and Codex usage, across accounts, in your menu bar.
+Margin brings Claude Code and Codex usage to the macOS menu bar and Windows system tray, across multiple accounts.
 
-- macOS: download the universal `.dmg` for Apple Silicon or Intel.
-- Windows: download the x64 `-setup.exe` installer or `.msi`.
-- `SHA256SUMS.txt` contains checksums for every installer.
+<p>
+  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.0/docs/images/overview-dark.png" alt="Margin dark interface with sample Claude and Codex accounts" width="300" />
+  <img src="https://raw.githubusercontent.com/Abulkosim/usagebar/v0.1.0/docs/images/overview-light.png" alt="Margin light interface with sample Claude and Codex accounts" width="300" />
+</p>
+
+Browser interface previews with sample data.
+
+## Included
+
+- Existing CLI account discovery and custom configuration folders.
+- Remaining quota and reset countdowns for session, weekly, and model-specific windows; Claude extra-usage spend when available.
+- A tray indicator for a pinned account or the account with the least remaining quota.
+- Last-known readings with clear stale states after failed requests.
+- Light, dark, and system themes; configurable polling; optional threshold notifications and launch at login.
+
+## Downloads
+
+- **macOS 12+:** universal `.dmg` for Apple Silicon and Intel.
+- **Windows x64:** `-setup.exe` or `.msi`. WebView2 is required; first installation may need internet access.
+- **Checksums:** `SHA256SUMS.txt` covers every installer.
 
 These builds have no verified publisher signature. macOS bundles use ad-hoc signing and are not notarized. See the [installation instructions](https://github.com/Abulkosim/usagebar#install) before first launch.
 
-Margin reads existing CLI OAuth credentials. Usage requests stay in the Rust backend. It does not rotate CLI tokens, change active accounts, or spend reset credits.
+## Verification and limits
 
-Windows installers are built in CI. Interactive Windows testing, including taskbar placement and 125%, 150%, and 200% scaling, is planned in a VM. Check [verification status](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for the exact tests completed.
+Local checks passed: 70 Rust unit tests, strict Clippy, 17 frontend unit tests, and 26 browser tests across Chromium and WebKit. The packaged macOS app displayed live Claude and Codex usage, including scoped windows, and saved appearance settings. Live Claude usage/profile and Codex usage requests succeeded.
+
+The initial [CI run](https://github.com/Abulkosim/usagebar/actions/runs/38812812498) passed frontend checks and macOS universal / Windows x64 builds. Downloaded artifacts passed DMG integrity, strict ad-hoc signature, universal architecture, and Windows installer format checks. Release assets are prepared only after all tag checks pass.
+
+Interactive Windows testing, including taskbar placement and 125%, 150%, and 200% scaling, is planned in the owner's VM. See [verification status](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for recorded results and remaining checks.
+
+Margin reads existing CLI OAuth credentials. Tokens and provider requests stay in Rust. It does not rotate CLI tokens, change active accounts, or spend reset credits. Provider endpoints are undocumented and may change; failed requests preserve the last successful reading. Independent OAuth login and automatic updates are not included.
