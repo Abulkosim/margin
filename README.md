@@ -29,18 +29,21 @@ v0.1.1 settings previews with sample data.
 - **Quota at a glance:** remaining percentages and reset countdowns for reported session, weekly, and model-specific windows. Extra-usage spend appears when Claude reports it.
 - **One quiet tray indicator:** follow a pinned account or the account with the least remaining quota.
 - **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
+- **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
 - **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The published v0.1.1 release includes styled Reka UI controls and passed 48 browser tests across Chromium and WebKit. The packaged Mac app was verified locally; macOS universal and Windows x64 builds passed [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38848296438). The owner has also tested v0.1.1 on Windows and reports it works correctly; see [verification status](docs/verification.md).
+The published [v0.2.0 release](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.0) adds signed in-app updates and fixes the clipped shadow around the desktop panel. [Release CI](https://github.com/Abulkosim/usagebar/actions/runs/38860790512) passed on macOS and Windows; the exact signed Mac update was installed and verified locally. The owner tested v0.1.1 successfully on Windows; the new update installer still needs interactive Windows testing. See the [verification record](docs/verification.md) for completed checks.
 
 ## Install
 
-Download **v0.1.1** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
+Download **v0.2.0** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.1.1/Margin_0.1.1_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.2.0/Margin_0.2.0_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.2.0/Margin_0.2.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.2.0/Margin_0.2.0_x64_en-US.msi) |
+
+Already using v0.1.1 or earlier? Install v0.2.0 once manually. Future releases can be installed from **Settings → General → Updates**. Checking and installing are explicit actions; Margin does not check or download in the background. Updater signatures are separate from OS publisher certificates, so the first-launch guidance below still applies.
 
 To run from source, see [Develop](#develop).
 
@@ -77,7 +80,7 @@ Provider usage endpoints are undocumented and may change. A quota displayed here
 
 Credentials and provider requests remain in Rust. The interface receives account details and usage snapshots, never tokens. App settings and last-known usage are stored locally; they can include account emails and folder paths.
 
-Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required.
+Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required. Explicit update checks contact GitHub Releases without sending CLI credentials, account identities, or usage readings.
 
 ## Preview the interface
 
@@ -119,7 +122,7 @@ Build an installer on the target OS with `pnpm tauri build`. The [release workfl
 
 [Report a bug](https://github.com/Abulkosim/usagebar/issues/new/choose) with the version, operating system, display scaling, and reproduction steps. Redact account details in screenshots; never attach tokens or credential files. Provider parsing changes should include a fixture and a regression test.
 
-The project stays focused on Claude and Codex. Planned: signed updates, explicit account activation with confirmation and backup, burndown history, and local cost history. Independent OAuth login remains deferred until the provider's current public client details are verified.
+The project stays focused on Claude and Codex. Planned: explicit account activation with confirmation and backup, burndown history, and local cost history. Independent OAuth login remains deferred until the provider's current public client details are verified.
 
 Inspired by [CodexBar](https://github.com/steipete/CodexBar), with a focused provider set and a shared macOS/Windows codebase. Margin is an independent project, unaffiliated with Anthropic or OpenAI.
 

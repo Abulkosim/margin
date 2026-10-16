@@ -19,6 +19,10 @@ Updater signatures are separate from OS publisher certificates. These builds rem
 
 ## Verification
 
-Release verification is in progress. See the [verification record](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md) for checks actually completed. The owner reported successful Windows testing of v0.1.1; that does not yet verify the new Windows updater.
+[Release CI](https://github.com/Abulkosim/usagebar/actions/runs/38860790512) passed: 26 frontend unit tests, 68 Chromium/WebKit browser cases, 73 Rust tests, 14 release-script tests, strict Clippy, and macOS universal/Windows x64 packaging.
+
+The exact signed universal Mac archive passed a real updater installation test. Altered files and mismatched signed versions were rejected without replacing the test app. The installed app passed version, architecture, and strict ad-hoc signature checks. The DMG contains the same app; all release checksums match. The release was installed and launched on macOS with existing accounts and settings preserved.
+
+The owner reported successful Windows testing of v0.1.1. Interactive Windows self-updating and privileged macOS installation remain unverified. See the [verification record](https://github.com/Abulkosim/usagebar/blob/main/docs/verification.md).
 
 Margin reads existing CLI OAuth credentials. Tokens and provider requests stay in Rust. It does not rotate CLI tokens, change active accounts, or spend reset credits. Update checks contact GitHub only when requested and send no account credentials.

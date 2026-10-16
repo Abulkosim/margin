@@ -2,14 +2,23 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Next release: v0.2.0
+## Current release: v0.2.0
 
-In preparation on 2026-10-16. Adds explicit in-app update checks and signed installation through GitHub Releases, plus a desktop-only shadow correction. The owner approved the dedicated updater key and release-only GitHub Actions secret. The public key is configured; release preflight passes. The local signed installation smoke test passed; CI release builds remain in progress.
+**[v0.2.0 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.0).** Verified on 2026-10-16. This release adds explicit update checks and signed installation through GitHub Releases, and removes the clipped CSS shadow around native windows. The native OS shadow remains.
 
-- Frontend: production build, 26 unit tests, and 68 Chromium/WebKit browser cases passed locally. New cases cover updater errors, progress, retry, stale IPC, duplicate clicks, navigation, and transparent native window edges.
-- Release scripts: 14 tests passed, including a real Tauri-generated signature, altered bytes, signed-version mismatch, wrong keys, installer-family selection, and unexpected-file rejection.
-- Native compilation, strict Clippy, and all 73 Rust tests passed locally. The debug app bundle launched on macOS. The corrected panel edges were visually checked in dark and light themes; the original dark preference was restored. Updates displayed version 0.2.0, made an explicit check, and showed a recoverable error because the public manifest is not published yet. Native notification/autostart settings remained off. The real updater plugin then downloaded and installed the signed local arm64 app into a disposable bundle. Corrupted bytes and mismatched signed versions were rejected before replacement; the previous test app remained intact. The installed bundle reported 0.2.0 and passed strict ad-hoc signature verification. The exact universal CI artifact still needs the same smoke test before publication.
-- The updater key was created with owner-only local permissions and stored in the repository’s encrypted Actions secret. Only trusted release-tag builds receive it. No paid service or certificate was configured.
+| Check | Result |
+| --- | --- |
+| Release preflight and build | Matching package, Cargo, and Tauri versions; production frontend build passed. Public updater key, HTTPS endpoint, and signed-version enforcement configured. |
+| Automated checks | 26 frontend unit tests, 68 Chromium/WebKit cases, 73 Rust tests, 14 release-script tests, Rust formatting, and strict Clippy passed locally and in CI. Browser tests include both themes, native-frame transparency, updater progress/errors, retry, stale IPC, duplicate clicks, and navigation during a download. |
+| Cross-platform CI | [Main run 38859821037](https://github.com/Abulkosim/usagebar/actions/runs/38859821037) and [tag run 38860790512](https://github.com/Abulkosim/usagebar/actions/runs/38860790512) passed for release commit `e27c77e`. The tag build produced signed updater artifacts and a complete manifest. |
+| Signature and version checks | All three downloaded updater artifacts independently passed signature and signed-version verification. Release-script tests include a real Tauri CLI signature and rejection of altered bytes, wrong keys, mismatched versions, and unexpected files. |
+| Real macOS updater installation | The ignored `updater_install` integration test passed against the exact downloaded universal release archive with `MARGIN_REQUIRE_UNIVERSAL=1`. It used the real plugin and public key through a loopback fixture. Corrupt downloads/installations and inflated manifest versions were rejected while preserving the old test app. Valid installation replaced only a disposable app; the resulting bundle reported 0.2.0, contained `arm64` and `x86_64`, and passed strict ad-hoc signature verification. This exercises the plugin installation path, not the UI's install button or privileged installation. |
+| macOS release app | The DMG passed integrity verification. Every app file and symlink matched the updater-installed bundle. The verified universal app was installed in the owner's user Applications folder with the old app backed up. It launched with both existing accounts, the pinned account, and settings preserved; Settings displayed version 0.2.0 and the corrected window edge. The earlier native debug test verified both light/dark edges and recoverable updater errors before the manifest was published. Notifications and autostart remained off. |
+| Release assets and endpoint | All eight listed SHA-256 checksums matched; all nine uploaded asset digests, including the checksum file, matched local files. The manifest includes both Mac architectures and separate Windows NSIS/MSI targets. Anonymous installer/checksum downloads returned HTTP 200; the public latest updater manifest returned version 0.2.0. Release/manifest notes were finalized before publication without changing signed binaries. |
+| Windows | x64 compile, Rust checks, NSIS/MSI packaging, checksums, updater signatures, and the MSI x64 template passed. The owner reported successful interactive testing of v0.1.1. Interactive v0.2.0 Windows self-updating remains unverified. |
+| Signing setup | The owner explicitly approved the dedicated updater key, owner-only local backup, and encrypted repository Actions secret. Only trusted release-tag builds receive it. No paid service or OS publisher certificate was configured. |
+
+v0.1.1 and earlier require one manual upgrade. Subsequent releases use Settings → General → Updates; checks/downloads are explicit, and installation requires the Install and restart action. Publisher signing/notarization, privileged macOS installation, and interactive Windows self-updating remain separate checks.
 
 ## Published release: v0.1.1
 
@@ -101,4 +110,4 @@ Commit identities were corrected on 2026-10-16. Every existing commit kept its o
 
 Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkasimkattaev@gmail.com>`.
 
-Release commit `7e16644` is pushed to `main` and tagged `v0.1.1`. The GitHub description, provider/platform topics, sample screenshots, and installation documentation are updated. Both release-commit and tag CI runs passed. [Margin v0.1.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.1) is published as the latest release with all three installers and checksums. The previous release remains available for rollback.
+Release commit `e27c77e` is pushed to `main` and tagged `v0.2.0`. Main and tag CI passed. [Margin v0.2.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.0) is published as the latest release with installers, updater signatures, the update manifest, and checksums. v0.1.1 remains available for manual rollback. The README and release notes explain the one-time manual upgrade and the distinction between free updater signatures and OS publisher certificates.
