@@ -4,6 +4,7 @@ import type { Account, Settings } from '../lib/model'
 import { accountIsStale, formatMoney, providerName, relativeAge } from '../lib/format'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
+import AppTooltip from './ui/AppTooltip.vue'
 
 const props = defineProps<{ account: Account; settings: Settings; now: number; pinned: boolean; busy: boolean; connectionError: string | null }>()
 defineEmits<{ pin: []; refresh: [] }>()
@@ -21,11 +22,11 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
     <div class="account-heading">
       <span class="provider-mark" :class="account.provider"><AppIcon :name="account.provider" :size="20" /></span>
       <div class="account-heading-copy">
-        <h2 :title="account.identity.email ?? account.label">{{ account.label }}</h2>
+        <AppTooltip :text="account.identity.email ?? account.label"><h2 tabindex="0">{{ account.label }}</h2></AppTooltip>
         <p>{{ providerName(account.provider) }}<template v-if="plan"><span class="middot">·</span>{{ plan }}</template></p>
       </div>
       <span v-if="stale && account.snapshot" class="stale-badge">Last known</span>
-      <button class="icon-button pin-button" :class="{ 'is-pinned': pinned }" :aria-label="pinned ? `Unpin ${account.label} from tray` : `Pin ${account.label} to tray`" :title="pinned ? 'Pinned to tray' : 'Show this account in tray'" :disabled="busy" :aria-pressed="pinned" @click="$emit('pin')"><AppIcon name="pin" :size="14" /></button>
+      <AppTooltip :text="pinned ? 'Pinned to tray' : 'Show this account in tray'"><button class="icon-button pin-button" :class="{ 'is-pinned': pinned }" :aria-label="pinned ? `Unpin ${account.label} from tray` : `Pin ${account.label} to tray`" :disabled="busy" :aria-pressed="pinned" @click="$emit('pin')"><AppIcon name="pin" :size="14" /></button></AppTooltip>
     </div>
 
     <template v-if="account.snapshot">

@@ -1,0 +1,296 @@
+.app-select-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  min-width: 107px;
+  max-width: 153px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.app-select-trigger:hover:not(:disabled),
+.app-select-trigger[data-state="open"] {
+  background: var(--hover);
+}
+
+.app-select-trigger:focus-visible,
+.app-switch:focus-visible,
+.text-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.app-select-trigger:disabled,
+.app-select-trigger:disabled:hover {
+  background: var(--card);
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.app-select-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--secondary);
+  transition: transform .16s ease;
+}
+
+.app-select-trigger[data-state="open"] .app-select-icon {
+  transform: rotate(180deg);
+}
+
+.app-select-content {
+  z-index: 60;
+  width: max-content;
+  min-width: var(--reka-select-trigger-width);
+  max-width: min(320px, calc(100vw - 24px), var(--reka-select-content-available-width));
+  max-height: min(320px, var(--reka-select-content-available-height));
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 12px 36px -12px #0005, 0 2px 8px #00000012;
+  transform-origin: var(--reka-select-content-transform-origin);
+}
+
+.app-select-content .app-select-viewport {
+  min-height: 0;
+  padding: 1px;
+  scroll-padding-block: 1px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--track) transparent;
+}
+
+.app-select-content .app-select-viewport::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+}
+
+.app-select-content .app-select-viewport::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--track);
+}
+
+.app-select-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 29px;
+  padding: 7px 27px 7px 9px;
+  border-radius: 4px;
+  outline: none;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.4;
+  cursor: default;
+  user-select: none;
+  transition: background-color .15s, color .15s;
+}
+
+.app-select-item[data-state="checked"] {
+  color: var(--accent-ink);
+}
+
+.app-select-item[data-highlighted] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.app-select-item[data-disabled] {
+  opacity: .45;
+  pointer-events: none;
+}
+
+.app-select-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-select-description {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--secondary);
+}
+
+.app-select-indicator {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  color: var(--accent-ink);
+}
+
+.app-tooltip-content {
+  z-index: 60;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px), var(--reka-tooltip-content-available-width));
+  max-height: var(--reka-tooltip-content-available-height);
+  overflow: hidden;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 5px 18px #0000001a;
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  transform-origin: var(--reka-tooltip-content-transform-origin);
+}
+
+.app-select-content[data-state="open"],
+.app-tooltip-content[data-state="delayed-open"],
+.app-tooltip-content[data-state="instant-open"] {
+  animation: control-appear .16s ease-out;
+}
+
+.app-select-content[data-state="closed"],
+.app-tooltip-content[data-state="closed"] {
+  animation: control-disappear .15s ease-in;
+}
+
+.app-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  width: 29px;
+  height: 17px;
+  padding: 2px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--track);
+  transition: background-color .18s;
+}
+
+.app-switch::before {
+  position: absolute;
+  inset: -5.5px 0;
+  content: "";
+}
+
+.app-switch .app-switch-thumb {
+  display: block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 1px 2px #0002;
+  transition: transform .18s ease, background-color .18s;
+}
+
+.app-switch[data-state="checked"],
+.app-switch[data-state="checked"]:disabled:hover {
+  background: var(--accent);
+}
+
+.app-switch[data-state="checked"] .app-switch-thumb {
+  transform: translateX(12px);
+  background: var(--surface);
+}
+
+.app-switch:disabled {
+  cursor: not-allowed;
+}
+
+.app-switch[data-state="unchecked"]:disabled:hover {
+  background: var(--track);
+}
+
+.text-input {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  caret-color: var(--accent-ink);
+  transition: border-color .16s, background-color .16s, box-shadow .16s;
+}
+
+.text-input::placeholder {
+  color: var(--tertiary);
+  opacity: 1;
+}
+
+.text-input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--secondary), transparent 65%);
+}
+
+.text-input:focus-visible {
+  border-color: transparent;
+}
+
+.text-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.text-input[aria-invalid="true"]:focus-visible {
+  outline-color: var(--danger);
+}
+
+.text-input:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+@keyframes control-appear {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes control-disappear {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (max-width: 350px) {
+  .app-select-trigger { min-width: 95px; max-width: 125px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-select-content,
+  .app-tooltip-content,
+  .app-select-icon,
+  .app-select-item,
+  .app-switch,
+  .app-switch .app-switch-thumb,
+  .text-input {
+    animation: none;
+    transition: none;
+  }
+}

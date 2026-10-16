@@ -16,6 +16,13 @@ See remaining quota and reset times across multiple accounts, right from your me
 
 Browser previews with sample accounts. [Settings preview](docs/images/settings-light.png).
 
+<p>
+  <img src="docs/images/settings-menu-light.png" alt="Margin v0.1.1 light settings preview with a styled account menu and sample accounts" width="260" />
+  <img src="docs/images/settings-menu-dark.png" alt="Margin v0.1.1 dark settings preview with a styled account menu and sample accounts" width="260" />
+</p>
+
+v0.1.1 settings previews with sample data.
+
 ## What it does
 
 - **Multiple accounts:** discover existing CLI sign-ins or add a configuration folder for each account.
@@ -24,7 +31,7 @@ Browser previews with sample accounts. [Settings preview](docs/images/settings-l
 - **Honest stale states:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Your preferences:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-The packaged macOS app and live Claude/Codex requests have been verified locally. macOS universal and Windows x64 builds passed [CI](https://github.com/Abulkosim/usagebar/actions/runs/38840596545). Interactive Windows testing is planned in a VM; see [verification status](docs/verification.md) for completed checks and remaining work.
+The published v0.1.0 release was verified with a packaged macOS app and live Claude/Codex requests. macOS universal and Windows x64 builds passed [CI](https://github.com/Abulkosim/usagebar/actions/runs/38840596545). Interactive Windows testing is planned in a VM; see [verification status](docs/verification.md) for completed checks and current development work.
 
 ## Install
 
@@ -85,7 +92,7 @@ Append `?demo=1` to the local URL printed by Vite. This previews clearly labeled
 
 ## Develop
 
-Built with Tauri 2, Rust, Vue 3, TypeScript, and Vite. Install Node.js 24, pnpm 11.25.0, [Tauri's platform prerequisites](https://v2.tauri.app/start/prerequisites/), and stable Rust with [rustup](https://rustup.rs). macOS needs Xcode Command Line Tools. Windows needs Microsoft C++ Build Tools with Desktop development with C++ and WebView2.
+Built with Tauri 2, Rust, Vue 3, Reka UI, TypeScript, and Vite. Install Node.js 24, pnpm 11.25.0, [Tauri's platform prerequisites](https://v2.tauri.app/start/prerequisites/), and stable Rust with [rustup](https://rustup.rs). macOS needs Xcode Command Line Tools. Windows needs Microsoft C++ Build Tools with Desktop development with C++ and WebView2.
 
 ```sh
 pnpm install --frozen-lockfile

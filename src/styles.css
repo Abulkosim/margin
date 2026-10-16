@@ -801,7 +801,7 @@ button:disabled:hover {
   left: 16px;
   right: 16px;
   bottom: 38px;
-  z-index: 20;
+  z-index: 80;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -885,7 +885,7 @@ button:disabled:hover {
   color: var(--secondary);
   border-radius: 5px;
 }
-.settings-tabs button.active {
+.settings-tabs button[data-state="active"] {
   background: var(--card);
   color: var(--ink);
   box-shadow: 0 1px 3px #00000008;
@@ -1015,45 +1015,6 @@ button:disabled:hover {
 }
 .setting-row>div:first-child {
   min-width: 0;
-}
-.setting-row select {
-  font-size: 9px;
-  background: var(--card);
-  padding: 7px 24px 7px 9px;
-  max-width: 153px;
-  min-width: 107px;
-  border: 0;
-  border-radius: 5px;
-  cursor: pointer;
-  text-overflow: ellipsis;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238b938b' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-}
-.switch {
-  width: 29px;
-  height: 17px;
-  padding: 2px;
-  border-radius: 12px;
-  background: var(--track);
-  flex-shrink: 0;
-}
-.switch>span {
-  display: block;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--card);
-  box-shadow: 0 1px 2px #0002;
-  transition: transform .18s,background-color .18s;
-}
-.switch[aria-checked=true] {
-  background: var(--accent);
-}
-.switch[aria-checked=true]>span {
-  transform: translateX(12px);
-  background: var(--surface);
 }
 .threshold-options {
   display: flex;
@@ -1332,7 +1293,7 @@ input::placeholder {
   align-items: center;
   justify-content: center;
   padding: 28px;
-  z-index: 10;
+  z-index: 70;
 }
 .confirm-dialog {
   width: 100%;
@@ -1362,6 +1323,18 @@ input::placeholder {
   line-height: 1.7;
   margin-top: 10px;
   color: var(--secondary);
+}
+.confirm-dialog .field-error {
+  color: var(--danger);
+}
+.accounts-scroll::-webkit-scrollbar,
+.settings-content::-webkit-scrollbar {
+  width: 5px;
+}
+.accounts-scroll::-webkit-scrollbar-thumb,
+.settings-content::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: var(--track);
 }
 .dialog-actions {
   display: flex;
