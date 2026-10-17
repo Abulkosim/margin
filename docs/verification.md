@@ -2,27 +2,32 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Preparing v0.3.0
+## Current release: v0.3.0
 
-Checked on 2026-10-17. Adds local usage history and includes the readability patch below.
+**[v0.3.0 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.3.0).** Verified on 2026-10-17 on macOS 26.6.2. Adds local usage history and includes the readability patch below.
 
 - `pnpm build`, 32 frontend unit tests, 80 Chromium/WebKit browser cases, 93 Rust tests, strict Clippy, formatting, and 14 release-script tests passed. The final compact chart was rechecked in all 12 history browser cases; its section fits within 350 CSS pixels at the standard width.
 - History persistence tests cover atomic replacement, owner-only permissions, seven-day and 10,000-reading bounds, damaged files, write failures, restarts, missing windows, partial sampling, out-of-order readings, unknown identities, account removal, and workspace changes. Existing v1 settings remain readable; history uses separate files.
 - Independent review found and fixed false gaps from independently sampled windows and history loss during temporary profile failures. Stable account/workspace identifiers are hashed for local history matching; tokens are never stored in history. Unknown identity pauses recording without replacing previous history.
 - Chart tests cover honest period/gap boundaries, observed percentage-point changes, keyboard inspection, empty/error/loading states, validated IPC, and late responses. Light/dark previews were inspected at 1×/2× and 360 × 480. Seven public sample screenshots were refreshed and visually inspected.
-- An optimized, ad-hoc-signed local Mac build launched successfully. Both existing accounts recorded live readings in separate owner-only files. The native interface progressed from its first-reading state to a chart, and keyboard inspection selected an earlier reading. Restart preserved the readings and marked the next point as resumed recording. Final release artifact checks and installation are pending.
+- An optimized, ad-hoc-signed local Mac build launched successfully. Both existing accounts recorded live readings in separate owner-only files. The native interface progressed from its first-reading state to a chart, and keyboard inspection selected an earlier reading. Restart preserved the readings and marked the next point as resumed recording. Light/dark native checks passed; the original light preference was restored.
+- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/39057547907) and [signed release CI](https://github.com/Abulkosim/usagebar/actions/runs/39058156374) passed for `9eff289`, including frontend/browser checks, strict Rust checks, macOS universal packaging, and Windows x64 packaging.
+- All eight listed checksums and all nine uploaded asset digests matched. Three updater signatures, their signed versions, and all five manifest targets passed. GitHub release notes and updater notes match `changelogs/v0.3.0.md`; the public latest endpoint serves the checked manifest.
+- The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, while valid installation passed version, both architectures, and strict ad-hoc signature checks. The DMG passed integrity verification and contains the identical app. Windows installer formats and the MSI x64 template were checked.
+- The downloaded release launched with saved history intact. Native scrolling exposed the complete compact chart and legend. The installed v0.2.2 app then found and installed v0.3.0 through **Install and restart**. Both accounts, the pinned account, theme, polling intervals, disabled notification/autostart preferences, and recorded history were preserved. Settings reports version 0.3.0 and “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
+- Interactive Windows installation/updating and privileged macOS installation remain unverified. The Windows results above cover automated checks and installer packaging, not native UI testing.
 
-## Unreleased readability patch
+## Readability patch included in v0.3.0
 
-Verified on 2026-10-17 on macOS. Version remains 0.2.2; no release or tag was created.
+Prepared on 2026-10-17 on macOS without a separate release or tag. The initial patch retained version 0.2.2; it is included in v0.3.0.
 
 - Text now starts at 13px, main labels use 14px, and quota values use 21px. Reset times sit below their labels. Secondary text has stronger contrast in both themes; selects keep the default “Lowest remaining” value readable.
 - `pnpm build` passed, including type checking. All 68 existing Chromium/WebKit cases passed after the final CSS changes. `git diff --check` passed.
 - Light/dark overview, Settings, account lists, and open menus were visually inspected in WebKit at 420 × 660 CSS pixels, at both 1× and 2× scale. Five public sample screenshots were refreshed. Checked normal text/background token pairs meet 4.5:1 contrast; this is not a full accessibility audit.
-- `pnpm tauri build --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked` produced an optimized, ad-hoc-signed local Mac app. Automatic approval review blocked launching this local build pending action-time user confirmation. Native patch inspection remains pending; the existing installed release was reopened unchanged.
-- Only styles and screenshot documentation changed. Provider polling, native window geometry, updater behavior, and release assets are unchanged. Usage history has not been implemented.
+- `pnpm tauri build --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked` produced an optimized, ad-hoc-signed local Mac app. Automatic approval review initially blocked launch pending action-time confirmation. The owner subsequently authorized building, testing, and releasing v0.3.0; native light/dark inspection then passed with the history feature included.
+- This initial patch changed only styles and screenshot documentation. The v0.3.0 work above adds usage history; native window geometry and updater behavior remain unchanged.
 
-## Current release: v0.2.2
+## Previous release: v0.2.2
 
 **[v0.2.2 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2).** Verified on 2026-10-16.
 
