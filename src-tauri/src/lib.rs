@@ -25,6 +25,7 @@ pub fn run() {
         .manage(updates::Updates::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            commands::get_account_history,
             commands::get_popover_placement,
             commands::refresh_accounts,
             commands::discover_accounts,

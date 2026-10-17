@@ -5,6 +5,7 @@ use super::model::{Account, Identity, Provider, Snapshot, UsageError};
 use chrono::{DateTime, SecondsFormat, Utc};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
@@ -12,6 +13,15 @@ use std::time::Duration;
 const MAX_PRIVATE_FILE_BYTES: u64 = 1_048_576;
 const MAX_RESPONSE_BYTES: usize = 1_048_576;
 const MAX_RETRY_AFTER_SECONDS: u64 = 86_400;
+
+fn history_key(provider: Provider, account: &str, scope: &str) -> String {
+    let mut digest = Sha256::new();
+    for part in [provider.key(), account, scope] {
+        digest.update((part.len() as u64).to_be_bytes());
+        digest.update(part.as_bytes());
+    }
+    format!("{:x}", digest.finalize())
+}
 
 pub fn http_client() -> Result<reqwest::Client, UsageError> {
     reqwest::Client::builder()

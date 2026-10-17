@@ -42,6 +42,8 @@ pub enum AccountSource {
 pub struct Identity {
     pub email: Option<String>,
     pub plan: Option<String>,
+    #[serde(default)]
+    pub history_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

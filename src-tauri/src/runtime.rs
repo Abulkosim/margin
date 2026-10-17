@@ -1,4 +1,5 @@
 use crate::core::{
+    history::HistoryStore,
     model::Account,
     notifications::AlertMemory,
     poller::Schedule,
@@ -32,6 +33,7 @@ pub struct RuntimeState {
     pub view: AppState,
     pub alerts: AlertMemory,
     pub schedules: HashMap<String, Schedule>,
+    pub history: HistoryStore,
 }
 
 pub struct Runtime {
@@ -70,6 +72,7 @@ impl Runtime {
                 },
                 alerts: saved.alerts,
                 schedules: HashMap::new(),
+                history: HistoryStore::new(store_path.with_file_name("history")),
             }),
             client: providers::http_client().map_err(|error| error.message)?,
             wake: Notify::new(),
@@ -115,6 +118,22 @@ impl Runtime {
                 .iter()
                 .any(|account| key.starts_with(&format!("{}/", account.id)))
         });
+        self.ensure_store_available()?;
+        let changed_ids: Vec<String> = inner
+            .view
+            .accounts
+            .iter()
+            .filter(|account| !next.accounts.iter().any(|next| next.id == account.id))
+            .chain(
+                next.accounts
+                    .iter()
+                    .filter(|account| !inner.view.accounts.iter().any(|old| old.id == account.id)),
+            )
+            .map(|account| account.id.clone())
+            .collect();
+        for id in changed_ids {
+            inner.history.remove(&id)?;
+        }
         self.persist(&next, &alerts)?;
         inner.view = next.clone();
         inner.alerts = alerts;
@@ -136,6 +155,46 @@ pub fn publish(app: &AppHandle, state: &AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn existing_settings_remain_usable_when_separate_history_is_corrupt() {
+        use crate::core::model::{AccountSource, Identity, Provider};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let account = Account {
+            id: "codex-test".into(),
+            provider: Provider::Codex,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: directory.path().to_string_lossy().into_owned(),
+            },
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        };
+        let saved = StoredState {
+            version: 1,
+            accounts: vec![account.clone()],
+            ..StoredState::default()
+        };
+        store::save(&path, &saved).unwrap();
+        std::fs::create_dir(directory.path().join("history")).unwrap();
+        let history_path = directory.path().join("history/codex-test.json");
+        std::fs::write(&history_path, "{damaged").unwrap();
+        let runtime = Runtime::new(path).unwrap();
+        let mut inner = runtime.inner.lock().await;
+        assert_eq!(inner.view.accounts.len(), 1);
+        assert!(inner.view.notice.is_none());
+        assert!(inner
+            .history
+            .get(&account, chrono::Utc::now())
+            .error
+            .is_some());
+        assert!(runtime.persist(&inner.view, &inner.alerts).is_ok());
+        assert_eq!(std::fs::read_to_string(history_path).unwrap(), "{damaged");
+    }
 
     #[tokio::test]
     async fn damaged_settings_remain_untouched_and_visible_for_recovery() {

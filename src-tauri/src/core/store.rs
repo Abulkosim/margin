@@ -145,6 +145,14 @@ fn validate(state: &StoredState) -> Result<(), String> {
                 return Err(invalid_store());
             }
         }
+        if account
+            .identity
+            .history_key
+            .as_ref()
+            .is_some_and(|key| key.len() != 64 || !key.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        {
+            return Err(invalid_store());
+        }
         if let Some(snapshot) = &account.snapshot {
             validate_snapshot(snapshot)?;
         }

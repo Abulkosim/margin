@@ -4,11 +4,13 @@ import type { Account, Settings } from '../lib/model'
 import { accountIsStale, formatMoney, providerName, relativeAge } from '../lib/format'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
+import UsageHistory from './UsageHistory.vue'
 import AppTooltip from './ui/AppTooltip.vue'
 
-const props = defineProps<{ account: Account; settings: Settings; now: number; pinned: boolean; busy: boolean; connectionError: string | null }>()
+const props = defineProps<{ account: Account; demo: boolean; settings: Settings; now: number; pinned: boolean; busy: boolean; connectionError: string | null }>()
 defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
+const historyOpen = ref(false)
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)
 const errorMessage = computed(() => props.connectionError ?? props.account.error?.message)
@@ -51,5 +53,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
       <p>{{ errorMessage ?? 'Refresh to read this account’s usage.' }}</p>
       <button class="text-button" :disabled="busy" @click="$emit('refresh')">Try again <AppIcon name="refresh" :size="12" /></button>
     </div>
+    <button class="details-toggle history-toggle" :aria-expanded="historyOpen" :aria-controls="`history-${account.id}`" @click="historyOpen = !historyOpen"><span>{{ historyOpen ? 'Hide history' : 'History' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: historyOpen }" /></button>
+    <UsageHistory v-if="historyOpen" :id="`history-${account.id}`" :account="account" :demo="demo" :now="now" />
   </article>
 </template>

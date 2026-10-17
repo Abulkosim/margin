@@ -2,7 +2,7 @@
 
 Public images use explicit sample accounts. Capture from `?demo=1`; never publish a live account, email, configuration path, or credential.
 
-## Unreleased readability patch
+## v0.3.0 captures
 
 Use WebKit at 420×660 CSS pixels and 2× scale. Preserve the sample-data label. Visually inspect each image before linking it in the README or release notes.
 
@@ -12,8 +12,9 @@ Use WebKit at 420×660 CSS pixels and 2× scale. Preserve the sample-data label.
 | `docs/images/settings-menu-dark.png` | Captured and inspected: the same menu in dark mode. |
 | `docs/images/settings-light.png` | Larger text and clearer contrast, with notifications off. |
 | `docs/images/overview-dark.png`, `overview-light.png` | Larger quota values and reset times, with sample accounts. |
+| `docs/images/history-dark.png`, `history-light.png` | Sample history with a new period, a recording gap, and keyboard-inspectable readings. |
 
-All five PNGs are 840×1320 pixels and retain the sample-data label. These show the unreleased readability patch; v0.2.2 screenshots remain available at its Git tag.
+All seven PNGs are 840×1320 pixels and retain the sample-data label. v0.2.2 screenshots remain available at its Git tag.
 
 The same overview, settings, account list, and open menus were also inspected at 1× scale (420×660 pixels) for external-monitor readability.
 

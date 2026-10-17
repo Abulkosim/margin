@@ -7,6 +7,22 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 #[tauri::command]
+pub async fn get_account_history(
+    runtime: State<'_, Arc<Runtime>>,
+    id: String,
+) -> Result<crate::core::history::AccountHistory, String> {
+    let mut inner = runtime.inner.lock().await;
+    let account = inner
+        .view
+        .accounts
+        .iter()
+        .find(|account| account.id == id)
+        .cloned()
+        .ok_or("Account no longer exists.")?;
+    Ok(inner.history.get(&account, chrono::Utc::now()))
+}
+
+#[tauri::command]
 pub async fn get_state(runtime: State<'_, Arc<Runtime>>) -> Result<AppState, String> {
     Ok(runtime.inner.lock().await.view.clone())
 }

@@ -71,6 +71,7 @@ fn identity_from_usage(value: &Value, fallback: Identity) -> Identity {
     Identity {
         email: nonempty_string(value.get("email")).or(fallback.email),
         plan: nonempty_string(value.get("plan_type")).or(fallback.plan),
+        history_key: fallback.history_key,
     }
 }
 
@@ -125,6 +126,18 @@ fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
                 .and_then(|auth| auth.get("chatgpt_account_id")),
         )?;
     }
+    let user = [&access_claims, &id_claims]
+        .into_iter()
+        .flatten()
+        .find_map(|claims| {
+            nonempty_string(claims.pointer("/https:~1~1api.openai.com~1auth/chatgpt_user_id"))
+                .or_else(|| nonempty_string(claims.get("sub")))
+        })
+        .or_else(|| identity.email.clone());
+    identity.history_key = account_id
+        .as_deref()
+        .zip(user.as_deref())
+        .map(|(account, user)| super::history_key(Provider::Codex, account, user));
     Ok(Credentials {
         access_token,
         account_id,
@@ -169,7 +182,11 @@ fn identity_from_claims(claims: &Value) -> Identity {
     let plan = claims
         .get(AUTH_CLAIM)
         .and_then(|auth| nonempty_string(auth.get("chatgpt_plan_type")));
-    Identity { email, plan }
+    Identity {
+        email,
+        plan,
+        history_key: None,
+    }
 }
 
 fn configured_usage_url(directory: &Path) -> Result<Url, UsageError> {
@@ -358,6 +375,32 @@ mod tests {
     }
 
     #[test]
+    fn history_identity_separates_workspaces_and_survives_token_rotation() {
+        let credentials = |workspace: &str, issued: u64| {
+            parse_credentials(
+                &serde_json::to_vec(&json!({
+                    "tokens": {
+                        "access_token": jwt(json!({"sub": "user-one", "iat": issued})),
+                        "account_id": workspace
+                    }
+                }))
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        let original = credentials("workspace-one", 1);
+        assert_eq!(original.identity.history_key.as_ref().unwrap().len(), 64);
+        assert_eq!(
+            original.identity.history_key,
+            credentials("workspace-one", 2).identity.history_key
+        );
+        assert_ne!(
+            original.identity.history_key,
+            credentials("workspace-two", 1).identity.history_key
+        );
+    }
+
+    #[test]
     fn live_primary_weekly_shape_does_not_invent_a_session_or_spend() {
         let value =
             serde_json::from_str(include_str!("../../../fixtures/codex-live-schema.json")).unwrap();
@@ -378,6 +421,7 @@ mod tests {
         let fallback = Identity {
             email: Some("previous@example.test".into()),
             plan: Some("plus".into()),
+            history_key: None,
         };
         let identity = identity_from_usage(&value, fallback.clone());
         assert_eq!(identity.email.as_deref(), Some("person@example.test"));

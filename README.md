@@ -23,12 +23,20 @@ Browser previews with sample accounts. [Settings preview](docs/images/settings-l
 
 Settings menus with sample data.
 
+<p>
+  <img src="docs/images/history-dark.png" alt="Margin dark usage history preview with sample readings, a new quota period, and a gap" width="300" />
+  <img src="docs/images/history-light.png" alt="Margin light usage history preview with sample readings" width="300" />
+</p>
+
+Usage history with sample data.
+
 ## What it does
 
 - **Multiple accounts:** discover existing CLI sign-ins or add a configuration folder for each account.
 - **Usage:** remaining percentages and reset countdowns for reported session, weekly, and model-specific windows. Extra-usage spend appears when Claude reports it.
 - **Tray indicator:** follow a pinned account or the account with the least remaining quota.
 - **Last known usage:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
+- **Usage history:** open History on an account to see remaining quota over time. Readings stay on this device for up to seven days; gaps and new quota periods stay visible.
 - **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
 - **Settings:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
@@ -78,7 +86,9 @@ Provider usage endpoints are undocumented and may change. A quota displayed here
 
 ## Privacy
 
-Credentials and provider requests remain in Rust. The interface receives account details and usage snapshots, never tokens. App settings and last-known usage are stored locally; they can include account emails and folder paths.
+Credentials and provider requests remain in Rust. The interface receives account details and usage snapshots, never tokens. App settings, last-known usage, and usage history are stored locally; they can include account emails and folder paths.
+
+History starts with new successful readings; it cannot recover usage from before Margin was running. It records at most once a minute within a continuous quota period, with up to seven days or 10,000 window readings per account, whichever fits first. Offline periods and failed readings appear as gaps. Removing an account also removes its local history. History uses the existing refresh schedule and makes no additional provider requests.
 
 Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required. Explicit update checks contact GitHub Releases without sending CLI credentials, account identities, or usage readings.
 
@@ -122,7 +132,7 @@ Build an installer on the target OS with `pnpm tauri build`. The [release workfl
 
 [Report a bug](https://github.com/Abulkosim/usagebar/issues/new/choose) with the version, operating system, display scaling, and reproduction steps. Redact account details in screenshots; never attach tokens or credential files. Provider parsing changes should include a fixture and a regression test.
 
-The project stays focused on Claude and Codex. Planned: explicit account activation with confirmation and backup, burndown history, and local cost history. Independent OAuth login remains deferred until the provider's current public client details are verified.
+The project stays focused on Claude and Codex. Planned: explicit account activation with confirmation and backup, and local cost history. Independent OAuth login remains deferred until the provider's current public client details are verified.
 
 Inspired by [CodexBar](https://github.com/steipete/CodexBar), with a focused provider set and a shared macOS/Windows codebase. Margin is an independent project, unaffiliated with Anthropic or OpenAI.
 

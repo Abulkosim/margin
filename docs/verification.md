@@ -2,6 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
+## Preparing v0.3.0
+
+Checked on 2026-10-17. Adds local usage history and includes the readability patch below.
+
+- `pnpm build`, 32 frontend unit tests, 80 Chromium/WebKit browser cases, 93 Rust tests, strict Clippy, formatting, and 14 release-script tests passed. The final compact chart was rechecked in all 12 history browser cases; its section fits within 350 CSS pixels at the standard width.
+- History persistence tests cover atomic replacement, owner-only permissions, seven-day and 10,000-reading bounds, damaged files, write failures, restarts, missing windows, partial sampling, out-of-order readings, unknown identities, account removal, and workspace changes. Existing v1 settings remain readable; history uses separate files.
+- Independent review found and fixed false gaps from independently sampled windows and history loss during temporary profile failures. Stable account/workspace identifiers are hashed for local history matching; tokens are never stored in history. Unknown identity pauses recording without replacing previous history.
+- Chart tests cover honest period/gap boundaries, observed percentage-point changes, keyboard inspection, empty/error/loading states, validated IPC, and late responses. Light/dark previews were inspected at 1×/2× and 360 × 480. Seven public sample screenshots were refreshed and visually inspected.
+- An optimized, ad-hoc-signed local Mac build launched successfully. Both existing accounts recorded live readings in separate owner-only files. The native interface progressed from its first-reading state to a chart, and keyboard inspection selected an earlier reading. Restart preserved the readings and marked the next point as resumed recording. Final release artifact checks and installation are pending.
+
 ## Unreleased readability patch
 
 Verified on 2026-10-17 on macOS. Version remains 0.2.2; no release or tag was created.

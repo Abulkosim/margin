@@ -175,6 +175,14 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         }
                         Err(error) => inner.view.accounts[index].error = Some(error),
                     }
+                    let observed = inner.view.accounts[index].clone();
+                    if error.is_some() {
+                        inner.history.failed(&observed);
+                    } else {
+                        inner
+                            .history
+                            .record(&observed, interval + 7, chrono::Utc::now());
+                    }
                     inner.view.accounts[index].refreshing = false;
                     let jitter = account
                         .id

@@ -40,6 +40,7 @@ pub(super) async fn fetch(
     let mut identity = Identity {
         email: None,
         plan: credentials.plan.clone(),
+        history_key: None,
     };
     let profile = client
         .get(PROFILE_URL)
@@ -56,6 +57,7 @@ pub(super) async fn fetch(
                 let profile = parse_profile(&value);
                 identity.email = profile.email;
                 identity.plan = profile.plan.or(identity.plan);
+                identity.history_key = profile.history_key;
             }
         }
     }
@@ -407,7 +409,15 @@ fn parse_profile(value: &Value) -> Identity {
     .iter()
     .find_map(|path| nonempty_string(value.pointer(path)))
     .map(normalize_plan);
-    Identity { email, plan }
+    let history_key = nonempty_string(value.pointer("/account/uuid")).and_then(|account| {
+        nonempty_string(value.pointer("/organization/uuid"))
+            .map(|organization| super::history_key(Provider::Claude, &account, &organization))
+    });
+    Identity {
+        email,
+        plan,
+        history_key,
+    }
 }
 
 fn normalize_plan(value: String) -> String {
@@ -425,6 +435,22 @@ fn normalize_plan(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_identity_is_stable_and_separates_organizations() {
+        let profile = serde_json::json!({
+            "account": {"uuid": "account-one", "email": "example@example.test"},
+            "organization": {"uuid": "organization-one"}
+        });
+        let identity = parse_profile(&profile);
+        assert_eq!(identity.history_key.as_ref().unwrap().len(), 64);
+        let mut renamed = profile.clone();
+        renamed["account"]["email"] = serde_json::json!("renamed@example.test");
+        assert_eq!(identity.history_key, parse_profile(&renamed).history_key);
+        renamed["organization"]["uuid"] = serde_json::json!("organization-two");
+        assert_ne!(identity.history_key, parse_profile(&renamed).history_key);
+        assert!(parse_profile(&serde_json::json!({})).history_key.is_none());
+    }
     use serde_json::json;
 
     #[test]

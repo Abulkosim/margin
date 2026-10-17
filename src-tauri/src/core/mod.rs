@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod history;
 pub mod model;
 pub mod notifications;
 pub mod poller;

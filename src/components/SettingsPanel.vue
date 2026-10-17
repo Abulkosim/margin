@@ -216,7 +216,7 @@ async function confirmRemove(): Promise<void> {
         <AlertDialogContent class="confirm-dialog" @escape-key-down="escapeRemove" @close-auto-focus="restoreRemoveFocus">
           <span class="dialog-icon"><AppIcon name="trash" :size="20"/></span>
           <AlertDialogTitle as="h2">Remove {{ removeTarget?.label }}?</AlertDialogTitle>
-          <AlertDialogDescription as="p">Removes the account from Margin. CLI credentials are not deleted.</AlertDialogDescription>
+          <AlertDialogDescription as="p">Removes the account and its usage history from Margin. CLI credentials are not deleted.</AlertDialogDescription>
           <p v-if="removeFailed" class="field-error" role="alert">Couldn’t remove this account. Try again.</p>
           <div class="dialog-actions"><AlertDialogCancel class="button" tabindex="0" :disabled="busy">Keep account</AlertDialogCancel><button ref="removeButton" class="button button-danger" tabindex="0" :disabled="busy" @click="confirmRemove">Remove account</button></div>
         </AlertDialogContent>
