@@ -2,8 +2,8 @@
   font-family: Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
   font-optical-sizing: auto;
   color-scheme: light;
   --surface: #f5f6f1;
@@ -11,8 +11,8 @@
   --card: #fff;
   --hover: #e9ede4;
   --ink: #29322d;
-  --secondary: #5f6c62;
-  --tertiary: #697367;
+  --secondary: #4d5c51;
+  --tertiary: #59665c;
   --accent: #6c886f;
   --accent-ink: #526d55;
   --accent-soft: #e5ece1;
@@ -20,7 +20,7 @@
   --line: rgba(42,56,43,.075);
   --warning: #916128;
   --warning-soft: #f5edde;
-  --danger: #b65c53;
+  --danger: #a84d45;
   --button: #354e3b;
   --button-ink: #f8fbf5;
   --shadow: 0 18px 70px -20px #1c32283d,0 1px 5px #22352a14;
@@ -34,8 +34,8 @@
   --card: #242a26;
   --hover: #303831;
   --ink: #e6ece5;
-  --secondary: #9aa79c;
-  --tertiary: #8b9a8e;
+  --secondary: #b9c3bb;
+  --tertiary: #a6b3a9;
   --accent: #b8d1ba;
   --accent-ink: #b8d1ba;
   --accent-soft: #303e32;
@@ -62,7 +62,7 @@ html,body,#app {
 body {
   background: transparent;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 button,input,select {
   font: inherit;
@@ -226,8 +226,8 @@ button:disabled:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 7px;
   color: var(--secondary);
   flex-shrink: 0;
@@ -244,13 +244,13 @@ button:disabled:hover {
   flex-shrink: 0;
 }
 .overview-heading h1 {
-  font-size: 23px;
+  font-size: 25px;
   line-height: 1.2;
   letter-spacing: -.9px;
-  font-weight: 570;
+  font-weight: 600;
 }
 .overview-heading p {
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 7px;
   line-height: 1.5;
   color: var(--secondary);
@@ -286,7 +286,7 @@ button:disabled:hover {
   flex-shrink: 0;
 }
 .account-filters button {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   display: flex;
   gap: 9px;
@@ -296,7 +296,7 @@ button:disabled:hover {
   color: var(--secondary);
 }
 .account-filters button span {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -322,7 +322,7 @@ button:disabled:hover {
 .account-card {
   background: var(--card);
   border-radius: 10px;
-  padding: 16px 17px 15px;
+  padding: 17px;
   margin-bottom: 10px;
   box-shadow: 0 1px 2px #00000002;
 }
@@ -360,7 +360,7 @@ button:disabled:hover {
   flex: 1;
 }
 .account-heading h2 {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -.15px;
@@ -369,7 +369,7 @@ button:disabled:hover {
   overflow: hidden;
 }
 .account-heading p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
   margin-top: 2px;
   color: var(--secondary);
@@ -396,23 +396,24 @@ button:disabled:hover {
   gap: 15px;
 }
 .quota-meta {
-  display: flex;
+  display: grid;
   align-items: baseline;
-  gap: 9px;
+  gap: 4px 12px;
   margin-bottom: 7px;
   min-width: 0;
+  grid-template-columns: minmax(0,1fr) auto;
 }
 .quota-label {
-  font-size: 10.5px;
+  font-size: 14px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.4;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .quota-reset {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--tertiary);
   font-variant-numeric: tabular-nums;
@@ -420,24 +421,29 @@ button:disabled:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
   min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
 }
 .quota-value {
   margin-left: auto;
-  font-size: 13px;
+  font-size: 21px;
   line-height: 1.1;
   letter-spacing: -.15px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: 600;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
 }
 .quota-value span {
-  font-size: 10px;
+  font-size: 14px;
   margin-left: 1px;
   color: var(--secondary);
   font-weight: 400;
 }
 .quota-track {
-  height: 4px;
+  height: 5px;
   width: 100%;
   background: var(--track);
   border-radius: 5px;
@@ -465,7 +471,7 @@ button:disabled:hover {
   gap: 4px;
   margin: 12px 0 -3px;
   padding: 2px 0;
-  font-size: 9px;
+  font-size: 13px;
   color: var(--tertiary);
 }
 .details-toggle:hover {
@@ -481,7 +487,7 @@ button:disabled:hover {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
-  font-size: 9px;
+  font-size: 13px;
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -499,7 +505,7 @@ button:disabled:hover {
   border-radius: 4px;
   padding: 3px 5px;
   white-space: nowrap;
-  font-size: 8px;
+  font-size: 13px;
 }
 .account-stale .pin-button {
   display: none;
@@ -518,7 +524,7 @@ button:disabled:hover {
   margin-top: 1px;
 }
 .stale-note p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
   color: var(--secondary);
@@ -541,7 +547,7 @@ button:disabled:hover {
   align-items: center;
   gap: 6px;
   color: var(--tertiary);
-  font-size: 9px;
+  font-size: 13px;
   white-space: nowrap;
   min-width: 0;
 }
@@ -562,7 +568,7 @@ button:disabled:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--secondary);
   padding: 4px 0;
   white-space: nowrap;
@@ -571,7 +577,7 @@ button:disabled:hover {
   color: var(--ink);
 }
 .footer-add {
-  font-size: 9px;
+  font-size: 13px;
   gap: 4px;
 }
 .preview-ribbon {
@@ -580,7 +586,7 @@ button:disabled:hover {
   gap: 5px;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 8px;
+  font-size: 13px;
   color: var(--secondary);
   padding: 7px 12px;
   background: var(--accent-soft);
@@ -605,21 +611,21 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--warning);
 }
 .account-error p {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.6;
   margin: 8px 0 7px;
   color: var(--secondary);
   overflow-wrap: anywhere;
 }
 .account-error .text-button {
-  font-size: 10px;
+  font-size: 13px;
 }
 .inline-empty {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.6;
   color: var(--secondary);
 }
@@ -700,19 +706,20 @@ button:disabled:hover {
   margin-bottom: 11px;
 }
 .empty-state>p {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--secondary);
   margin-bottom: 22px;
 }
 .empty-state>.text-button {
   margin-top: 11px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .empty-privacy {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--tertiary);
   margin-top: 27px;
+  line-height: 1.5;
 }
 .button {
   display: inline-flex;
@@ -722,7 +729,7 @@ button:disabled:hover {
   border-radius: 7px;
   padding: 10px 14px;
   background: var(--hover);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   line-height: 1.4;
@@ -739,7 +746,7 @@ button:disabled:hover {
 }
 .button-small {
   padding: 7px 10px;
-  font-size: 10px;
+  font-size: 13px;
 }
 .button-danger {
   background: var(--danger);
@@ -758,7 +765,7 @@ button:disabled:hover {
   margin-bottom: 14px;
 }
 .filter-empty p {
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 7px;
 }
 .initial-loading {
@@ -796,7 +803,7 @@ button:disabled:hover {
 .initial-loading>p {
   text-align: center;
   color: var(--tertiary);
-  font-size: 10px;
+  font-size: 13px;
   margin: 22px 0;
 }
 .toast-message {
@@ -814,7 +821,7 @@ button:disabled:hover {
   box-shadow: 0 4px 24px #0003;
   border-radius: 8px;
   line-height: 1.5;
-  font-size: 10px;
+  font-size: 13px;
 }
 .toast-message>svg {
   flex-shrink: 0;
@@ -856,8 +863,8 @@ button:disabled:hover {
   flex-shrink: 0;
 }
 .settings-header h1 {
-  font-size: 16px;
-  font-weight: 550;
+  font-size: 19px;
+  font-weight: 600;
   letter-spacing: -.4px;
 }
 .back-button {
@@ -865,8 +872,9 @@ button:disabled:hover {
 }
 .settings-autosave {
   margin-left: auto;
-  font-size: 8px;
+  font-size: 13px;
   color: var(--tertiary);
+  white-space: nowrap;
 }
 .settings-tabs {
   display: flex;
@@ -884,7 +892,7 @@ button:disabled:hover {
   gap: 7px;
   padding: 7px;
   width: 50%;
-  font-size: 10px;
+  font-size: 14px;
   color: var(--secondary);
   border-radius: 5px;
 }
@@ -894,7 +902,7 @@ button:disabled:hover {
   box-shadow: 0 1px 3px #00000008;
 }
 .settings-tabs button span {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--tertiary);
 }
 .settings-content {
@@ -910,7 +918,7 @@ button:disabled:hover {
   padding-bottom: 23px;
 }
 .settings-section h2,.section-heading h2 {
-  font-size: 10px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: .05px;
   margin-bottom: 13px;
@@ -918,13 +926,13 @@ button:disabled:hover {
 }
 .theme-options {
   display: flex;
-  gap: 9px;
+  gap: 7px;
 }
 .theme-option {
   position: relative;
   width: 33.333%;
   border: 1px solid transparent;
-  padding: 8px 8px 9px;
+  padding: 8px 6px 9px;
   border-radius: 8px;
   background: var(--card);
 }
@@ -939,8 +947,8 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  font-size: 9px;
+  gap: 4px;
+  font-size: 13px;
   color: var(--secondary);
   margin-top: 8px;
 }
@@ -1003,15 +1011,15 @@ button:disabled:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 34px;
+  min-height: 38px;
   margin-top: 8px;
 }
 .setting-row label,.setting-label {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .setting-row p {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--tertiary);
   line-height: 1.5;
   margin-top: 3px;
@@ -1025,8 +1033,9 @@ button:disabled:hover {
   gap: 6px;
   margin-top: 13px;
   color: var(--tertiary);
-  font-size: 9px;
+  font-size: 13px;
   transition: opacity .18s;
+  flex-wrap: wrap;
 }
 .threshold-options>span:first-child {
   margin-right: 4px;
@@ -1044,7 +1053,7 @@ button:disabled:hover {
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: 5px 7px;
-  font-size: 9px;
+  font-size: 13px;
   background: var(--card);
   font-variant-numeric: tabular-nums;
   color: var(--secondary);
@@ -1060,11 +1069,11 @@ button:disabled:hover {
   align-items: center;
   gap: 5px;
   color: var(--tertiary);
-  font-size: 9px;
+  font-size: 13px;
 }
 .settings-footnote>span {
   margin-left: auto;
-  font-size: 8px;
+  font-size: 13px;
 }
 .section-heading {
   display: flex;
@@ -1076,15 +1085,15 @@ button:disabled:hover {
 .section-heading h2 {
   margin-bottom: 5px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
 }
 .section-heading p {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--tertiary);
   line-height: 1.5;
 }
 .discover-button {
-  font-size: 9px;
+  font-size: 13px;
   padding-top: 2px;
   gap: 4px;
 }
@@ -1105,7 +1114,7 @@ button:disabled:hover {
   flex: 1;
 }
 .managed-account-copy h3 {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 550;
   line-height: 1.4;
   white-space: nowrap;
@@ -1113,7 +1122,7 @@ button:disabled:hover {
   text-overflow: ellipsis;
 }
 .managed-account-copy p {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--tertiary);
   margin-top: 3px;
   white-space: nowrap;
@@ -1134,7 +1143,7 @@ button:disabled:hover {
   gap: 6px;
   margin-top: 12px;
   color: var(--tertiary);
-  font-size: 9px;
+  font-size: 13px;
   padding-left: 1px;
 }
 .account-path span {
@@ -1151,7 +1160,7 @@ button:disabled:hover {
   padding: 12px;
   border-radius: 8px;
   border: 1px dashed var(--track);
-  font-size: 10px;
+  font-size: 13px;
   color: var(--secondary);
   margin-top: 12px;
 }
@@ -1170,7 +1179,7 @@ button:disabled:hover {
   color: var(--accent);
 }
 .privacy-note>p {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.7;
 }
 .add-account-form {
@@ -1186,7 +1195,7 @@ button:disabled:hover {
   margin-bottom: 13px;
 }
 .form-heading h3 {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 550;
 }
 .form-heading>.icon-button {
@@ -1206,7 +1215,7 @@ button:disabled:hover {
   padding: 9px;
   background: var(--surface);
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 13px;
   border: 1px solid transparent;
   color: var(--secondary);
 }
@@ -1217,7 +1226,7 @@ button:disabled:hover {
 }
 .add-account-form>label {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--secondary);
   margin-bottom: 7px;
 }
@@ -1226,18 +1235,18 @@ input {
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: 9px 10px;
-  font-size: 11px;
+  font-size: 13px;
   min-width: 0;
 }
 input::placeholder {
   color: var(--tertiary);
-  opacity: .8;
+  opacity: 1;
 }
 .add-account-form>input {
   width: 100%;
 }
 .add-account-form>p {
-  font-size: 9px;
+  font-size: 13px;
   line-height: 1.6;
   margin-top: 7px;
   color: var(--tertiary);
@@ -1249,7 +1258,7 @@ input::placeholder {
   width: 100%;
   margin-top: 15px;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 13px;
   padding: 9px 11px;
 }
 .rename-form {
@@ -1260,7 +1269,7 @@ input::placeholder {
 }
 .rename-form>input {
   flex: 1;
-  font-size: 10px;
+  font-size: 13px;
   padding: 7px 9px;
   width: 100%;
 }
@@ -1277,11 +1286,11 @@ input::placeholder {
   margin-bottom: 13px;
 }
 .settings-empty p {
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 8px;
 }
 .settings-empty>span {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--tertiary);
   line-height: 1.7;
   display: block;
@@ -1322,7 +1331,7 @@ input::placeholder {
   overflow-wrap: anywhere;
 }
 .confirm-dialog p {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.7;
   margin-top: 10px;
   color: var(--secondary);
@@ -1346,7 +1355,7 @@ input::placeholder {
   margin-top: 24px;
 }
 .dialog-actions .button {
-  font-size: 10px;
+  font-size: 13px;
   padding: 9px 11px;
 }
 .desktop-gate {
@@ -1366,7 +1375,7 @@ input::placeholder {
   color: var(--accent);
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 13px;
   letter-spacing: 1.6px;
   font-weight: 550;
   color: var(--secondary);
@@ -1385,7 +1394,7 @@ input::placeholder {
   margin: 22px 0 26px;
 }
 .desktop-gate>.button {
-  font-size: 12px;
+  font-size: 13px;
   padding: 12px 18px;
 }
 .preview-link {
@@ -1393,7 +1402,7 @@ input::placeholder {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 13px;
   margin-top: 19px;
   color: var(--secondary);
 }
@@ -1408,7 +1417,7 @@ input::placeholder {
 }
 .gate-footnote {
   color: var(--tertiary);
-  font-size: 9px;
+  font-size: 13px;
   margin-top: 48px;
   line-height: 1.7;
 }
@@ -1427,7 +1436,7 @@ input::placeholder {
   padding: 10px 16px;
   background: var(--warning-soft);
   color: var(--warning);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
   flex-shrink: 0;
 }
@@ -1489,7 +1498,7 @@ input::placeholder {
     padding-right: 13px;
   }
   .quota-reset {
-    font-size: 8px;
+    font-size: 13px;
   }
   .quota-meta {
     gap: 6px;
@@ -1507,7 +1516,7 @@ input::placeholder {
     margin-right: 17px;
   }
   .settings-autosave {
-    font-size: 7px;
+    font-size: 13px;
   }
   .settings-footnote>span {
     display: none;

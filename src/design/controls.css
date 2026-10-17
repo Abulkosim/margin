@@ -5,15 +5,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 28px;
-  min-width: 107px;
+  min-height: 34px;
+  min-width: 153px;
+  flex-shrink: 0;
   max-width: 153px;
   padding: 6px 8px 6px 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: var(--card);
   color: var(--ink);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 450;
   line-height: 1.35;
   text-align: left;
@@ -97,11 +98,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 29px;
+  min-height: 34px;
   padding: 7px 27px 7px 9px;
   border-radius: 4px;
   outline: none;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 450;
   line-height: 1.4;
   cursor: default;
@@ -132,7 +133,7 @@
 }
 
 .app-select-description {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--secondary);
@@ -157,7 +158,7 @@
   background: var(--card);
   color: var(--ink);
   box-shadow: 0 5px 18px #0000001a;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 450;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -236,7 +237,7 @@
   background: var(--card);
   color: var(--ink);
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   caret-color: var(--accent-ink);
   transition: border-color .16s, background-color .16s, box-shadow .16s;

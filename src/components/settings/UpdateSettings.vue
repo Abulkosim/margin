@@ -53,9 +53,9 @@ function activate(): void {
 .update-heading { display: flex; align-items: center; gap: 9px; }
 .update-heading>div { display: flex; flex-direction: column; gap: 3px; }
 .update-mark { display: grid; place-items: center; width: 33px; height: 33px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; }
-.update-version { font-size: 9px; color: var(--tertiary); font-variant-numeric: tabular-nums; }
+.update-version { font-size: 13px; color: var(--tertiary); font-variant-numeric: tabular-nums; }
 .update-current { margin-left: auto; color: var(--accent); }
-.update-message { font-size: 11px; line-height: 1.5; margin: 12px 0; color: var(--secondary); overflow-wrap: anywhere; }
+.update-message { font-size: 14px; line-height: 1.5; margin: 12px 0; color: var(--secondary); overflow-wrap: anywhere; }
 .update-error { color: var(--danger); }
 .update-action { min-height: 30px; }
 .update-action[aria-disabled="true"] { opacity: .55; cursor: default; }

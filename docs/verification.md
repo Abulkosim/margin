@@ -2,6 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
+## Unreleased readability patch
+
+Verified on 2026-10-17 on macOS. Version remains 0.2.2; no release or tag was created.
+
+- Text now starts at 13px, main labels use 14px, and quota values use 21px. Reset times sit below their labels. Secondary text has stronger contrast in both themes; selects keep the default “Lowest remaining” value readable.
+- `pnpm build` passed, including type checking. All 68 existing Chromium/WebKit cases passed after the final CSS changes. `git diff --check` passed.
+- Light/dark overview, Settings, account lists, and open menus were visually inspected in WebKit at 420 × 660 CSS pixels, at both 1× and 2× scale. Five public sample screenshots were refreshed. Checked normal text/background token pairs meet 4.5:1 contrast; this is not a full accessibility audit.
+- `pnpm tauri build --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked` produced an optimized, ad-hoc-signed local Mac app. Automatic approval review blocked launching this local build pending action-time user confirmation. Native patch inspection remains pending; the existing installed release was reopened unchanged.
+- Only styles and screenshot documentation changed. Provider polling, native window geometry, updater behavior, and release assets are unchanged. Usage history has not been implemented.
+
 ## Current release: v0.2.2
 
 **[v0.2.2 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2).** Verified on 2026-10-16.
