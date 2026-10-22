@@ -65,7 +65,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **2.8 Absolute reset time shown** next to countdown ("Resets in 2h 14m · 4:30 PM"), always visible, dropped by container query below 250px. Pace line no longer repeats the reset time. Done 2026-10-22.
 - [x] **2.9 Native folder picker** for Add account (tauri dialog plugin). Ignore list so removed accounts don't return on "Find accounts".
   Done 2026-10-22: tauri-plugin-dialog 2.8.1 (`dialog:allow-open` only, invoked via the global bridge, no npm package), `ignoredSources` in the store, "Show them" restores. Real native picker not clicked yet; check at 2.11 smoke.
-- [ ] **2.10 Background update check daily**, small dot on Settings, opt-out.
+- [x] **2.10 Background update check daily**, small dot on Settings, opt-out. Done 2026-10-22: first check 2 min after launch, then every 24h (`lastUpdateCheckAt` persisted, re-check after wake), quiet failures, `autoCheckUpdates` default on, gear dot + "Settings, update available".
 - [ ] **2.11 Release v0.5.0.**
 
 ## Phase 3 — Trust and distribution (parallel with Phase 2; no release needed)
