@@ -4,7 +4,7 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current release: v0.5.0
 
-**[v0.5.0 is a verified draft](https://github.com/Abulkosim/margin/releases/tag/v0.5.0).** Verified on 2026-10-22 on macOS 26.6.2. Adds tray metric selection, a more legible tray ring, pace lines, model-limit chips, read-only reset grants, notifications on by default, absolute reset times, a native folder picker with an ignore list, daily update checks, and a compact overview with a popover that fits its content.
+**[v0.5.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.0).** Published 2026-10-22 16:19 UTC; verified on 2026-10-22 on macOS 26.6.2. Adds tray metric selection, a more legible tray ring, pace lines, model-limit chips, read-only reset grants, notifications on by default, absolute reset times, a native folder picker with an ignore list, daily update checks, and a compact overview with a popover that fits its content.
 
 - `pnpm typecheck`, 60 frontend unit tests, 160 Chromium/WebKit browser cases, 164 Rust tests, formatting, strict Clippy, and 14 release-script tests passed locally on `d34bf86`. `node scripts/check-release.mjs v0.5.0` passed. The tag `v0.5.0` points at `3cbb8dc`, which adds only a longer frontend job timeout.
 - Tray ring contrast is measured in a Rust test at 16/22/32 px on light and dark backgrounds; the minimum is 3.7:1 and the template image varies only in alpha. A contact sheet is in `docs/images/tray/`.
