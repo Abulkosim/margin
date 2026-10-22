@@ -557,6 +557,8 @@ mod tests {
             settings: Settings::default(),
             refreshing: false,
             notice: None,
+            recovery: false,
+            recovered: Vec::new(),
         };
         for kind in ["rateLimited", "credentialsChanged"] {
             state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
