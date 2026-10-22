@@ -244,6 +244,12 @@ button:disabled:hover {
   align-items: center;
   gap: 2px;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.account-filters::-webkit-scrollbar {
+  display: none;
 }
 .account-filters button {
   font-size: 13px;
@@ -254,6 +260,7 @@ button:disabled:hover {
   border-radius: 6px;
   padding: 4px 8px;
   white-space: nowrap;
+  flex-shrink: 0;
   color: var(--secondary);
 }
 .account-filters button span {
@@ -1565,6 +1572,13 @@ input::placeholder {
 @media(max-width:400px) {
   .wordmark span {
     display: none;
+  }
+  .app-header {
+    gap: 8px;
+  }
+  .account-filters button {
+    padding: 4px 6px;
+    gap: 4px;
   }
 }
 @media(max-width:350px) {
