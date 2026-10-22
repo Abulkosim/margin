@@ -71,7 +71,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 
 ## Phase 3 — Trust and distribution (parallel with Phase 2; no release needed)
 
-- [ ] **3.1 README rewrite.** Hero: one real Mac menu-bar screenshot + one Windows tray screenshot (owner VM 👤 for Windows; use existing preview until then). 3-bullet value statement, Install within first screen. "Why Margin" table vs CodexBar / Claude-Usage-Tracker / official indicators (macOS+Windows, multi-account, Claude+Codex, OAuth-only, idle updates, free/MIT). Badges: release, downloads, platforms. Move Develop/Preview to CONTRIBUTING.md.
+- [x] **3.1 README rewrite.** Hero: one real Mac menu-bar screenshot + one Windows tray screenshot (owner VM 👤 for Windows; use existing preview until then). 3-bullet value statement, Install within first screen. "Why Margin" table vs CodexBar / Claude-Usage-Tracker / official indicators (macOS+Windows, multi-account, Claude+Codex, OAuth-only, idle updates, free/MIT). Badges: release, downloads, platforms. Move Develop/Preview to CONTRIBUTING.md. Done 2026-10-22: hero, badges, comparison table, 112 lines. Real menu-bar + Windows screenshots still 👤.
 - [x] **3.2 Install docs for macOS 15/26.** Lead with Privacy & Security → Open Anyway (with screenshot); `xattr -d com.apple.quarantine /Applications/Margin.app` as fallback only. Windows: SmartScreen "More info → Run anyway"; note Smart App Control blocks unsigned apps entirely.
   Done 2026-10-22: `docs/install.md` + README Install; screenshots (Open Anyway, SmartScreen) still 👤, filenames listed in docs/install.md TODO.
 - [ ] **3.3 15s demo GIF** (tray → popover → countdown tick → history) from the real app, light theme. Also a 1280×640 social preview PNG; 👤 owner uploads it in repo settings.
