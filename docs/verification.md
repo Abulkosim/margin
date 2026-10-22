@@ -2,7 +2,21 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.3.0
+## Current release: v0.4.0
+
+**[v0.4.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.4.0).** Verified on 2026-10-22 on macOS 26.6.2. Adds Keychain-backed Claude accounts on macOS, a signed-out state, refresh after wake, calmer retry handling, settings recovery, and release provenance. The repository moved from `Abulkosim/usagebar` to `Abulkosim/margin` during this release.
+
+- `pnpm typecheck`, 36 frontend unit tests, 88 Chromium/WebKit browser cases, 115 Rust tests, formatting, and strict Clippy passed locally on `5eda609`.
+- Keychain suffix derivation (`sha256(CLAUDE_CONFIG_DIR)[..8]`) was confirmed against Claude Code CLI 2.1.308 and covered by unit tests. Discovery links Keychain items only to known config folders; the four suffixed items on this Mac belong to Claude Desktop session folders and were correctly ignored. A manual two-account sign-in check (`CLAUDE_CONFIG_DIR=~/.claude-work claude`) is still pending.
+- Tests cover expired tokens, 401 → signed out, hourly profile caching, wall-clock drift after sleep, transient errors keeping fresh readings live, per-account tolerant settings loading, timestamped backups, and the reset command. The macOS wake notification path is implemented but its manual sleep/wake check is still pending.
+- An optimized local Mac build read the Codex file and the Claude Keychain item, fetched both accounts within 8 seconds, and reported no errors.
+- [Main CI](https://github.com/Abulkosim/margin/actions/runs/39760737594) and [release CI](https://github.com/Abulkosim/margin/actions/runs/39762408473) passed for `5eda609`, including frontend/browser checks on Ubuntu 24.04, strict Rust checks, macOS universal packaging, and Windows x64 packaging. The frontend job is pinned to `ubuntu-24.04` because Playwright 1.60 does not support Ubuntu 26.04.
+- All eight listed checksums matched. `gh attestation verify --repo Abulkosim/margin` passed for the DMG, the Mac updater archive, the Windows installer, the MSI, `latest.json`, and `SHA256SUMS.txt`. The SPDX SBOM attestation passed for the DMG and installer. This is the first release with provenance and SBOM.
+- `latest.json` deliberately points download URLs at the old `Abulkosim/usagebar` slug, which GitHub redirects; v0.3.0 clients only trust that prefix. v0.4.0 trusts both slugs and is covered by a unit test. Switch the manifest to `Abulkosim/margin` once v0.4.0 is the oldest supported version.
+- The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and valid installation passed for x86_64 and arm64. GitHub release notes and updater notes match `changelogs/v0.4.0.md`; the public latest endpoint serves the checked manifest.
+- Pending: in-app update of the owner's installed v0.3.0 through **Check for updates** (manual, requires the tray UI), interactive Windows installation, and privileged macOS installation.
+
+## Previous release: v0.3.0
 
 **[v0.3.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.3.0).** Verified on 2026-10-17 on macOS 26.6.2. Adds local usage history and includes the readability patch below.
 

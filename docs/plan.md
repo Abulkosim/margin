@@ -37,7 +37,8 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Verify: e2e for both states.
 - [x] **1.6 Store recovery.** Per-account tolerant validation; "Back up and reset settings" button in the recovery state.
   Verify: unit test with one corrupt account keeps the others; e2e of recovery screen.
-- [ ] **1.7 Release v0.4.0** — changelog, screenshots, install on owner's Mac, update check passes.
+- [x] **1.7 Release v0.4.0** — changelog, screenshots, install on owner's Mac, update check passes.
+  Done 2026-10-22: published, provenance + SBOM + updater checks in `docs/verification.md`. In-app update of the owner's Mac from v0.3.0 pending 👤 (Settings → Check for updates).
 
 ## Phase 2 — Be more useful than the official indicators (v0.5.0) ⛳
 
