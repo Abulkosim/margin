@@ -112,6 +112,13 @@ test('spend-only accounts remain valid without inventing quota windows', () => {
   assert.equal(state.notice, null)
 })
 
+test('ignored sources default to empty and must be strings', () => {
+  const base = { revision: 0, accounts: [], settings: defaultSettings, refreshing: false }
+  assert.deepEqual(appStateSchema.parse(base).ignoredSources, [])
+  assert.deepEqual(appStateSchema.parse({ ...base, ignoredSources: ['codex:/example/.codex-old'] }).ignoredSources, ['codex:/example/.codex-old'])
+  assert.equal(appStateSchema.safeParse({ ...base, ignoredSources: [42] }).success, false)
+})
+
 test('keychain-backed Claude sources parse and describe where the token lives', () => {
   const claude = (source: unknown) => accountSchema.parse({ ...account, provider: 'claude', source })
   assert.equal(accountSource(claude({ kind: 'keychain' })), 'macOS Keychain')

@@ -27,6 +27,7 @@ pub struct AppState {
     pub notice: Option<String>,
     pub recovery: bool,
     pub recovered: Vec<String>,
+    pub ignored_sources: Vec<String>,
 }
 
 impl AppState {
@@ -76,6 +77,7 @@ impl Runtime {
                     notice: recovery_error.clone(),
                     recovery: recovery_error.is_some(),
                     recovered: saved.recovered.clone(),
+                    ignored_sources: saved.ignored_sources,
                 },
                 alerts: saved.alerts,
                 schedules: HashMap::new(),
@@ -115,6 +117,7 @@ impl Runtime {
             notice: None,
             recovery: false,
             recovered: Vec::new(),
+            ignored_sources: Vec::new(),
         };
         next.changed();
         store::reset(
@@ -151,6 +154,7 @@ impl Runtime {
                 accounts: view.accounts.clone(),
                 settings: view.settings.clone(),
                 alerts: alerts.clone(),
+                ignored_sources: view.ignored_sources.clone(),
                 ..StoredState::default()
             },
         )

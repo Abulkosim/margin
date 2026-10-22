@@ -13,13 +13,14 @@ import AppTooltip from './ui/AppTooltip.vue'
 
 const props = defineProps<{
   updateState: UpdateState; updateBusy: boolean; demo: boolean;
-  accounts: Account[]; recovered: string[]; settings: Settings; busy: boolean; initialTab: 'general' | 'accounts';
+  accounts: Account[]; recovered: string[]; hiddenCount: number; canChooseFolder: boolean; settings: Settings; busy: boolean; initialTab: 'general' | 'accounts';
   save: (settings: Settings) => Promise<boolean>;
   add: (provider: Provider, path: string) => Promise<boolean>;
   remove: (id: AccountId) => Promise<boolean>;
   rename: (id: AccountId, label: string) => Promise<boolean>;
+  chooseFolder: (provider: Provider) => Promise<string | null>;
 }>()
-defineEmits<{ back: []; discover: []; checkUpdate: []; installUpdate: [] }>()
+defineEmits<{ back: []; discover: []; showHidden: []; checkUpdate: []; installUpdate: [] }>()
 const tab = ref(props.initialTab)
 const adding = ref(false)
 const provider = ref<Provider>('claude')
@@ -34,6 +35,8 @@ const renameInput = ref<HTMLInputElement | null>(null)
 const addAccountButton = ref<HTMLButtonElement | null>(null)
 let removeTrigger: HTMLElement | null = null
 const formError = ref<string | null>(null)
+const choosing = ref(false)
+const hiddenNote = computed(() => props.hiddenCount === 1 ? '1 removed account hidden from Find accounts' : `${props.hiddenCount} removed accounts hidden from Find accounts`)
 const selectedMode = computed(() => props.settings.trayMode === 'pinned' ? props.settings.pinnedAccountId ?? 'lowest' : 'lowest')
 const trayOptions = computed(() => [
   { value: 'lowest', label: 'Lowest remaining' },
@@ -131,6 +134,21 @@ async function openAdd(): Promise<void> {
   pathInput.value?.focus()
 }
 
+async function pickFolder(): Promise<void> {
+  if (choosing.value) return
+  choosing.value = true
+  try {
+    const selected = await props.chooseFolder(provider.value)
+    if (selected) {
+      path.value = selected
+      formError.value = null
+    }
+  } finally {
+    choosing.value = false
+    pathInput.value?.focus()
+  }
+}
+
 async function submitAccount(): Promise<void> {
   const cleanPath = path.value.trim()
   if (!cleanPath) { formError.value = 'Enter the account’s config folder.'; return }
@@ -217,6 +235,7 @@ async function confirmRemove(): Promise<void> {
 
       <TabsContent value="accounts" class="settings-content accounts-settings">
         <div class="section-heading"><div><h2>Your accounts</h2><p>From your CLI logins.</p></div><button class="text-button discover-button" :disabled="busy" @click="$emit('discover')"><AppIcon name="refresh" :size="13"/>Find accounts</button></div>
+        <p v-if="hiddenCount" class="hidden-note">{{ hiddenNote }} · <button class="text-button" type="button" :disabled="busy" @click="$emit('showHidden')">Show them</button></p>
         <div v-if="!accounts.length" class="settings-empty"><AppIcon name="folder" :size="28"/><p>No accounts connected.</p><span>Find a signed-in Claude or Codex account, or add a config folder below.</span></div>
         <article v-for="account in accounts" :key="account.id" class="managed-account">
           <div class="managed-account-heading"><span class="provider-mark small" :class="account.provider"><AppIcon :name="account.provider" :size="17"/></span><div class="managed-account-copy"><h3>{{ account.label }}</h3><p>{{ account.identity.email ?? providerName(account.provider) }}</p></div><AppTooltip text="Rename account"><button class="icon-button" :aria-label="`Rename ${account.label}`" :disabled="busy" @click="startRename(account)"><AppIcon name="edit" :size="14"/></button></AppTooltip><AppTooltip text="Remove account"><button class="icon-button remove-button" :aria-label="`Remove ${account.label}`" :disabled="busy" @click="openRemove(account, $event)"><AppIcon name="trash" :size="14"/></button></AppTooltip></div>
@@ -224,7 +243,7 @@ async function confirmRemove(): Promise<void> {
           <AppTooltip :text="accountSource(account)"><div class="account-path" tabindex="0"><AppIcon name="folder" :size="12"/><span>{{ accountSource(account) }}</span></div></AppTooltip>
         </article>
         <button v-if="!adding" ref="addAccountButton" class="add-account-button" :disabled="busy" @click="openAdd"><AppIcon name="plus" :size="16"/>Add account</button>
-        <form v-else class="add-account-form" @submit.prevent="submitAccount"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="adding = false"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="provider === 'claude' ? '~/.claude-work' : '~/.codex-work'" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><p id="path-help">The folder containing {{ provider === 'claude' ? '.credentials.json' : 'auth.json' }}. Sign in with the CLI first.</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
+        <form v-else class="add-account-form" @submit.prevent="submitAccount"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="adding = false"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><div class="path-field"><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="provider === 'claude' ? '~/.claude-work' : '~/.codex-work'" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><button v-if="canChooseFolder" class="button button-small" type="button" :disabled="busy || choosing" @click="pickFolder"><AppIcon name="folder" :size="13"/>Choose folder…</button></div><p id="path-help">The folder containing {{ provider === 'claude' ? '.credentials.json' : 'auth.json' }}. Sign in with the CLI first.</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
         <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Margin reads your CLI credentials without changing them.</p></div>
       </TabsContent>
     </TabsRoot>
@@ -242,3 +261,33 @@ async function confirmRemove(): Promise<void> {
     </AlertDialogPortal>
   </AlertDialogRoot>
 </template>
+
+<style scoped>
+.hidden-note {
+  margin: -9px 0 15px;
+  font-size: 12px;
+  color: var(--tertiary);
+}
+.hidden-note>.text-button {
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 0;
+  color: var(--secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hidden-note>.text-button:hover {
+  color: var(--ink);
+}
+.path-field {
+  display: flex;
+  gap: 6px;
+}
+.path-field>input {
+  flex: 1;
+}
+.path-field>.button {
+  gap: 6px;
+  flex-shrink: 0;
+}
+</style>

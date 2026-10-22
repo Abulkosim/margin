@@ -20,6 +20,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(tray::Visibility::default())
         .manage(updates::Updates::default())
@@ -31,6 +32,7 @@ pub fn run() {
             commands::discover_accounts,
             commands::add_account,
             commands::remove_account,
+            commands::restore_ignored_accounts,
             commands::rename_account,
             commands::save_settings,
             commands::reset_store,

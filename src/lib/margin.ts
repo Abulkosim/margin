@@ -11,13 +11,13 @@ declare global {
   }
 }
 
-type Command = 'refresh_accounts' | 'discover_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store'
+type Command = 'refresh_accounts' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store'
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
   const demo = query.get('demo') === '1'
   const desktop = typeof window.__TAURI__?.core.invoke === 'function'
-  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [] })
+  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [] })
   const loading = ref(desktop && !demo)
   const connectionError = ref<string | null>(null)
   const pending = ref<Command | null>(null)
@@ -123,6 +123,26 @@ export function useMargin() {
     })) notify(demo ? 'Sample accounts found.' : 'Account discovery complete.')
   }
 
+  async function restoreIgnored(): Promise<void> {
+    if (await perform('restore_ignored_accounts', undefined, () => { state.value.ignoredSources = [] }))
+      notify(demo ? 'Hidden accounts shown in preview.' : 'Account discovery complete.')
+  }
+
+  async function chooseFolder(provider: Provider): Promise<string | null> {
+    if (demo) return provider === 'claude' ? '~/.claude-work' : '~/.codex-work'
+    try {
+      const tauri = window.__TAURI__
+      if (!tauri) throw new Error('Desktop connection unavailable')
+      const selected = await tauri.core.invoke('plugin:dialog|open', {
+        options: { directory: true, multiple: false, title: `Choose the ${provider === 'claude' ? 'Claude' : 'Codex'} config folder` },
+      })
+      return typeof selected === 'string' && selected ? selected : null
+    } catch {
+      notify('Could not open the folder picker. Type the folder path instead.', 'error')
+      return null
+    }
+  }
+
   async function addAccount(provider: Provider, path: string): Promise<boolean> {
     const added = await perform('add_account', { provider, path }, () => {
       state.value.accounts.push(accountSchema.parse({
@@ -139,6 +159,8 @@ export function useMargin() {
 
   async function removeAccount(id: AccountId): Promise<boolean> {
     const removed = await perform('remove_account', { id }, () => {
+      const account = state.value.accounts.find(account => account.id === id)
+      if (account) state.value.ignoredSources = [...state.value.ignoredSources, `${account.provider}:${account.source.kind === 'configDir' ? account.source.path : 'keychain'}`]
       state.value.accounts = state.value.accounts.filter(account => account.id !== id)
       if (state.value.settings.pinnedAccountId === id) state.value.settings = {
         ...state.value.settings,
@@ -197,5 +219,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow }
 }

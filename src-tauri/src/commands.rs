@@ -53,11 +53,18 @@ pub async fn discover_accounts(
 }
 
 pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, String> {
-    let existing = runtime.inner.lock().await.view.accounts.clone();
+    let (existing, ignored) = {
+        let inner = runtime.inner.lock().await;
+        (
+            inner.view.accounts.clone(),
+            inner.view.ignored_sources.clone(),
+        )
+    };
     let starting_ids: Vec<String> = existing.iter().map(|account| account.id.clone()).collect();
-    let discovered = tauri::async_runtime::spawn_blocking(move || accounts::discover(&existing))
-        .await
-        .map_err(|_| "Account discovery could not finish.")?;
+    let discovered =
+        tauri::async_runtime::spawn_blocking(move || accounts::discover(&existing, &ignored))
+            .await
+            .map_err(|_| "Account discovery could not finish.")?;
     runtime
         .change(app, move |state| {
             for account in discovered {
@@ -105,6 +112,7 @@ pub async fn add_account(
             .map_err(|_| "Could not inspect that folder.")??;
     runtime
         .change(&app, move |state| {
+            accounts::unignore_source(&mut state.ignored_sources, &account);
             if accounts::link_keychain_item(&mut state.accounts, &account) {
                 return Ok(());
             }
@@ -131,9 +139,12 @@ pub async fn remove_account(
 ) -> Result<AppState, String> {
     runtime
         .change(&app, move |state| {
-            if !state.accounts.iter().any(|account| account.id == id) {
-                return Err("Account no longer exists.".into());
-            }
+            let removed = state
+                .accounts
+                .iter()
+                .find(|account| account.id == id)
+                .ok_or("Account no longer exists.")?;
+            accounts::ignore_source(&mut state.ignored_sources, removed);
             state.accounts.retain(|account| account.id != id);
             if state.settings.pinned_account_id.as_deref() == Some(id.as_str()) {
                 state.settings.pinned_account_id =
@@ -142,6 +153,20 @@ pub async fn remove_account(
             Ok(())
         })
         .await
+}
+
+#[tauri::command]
+pub async fn restore_ignored_accounts(
+    app: AppHandle,
+    runtime: State<'_, Arc<Runtime>>,
+) -> Result<AppState, String> {
+    runtime
+        .change(&app, |state| {
+            state.ignored_sources.clear();
+            Ok(())
+        })
+        .await?;
+    discover(&app, &runtime).await
 }
 
 #[tauri::command]

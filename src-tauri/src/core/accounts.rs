@@ -4,7 +4,9 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-pub fn discover(existing: &[Account]) -> Vec<Account> {
+pub const MAX_IGNORED_SOURCES: usize = 200;
+
+pub fn discover(existing: &[Account], ignored: &[String]) -> Vec<Account> {
     let mut accounts = existing.to_vec();
     let mut candidates = Vec::new();
     if let Some(home) = dirs::home_dir() {
@@ -50,9 +52,10 @@ pub fn discover(existing: &[Account]) -> Vec<Account> {
         }
     }
     let keychain = keychain_suffixes();
-    merge_candidates(&mut accounts, candidates, &keychain);
+    merge_candidates(&mut accounts, candidates, &keychain, ignored);
     #[cfg(target_os = "macos")]
     if !has_default_claude_account(&accounts)
+        && !ignored.iter().any(|key| key == "claude:keychain")
         && !accounts.iter().any(|account| {
             account.provider == Provider::Claude && account.source == AccountSource::Keychain
         })
@@ -195,12 +198,28 @@ pub fn link_keychain_item(accounts: &mut [Account], folder: &Account) -> bool {
     true
 }
 
+pub fn ignore_source(ignored: &mut Vec<String>, account: &Account) {
+    let key = source_key(account);
+    ignored.retain(|existing| existing != &key);
+    ignored.push(key);
+    if ignored.len() > MAX_IGNORED_SOURCES {
+        ignored.drain(..ignored.len() - MAX_IGNORED_SOURCES);
+    }
+}
+
+pub fn unignore_source(ignored: &mut Vec<String>, account: &Account) {
+    let key = source_key(account);
+    ignored.retain(|existing| existing != &key);
+}
+
 fn merge_candidates(
     accounts: &mut Vec<Account>,
     candidates: Vec<(Provider, PathBuf)>,
     keychain: &[String],
+    ignored: &[String],
 ) {
     let mut known: HashSet<String> = accounts.iter().map(source_key).collect();
+    let ignored: HashSet<&str> = ignored.iter().map(String::as_str).collect();
     for (provider, path) in candidates {
         let Some(path) = path.to_str() else { continue };
         let keychain = if provider == Provider::Claude {
@@ -209,7 +228,11 @@ fn merge_candidates(
             &[]
         };
         if let Ok(account) = add_config_dir_with(provider, path, keychain) {
-            if known.insert(source_key(&account)) {
+            let key = source_key(&account);
+            if ignored.contains(key.as_str()) {
+                continue;
+            }
+            if known.insert(key) {
                 accounts.push(account);
             } else {
                 link_keychain_item(accounts, &account);
@@ -350,6 +373,7 @@ mod tests {
                 (Provider::Codex, dir.0.join(".")),
             ],
             &[],
+            &[],
         );
         assert_eq!(accounts, vec![account]);
     }
@@ -441,8 +465,8 @@ mod tests {
             (Provider::Claude, linked_dir.0.clone()),
             (Provider::Claude, plain_dir.0.clone()),
         ];
-        merge_candidates(&mut accounts, candidates.clone(), &suffixes);
-        merge_candidates(&mut accounts, candidates, &suffixes);
+        merge_candidates(&mut accounts, candidates.clone(), &suffixes, &[]);
+        merge_candidates(&mut accounts, candidates, &suffixes, &[]);
         assert_eq!(accounts.len(), 2);
         assert_eq!(accounts[0].id, id);
         assert_eq!(accounts[0].label, "Studio");
@@ -476,6 +500,42 @@ mod tests {
         assert_eq!(accounts[0].id, id);
         assert_eq!(accounts[0].source, folder.source);
         assert!(!link_keychain_item(&mut accounts, &folder));
+    }
+
+    #[test]
+    fn discovery_skips_ignored_sources_until_added_explicitly() {
+        let dir = TestDir::new();
+        std::fs::write(dir.0.join("auth.json"), "{}").unwrap();
+        let removed = add_config_dir(Provider::Codex, dir.0.to_str().unwrap()).unwrap();
+        let mut ignored = vec![];
+        ignore_source(&mut ignored, &removed);
+        ignore_source(&mut ignored, &removed);
+        assert_eq!(ignored.len(), 1);
+        let candidates = vec![
+            (Provider::Codex, dir.0.clone()),
+            (Provider::Codex, dir.0.join(".")),
+        ];
+        let mut accounts = vec![];
+        merge_candidates(&mut accounts, candidates.clone(), &[], &ignored);
+        assert!(accounts.is_empty());
+        let added = add_config_dir(Provider::Codex, &format!("{}/", dir.0.display())).unwrap();
+        unignore_source(&mut ignored, &added);
+        assert!(ignored.is_empty());
+        merge_candidates(&mut accounts, candidates, &[], &ignored);
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].id, removed.id);
+    }
+
+    #[test]
+    fn ignore_list_keeps_the_most_recent_sources() {
+        let mut ignored: Vec<String> = (0..MAX_IGNORED_SOURCES)
+            .map(|n| format!("codex:/{n}"))
+            .collect();
+        let account = new_account(Provider::Claude, AccountSource::Keychain, "Claude".into());
+        ignore_source(&mut ignored, &account);
+        assert_eq!(ignored.len(), MAX_IGNORED_SOURCES);
+        assert_eq!(ignored.first().map(String::as_str), Some("codex:/1"));
+        assert_eq!(ignored.last().map(String::as_str), Some("claude:keychain"));
     }
 
     #[test]

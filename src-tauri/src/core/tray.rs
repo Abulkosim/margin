@@ -608,6 +608,7 @@ mod tests {
             notice: None,
             recovery: false,
             recovered: Vec::new(),
+            ignored_sources: Vec::new(),
         };
         assert_eq!(selected(&state).unwrap().id, "a");
         state.accounts[0].error = Some(UsageError::new("network", "Offline"));
@@ -629,6 +630,7 @@ mod tests {
             notice: None,
             recovery: false,
             recovered: Vec::new(),
+            ignored_sources: Vec::new(),
         };
         for kind in ["rateLimited", "credentialsChanged"] {
             state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
@@ -776,6 +778,7 @@ mod tests {
             notice: None,
             recovery: false,
             recovered: Vec::new(),
+            ignored_sources: Vec::new(),
         };
         assert_eq!(selected(&state).unwrap().id, "b");
         state.settings.tray_metric = TrayMetric::All;

@@ -16,6 +16,7 @@ use std::{
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ACCOUNTS: usize = 100;
 const MAX_WINDOWS: usize = 64;
+use super::accounts::MAX_IGNORED_SOURCES;
 
 #[derive(Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,8 @@ pub struct StoredState {
     pub settings: Settings,
     #[serde(default)]
     pub alerts: AlertMemory,
+    #[serde(default)]
+    pub ignored_sources: Vec<String>,
     #[serde(skip)]
     pub recovered: Vec<String>,
 }
@@ -219,11 +222,37 @@ fn decode(value: Value) -> Result<StoredState, String> {
     if dropped_alerts {
         recovered.push("Some alert history couldn’t be read and was cleared.".into());
     }
+    let mut ignored_sources: Vec<String> = Vec::new();
+    let mut dropped_ignored = false;
+    match root.remove("ignoredSources") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(items)) => {
+            for item in items {
+                match item {
+                    Value::String(key)
+                        if valid_ignored_source(&key) && !ignored_sources.contains(&key) =>
+                    {
+                        ignored_sources.push(key)
+                    }
+                    _ => dropped_ignored = true,
+                }
+            }
+            if ignored_sources.len() > MAX_IGNORED_SOURCES {
+                ignored_sources.drain(..ignored_sources.len() - MAX_IGNORED_SOURCES);
+            }
+        }
+        Some(_) => dropped_ignored = true,
+    }
+    if dropped_ignored {
+        recovered
+            .push("Some removed accounts couldn’t be read and may return on Find accounts.".into());
+    }
     Ok(StoredState {
         version: 1,
         accounts,
         settings,
         alerts,
+        ignored_sources,
         recovered,
     })
 }
@@ -241,7 +270,14 @@ fn validate(state: &StoredState) -> Result<(), String> {
         return Err(newer_store());
     }
     state.settings.validate()?;
-    if state.accounts.len() > MAX_ACCOUNTS || state.alerts.len() > MAX_ACCOUNTS * MAX_WINDOWS {
+    if state.accounts.len() > MAX_ACCOUNTS
+        || state.alerts.len() > MAX_ACCOUNTS * MAX_WINDOWS
+        || state.ignored_sources.len() > MAX_IGNORED_SOURCES
+        || !state
+            .ignored_sources
+            .iter()
+            .all(|key| valid_ignored_source(key))
+    {
         return Err(invalid_store());
     }
     let mut ids = HashSet::new();
@@ -371,6 +407,13 @@ fn valid_id(value: &str) -> bool {
 
 fn valid_text(value: &str, maximum: usize) -> bool {
     !value.trim().is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
+}
+
+fn valid_ignored_source(value: &str) -> bool {
+    valid_text(value, 8192)
+        && value.split_once(':').is_some_and(|(provider, rest)| {
+            matches!(provider, "claude" | "codex") && !rest.is_empty()
+        })
 }
 
 fn valid_timestamp(value: &str) -> bool {
@@ -619,6 +662,49 @@ mod tests {
             loaded.recovered,
             vec!["Refresh interval was reset to its default."]
         );
+    }
+
+    #[test]
+    fn ignored_sources_default_to_empty_and_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut value = serde_json::to_value(sample_state()).unwrap();
+        value.as_object_mut().unwrap().remove("ignoredSources");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let mut loaded = load(&path).unwrap();
+        assert!(loaded.ignored_sources.is_empty());
+        assert!(loaded.recovered.is_empty());
+        loaded.ignored_sources = vec!["codex:/tmp/.codex-old".into(), "claude:keychain".into()];
+        save(&path, &loaded).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(
+            loaded.ignored_sources,
+            vec!["codex:/tmp/.codex-old", "claude:keychain"]
+        );
+        assert!(loaded.recovered.is_empty());
+    }
+
+    #[test]
+    fn garbage_ignored_sources_recover_to_empty_with_a_note() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let note = "Some removed accounts couldn’t be read and may return on Find accounts.";
+        for garbage in [
+            serde_json::json!("codex:/tmp"),
+            serde_json::json!({"codex": true}),
+            serde_json::json!([42, "", "unknown:/tmp", "codex:", "codex:/a\u{7}"]),
+        ] {
+            let mut value = serde_json::to_value(sample_state()).unwrap();
+            value["ignoredSources"] = garbage;
+            fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            let loaded = load(&path).unwrap();
+            assert_eq!(loaded.accounts.len(), 1);
+            assert!(loaded.ignored_sources.is_empty());
+            assert_eq!(loaded.recovered, vec![note]);
+        }
+        let mut state = sample_state();
+        state.ignored_sources = vec!["nope".into()];
+        assert!(save(&path, &state).is_err());
     }
 
     #[test]

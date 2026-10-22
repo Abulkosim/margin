@@ -3,7 +3,7 @@ import { createDemoState } from '../../src/lib/demo.ts'
 import { accountSchema, type AppState } from '../../src/lib/model.ts'
 
 declare global {
-  interface Window { __CONTROL_TEST__?: { rejectPending: () => void; saved: unknown[] } }
+  interface Window { __CONTROL_TEST__?: { rejectPending: () => void; saved: unknown[]; commands: { command: string; args?: Record<string, unknown> }[] } }
 }
 
 async function installDesktopBridge(page: Page, options: { state: AppState; failure: 'none' | 'save' | 'remove' }): Promise<void> {
@@ -11,17 +11,25 @@ async function installDesktopBridge(page: Page, options: { state: AppState; fail
     let settings: unknown = state.settings
     let accounts = state.accounts
     let revision = state.revision
+    let ignoredSources = state.ignoredSources
     const listeners = new Map<string, (event: { payload: unknown }) => void>()
     let rejectPending: (() => void) | undefined
     const saved: unknown[] = []
-    window.__CONTROL_TEST__ = { rejectPending: () => { rejectPending?.(); rejectPending = undefined }, saved }
+    const commands: { command: string; args?: Record<string, unknown> }[] = []
+    window.__CONTROL_TEST__ = { rejectPending: () => { rejectPending?.(); rejectPending = undefined }, saved, commands }
     function fail(message: string): Promise<never> {
       return new Promise((_resolve, reject) => { rejectPending = () => reject(new Error(message)) })
     }
     window.__TAURI__ = {
       core: {
         async invoke(command, args) {
-          if (command === 'get_state') return { ...state, revision, settings, accounts }
+          if (command !== 'get_state' && command !== 'get_popover_placement') commands.push({ command, args })
+          if (command === 'get_state') return { ...state, revision, settings, accounts, ignoredSources }
+          if (command === 'plugin:dialog|open') return '/Users/alex/.claude-work'
+          if (command === 'restore_ignored_accounts') {
+            ignoredSources = []
+            revision++
+          }
           if (command === 'get_popover_placement') return { revision: 0, arrowX: null }
           if (command === 'save_settings') {
             if (failure === 'save') return fail('Could not save settings. Try again.')
@@ -302,6 +310,60 @@ test('failed removal keeps the confirmation and the account', async ({ page }) =
   await dialog.getByRole('button', { name: 'Keep account', exact: true }).click()
   await expect(trigger).toBeFocused()
   await expect(page.getByRole('heading', { name: 'Personal', exact: true })).toBeVisible()
+})
+
+test('hidden removed accounts can be shown again', async ({ page }) => {
+  await installDesktopBridge(page, { state: createDemoState('hidden'), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  await page.getByRole('tab', { name: /^Accounts/ }).click()
+  const note = page.getByText('2 removed accounts hidden from Find accounts', { exact: false })
+  await expect(note).toBeVisible()
+  await page.getByRole('button', { name: 'Show them', exact: true }).click()
+  await expect(note).toHaveCount(0)
+  const commands = await page.evaluate(() => window.__CONTROL_TEST__?.commands.map(entry => entry.command) ?? [])
+  expect(commands.filter(command => !['get_update_status', 'get_account_history'].includes(command))).toEqual(['restore_ignored_accounts'])
+})
+
+test('no hidden note without removed accounts', async ({ page }) => {
+  await page.goto('/?demo=1')
+  await openSettings(page)
+  await page.getByRole('tab', { name: /^Accounts/ }).click()
+  await expect(page.getByRole('heading', { name: 'Your accounts', exact: true })).toBeVisible()
+  await expect(page.getByText(/hidden from Find accounts/)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Remove Personal', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove account', exact: true }).click()
+  await expect(page.getByText('1 removed account hidden from Find accounts', { exact: false })).toBeVisible()
+})
+
+test('folder picker fills the path and typing still works', async ({ page }) => {
+  await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  await page.getByRole('tab', { name: /^Accounts/ }).click()
+  await page.getByRole('button', { name: 'Add account', exact: true }).click()
+  const input = page.getByLabel('Config folder', { exact: true })
+  await input.fill('~/.claude-typed')
+  await expect(input).toHaveValue('~/.claude-typed')
+  await page.getByRole('button', { name: 'Choose folder…', exact: true }).click()
+  await expect(input).toHaveValue('/Users/alex/.claude-work')
+  await expect(input).toBeFocused()
+  await page.getByRole('button', { name: 'Connect account', exact: true }).click()
+  const commands = await page.evaluate(() => window.__CONTROL_TEST__?.commands ?? [])
+  expect(commands.filter(entry => !['get_update_status', 'get_account_history'].includes(entry.command))).toEqual([
+    { command: 'plugin:dialog|open', args: { options: { directory: true, multiple: false, title: 'Choose the Claude config folder' } } },
+    { command: 'add_account', args: { provider: 'claude', path: '/Users/alex/.claude-work' } },
+  ])
+})
+
+test('folder picker fills a sample path in the preview', async ({ page }) => {
+  await page.goto('/?demo=1')
+  await openSettings(page)
+  await page.getByRole('tab', { name: /^Accounts/ }).click()
+  await page.getByRole('button', { name: 'Add account', exact: true }).click()
+  await page.getByRole('button', { name: 'Codex', exact: true }).click()
+  await page.getByRole('button', { name: 'Choose folder…', exact: true }).click()
+  await expect(page.getByLabel('Config folder', { exact: true })).toHaveValue('~/.codex-work')
 })
 
 test('failed saves keep the previously saved select and switch values', async ({ page }) => {
