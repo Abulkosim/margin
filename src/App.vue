@@ -11,7 +11,7 @@ import { useMargin } from './lib/margin'
 import { useUpdater } from './lib/updater'
 import type { Account, Provider } from './lib/model'
 
-const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, hideWindow } = useMargin()
+const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow } = useMargin()
 const updater = useUpdater({ demo, desktop })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
@@ -147,7 +147,8 @@ onUnmounted(() => {
     <div v-else class="app-shell" :class="{ 'is-preview': demo }">
       <div v-if="demo || nativeArrowX !== null" class="popover-arrow" :style="demo ? undefined : nativeArrowStyle" aria-hidden="true"/>
       <div class="popover">
-        <div v-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
+        <div v-if="state.recovery" class="notice-banner recovery-banner" role="alert"><AppIcon name="alert" :size="13"/><div><p>Settings file couldn’t be read. Reset keeps a backup next to it.</p><p v-if="state.notice" class="recovery-detail">{{ state.notice }}</p><button class="button button-small" :disabled="busy" @click="resetStore">Back up and reset settings</button></div></div>
+        <div v-else-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
         <template v-if="page === 'overview'">
           <header class="app-header"><div class="wordmark"><AppIcon name="margin" :size="20"/><span>margin</span></div><div class="header-actions"><AppTooltip :text="refreshing ? 'Checking usage' : `Refresh usage (${isWindows ? 'Ctrl+R' : '⌘R'})`"><button class="icon-button refresh-button" :class="{ pulsing: refreshing }" aria-label="Refresh usage" :disabled="busy || refreshing" @click="refresh"><AppIcon name="refresh" :size="16"/></button></AppTooltip><AppTooltip :text="`Settings (${isWindows ? 'Ctrl+,' : '⌘,'})`"><button class="icon-button" aria-label="Open settings" @click="openSettings()"><AppIcon name="settings" :size="18"/></button></AppTooltip></div></header>
           <div class="overview-heading"><div><h1>Usage remaining</h1><p>{{ state.accounts.length ? `${state.accounts.length} ${state.accounts.length === 1 ? 'account' : 'accounts'}` : 'Claude and Codex' }}</p></div><span v-if="state.accounts.length" class="overview-symbol" aria-hidden="true"><span/><span/><span/></span></div>
@@ -162,7 +163,7 @@ onUnmounted(() => {
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/>{{ status }}</span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
-        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover"/>
+        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
         <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
       </div>

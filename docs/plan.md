@@ -35,7 +35,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Verify: unit test on drift logic; manual sleep/wake on Mac, tray updates within 10s. Done 2026-10-22 (NSWorkspaceDidWake + wall-clock drift; Windows drift only). Manual sleep/wake check pending 👤.
 - [x] **1.5 Rate-limited / credentials-changed are not "attention" states** until data is actually older than 2× interval. Keep subtle "retrying" text.
   Verify: e2e for both states.
-- [ ] **1.6 Store recovery.** Per-account tolerant validation; "Back up and reset settings" button in the recovery state.
+- [x] **1.6 Store recovery.** Per-account tolerant validation; "Back up and reset settings" button in the recovery state.
   Verify: unit test with one corrupt account keeps the others; e2e of recovery screen.
 - [ ] **1.7 Release v0.4.0** — changelog, screenshots, install on owner's Mac, update check passes.
 

@@ -134,3 +134,21 @@ test('small displays retain navigation without horizontal overflow', async ({ pa
   await expect(page.getByRole('button', { name: 'Add account', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
+
+test('unreadable settings offer a backed-up reset', async ({ page }, info) => {
+  await page.goto('/?demo=1&state=recovery')
+  const banner = page.getByRole('alert').filter({ hasText: 'Settings file couldn’t be read. Reset keeps a backup next to it.' })
+  await expect(banner).toBeVisible()
+  await expect(banner.getByText(/state\.json/)).toBeVisible()
+  await info.attach('recovery', { body: await page.screenshot(), contentType: 'image/png' })
+  await banner.getByRole('button', { name: 'Back up and reset settings' }).click()
+  await expect(banner).toHaveCount(0)
+  await expect(page.getByRole('article')).toHaveCount(3)
+  await expect(page.getByText('Settings reset. The old file was kept as a backup.')).toBeVisible()
+})
+
+test('skipped accounts are noted in settings', async ({ page }) => {
+  await page.goto('/?demo=1&state=recovered')
+  await page.getByRole('button', { name: 'Open settings' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Skipped account “Old work” because its saved data couldn’t be read. A backup is kept next to the settings file.' })).toBeVisible()
+})

@@ -11,13 +11,13 @@ declare global {
   }
 }
 
-type Command = 'refresh_accounts' | 'discover_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings'
+type Command = 'refresh_accounts' | 'discover_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store'
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
   const demo = query.get('demo') === '1'
   const desktop = typeof window.__TAURI__?.core.invoke === 'function'
-  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null })
+  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [] })
   const loading = ref(desktop && !demo)
   const connectionError = ref<string | null>(null)
   const pending = ref<Command | null>(null)
@@ -159,6 +159,14 @@ export function useMargin() {
     return perform('save_settings', { settings }, () => { state.value.settings = settings })
   }
 
+  async function resetStore(): Promise<boolean> {
+    const reset = await perform('reset_store', undefined, () => {
+      state.value = { ...createDemoState(null), revision: state.value.revision, settings: { ...defaultSettings, theme: state.value.settings.theme } }
+    })
+    if (reset) notify('Settings reset. The old file was kept as a backup.')
+    return reset
+  }
+
   async function hideWindow(): Promise<void> {
     if (!desktop || demo) return
     try {
@@ -189,5 +197,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, hideWindow }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow }
 }

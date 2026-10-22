@@ -231,3 +231,20 @@ test('refresh during startup shares one native subscription and cleans it up', a
   harness.close()
   assert.equal(harness.unlistened, 1)
 })
+
+test('reset invokes the native command and leaves recovery', async t => {
+  let payload: unknown = { ...createDemoState('recovery') }
+  const calls: string[] = []
+  const harness = await mountMargin({ invoke: async command => {
+    calls.push(command)
+    if (command === 'reset_store') payload = { ...createDemoState(null), revision: 1 }
+    return command === 'get_state' ? payload : undefined
+  } })
+  t.after(() => harness.close())
+  assert.equal(harness.controller.state.value.recovery, true)
+  assert.equal(await harness.controller.resetStore(), true)
+  assert.ok(calls.includes('reset_store'))
+  assert.equal(harness.controller.state.value.recovery, false)
+  assert.equal(harness.controller.state.value.accounts.length, 3)
+  assert.match(harness.controller.message.value?.text ?? '', /backup/)
+})

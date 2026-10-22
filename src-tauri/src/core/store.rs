@@ -233,8 +233,7 @@ fn newer_store() -> String {
 }
 
 fn invalid_store() -> String {
-    "Margin's settings file is damaged or unsupported. Preserve it before restoring a backup."
-        .into()
+    "Margin's settings file is damaged or unsupported.".into()
 }
 
 fn validate(state: &StoredState) -> Result<(), String> {

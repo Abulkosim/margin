@@ -55,6 +55,8 @@ export const appStateSchema = z.object({
   settings: settingsSchema,
   refreshing: z.boolean(),
   notice: z.string().nullable().default(null),
+  recovery: z.boolean().default(false),
+  recovered: z.array(z.string()).default([]),
 })
 
 export type Provider = z.infer<typeof providerSchema>

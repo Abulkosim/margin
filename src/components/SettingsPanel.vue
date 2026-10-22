@@ -13,7 +13,7 @@ import AppTooltip from './ui/AppTooltip.vue'
 
 const props = defineProps<{
   updateState: UpdateState; updateBusy: boolean; demo: boolean;
-  accounts: Account[]; settings: Settings; busy: boolean; initialTab: 'general' | 'accounts';
+  accounts: Account[]; recovered: string[]; settings: Settings; busy: boolean; initialTab: 'general' | 'accounts';
   save: (settings: Settings) => Promise<boolean>;
   add: (provider: Provider, path: string) => Promise<boolean>;
   remove: (id: AccountId) => Promise<boolean>;
@@ -165,6 +165,7 @@ async function confirmRemove(): Promise<void> {
       </TabsList>
 
       <TabsContent value="general" class="settings-content">
+        <p v-if="recovered.length" class="recovered-note" role="status"><AppIcon name="alert" :size="13"/><span>{{ recovered.join(' ') }} A backup is kept next to the settings file.</span></p>
         <section class="settings-section">
           <h2>Appearance</h2>
           <div class="theme-options"><button v-for="theme in themes" :key="theme.id" class="theme-option" :class="{ selected: settings.theme === theme.id }" :aria-pressed="settings.theme === theme.id" :disabled="busy" @click="patchSettings({ theme: theme.id })"><span class="theme-thumbnail" :class="`thumbnail-${theme.id}`"><span/><span/><span/></span><span><AppIcon :name="theme.icon" :size="13"/>{{ theme.label }}</span><span v-if="settings.theme === theme.id" class="theme-check"><AppIcon name="check" :size="10"/></span></button></div>

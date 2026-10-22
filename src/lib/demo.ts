@@ -89,5 +89,11 @@ export function createDemoState(scenario: string | null): AppState {
       }
     })
   }
+  if (scenario === 'recovery') {
+    state.accounts = []
+    state.recovery = true
+    state.notice = 'Margin’s settings file is damaged or unsupported. Settings file: ~/Library/Application Support/com.abulkosim.margin/state.json.'
+  }
+  if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']
   return state
 }

@@ -1464,6 +1464,34 @@ input::placeholder {
 .notice-banner>span {
   overflow-wrap: anywhere;
 }
+.recovery-banner>div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.recovery-detail {
+  color: var(--secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.recovery-banner .button {
+  margin-top: 4px;
+}
+.recovered-note {
+  display: flex;
+  gap: 8px;
+  padding: 0 3px 16px;
+  color: var(--tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.recovered-note>svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--warning);
+}
 @media(max-width:480px) {
   .preview-stage {
     padding: 0;
