@@ -61,7 +61,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Done 2026-10-22: on by default (existing stores keep their value), threshold chips 50/80/90/95/100, reset alert opt-in (only after a usage alert in the period), ±60s jitter, first-seen alert once, click opens popover via `on_action`. Plugin 2.7.0 never prompts on desktop so "denied" cannot occur. Manual Mac notification check at 2.11 smoke 👤.
 - [ ] **2.7 Compact overview mode.** Settings toggle: one row per account (name · session % · weekly % · next reset), history/extra behind expand. Popover height adapts to content.
   Verify: e2e screenshots 1 and 5 accounts, light+dark.
-- [ ] **2.8 Absolute reset time shown** next to countdown on hover/expand ("in 2h 14m · 16:30").
+- [x] **2.8 Absolute reset time shown** next to countdown ("Resets in 2h 14m · 4:30 PM"), always visible, dropped by container query below 250px. Pace line no longer repeats the reset time. Done 2026-10-22.
 - [x] **2.9 Native folder picker** for Add account (tauri dialog plugin). Ignore list so removed accounts don't return on "Find accounts".
   Done 2026-10-22: tauri-plugin-dialog 2.8.1 (`dialog:allow-open` only, invoked via the global bridge, no npm package), `ignoredSources` in the store, "Show them" restores. Real native picker not clicked yet; check at 2.11 smoke.
 - [ ] **2.10 Background update check daily**, small dot on Settings, opt-out.

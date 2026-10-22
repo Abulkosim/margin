@@ -58,7 +58,7 @@ export function paceText(pace: Pace, now: number): string | null {
   if (pace.kind === 'hidden') return null
   if (pace.kind === 'on-pace') return 'On pace'
   const step = 5 * 60_000
-  return `Runs out ~${clockTime(new Date(Math.round(pace.at.getTime() / step) * step), now)} · resets ${clockTime(pace.resetsAt, now)}`
+  return `Runs out ~${clockTime(new Date(Math.round(pace.at.getTime() / step) * step), now)}`
 }
 
 export function relativeAge(timestamp: string, now: number): string {
