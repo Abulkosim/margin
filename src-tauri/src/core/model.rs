@@ -112,6 +112,10 @@ pub struct UsageError {
     pub kind: String,
     pub message: String,
     pub retry_after_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_out_since: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_in_command: Option<String>,
 }
 
 impl UsageError {
@@ -120,6 +124,8 @@ impl UsageError {
             kind: kind.to_owned(),
             message: message.to_owned(),
             retry_after_seconds: None,
+            signed_out_since: None,
+            sign_in_command: None,
         }
     }
 }

@@ -43,6 +43,8 @@ export const accountSchema = z.object({
     kind: z.string(),
     message: z.string(),
     retryAfterSeconds: z.number().nonnegative().nullable(),
+    signedOutSince: z.string().datetime({ offset: true }).optional(),
+    signInCommand: z.string().optional(),
   }).nullable(),
   refreshing: z.boolean(),
 })

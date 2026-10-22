@@ -8,6 +8,8 @@ Observed cases covered by regression tests:
 - Claude returned session, weekly, and scoped weekly windows. The scoped row had no model ID, so its display name supplies the stable identity. Null extra-usage measurements remain absent.
 - Claude profile returned email under `account.email` and the plan hint under `organization.rate_limit_tier`. An explicit subscription type retains precedence.
 
+`claude-credentials-expired.json` is a constructed CLI credential file whose `expiresAt` (ms epoch) is in the past; it must never reach the network.
+
 The other fixtures are constructed examples covering additional documented shapes. All parser tests run without network or real credentials. Live verification did not refresh credentials, overwrite CLI files, or redeem reset credits.
 
 Schema references:

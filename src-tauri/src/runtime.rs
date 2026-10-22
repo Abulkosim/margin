@@ -39,6 +39,7 @@ pub struct RuntimeState {
 pub struct Runtime {
     pub inner: Mutex<RuntimeState>,
     pub client: reqwest::Client,
+    pub profiles: providers::claude::ProfileCache,
     pub wake: Notify,
     pub first_run: bool,
     store_path: PathBuf,
@@ -75,6 +76,7 @@ impl Runtime {
                 history: HistoryStore::new(store_path.with_file_name("history")),
             }),
             client: providers::http_client().map_err(|error| error.message)?,
+            profiles: Default::default(),
             wake: Notify::new(),
             first_run: first_run && recovery_error.is_none(),
             store_path,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown, signedOutMessage } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -92,4 +92,18 @@ test('keychain-backed Claude sources parse and describe where the token lives', 
   assert.throws(() => claude({ kind: 'keychainItem', suffix: '52eda417' }))
   assert.equal(accountSource(claude({ kind: 'configDir', path: '/example/.claude-work', keychainSuffix: 'dd1118a7' })), '/example/.claude-work · Keychain')
   assert.equal(accountSource(account), '/example/.codex-work')
+})
+
+test('signed-out copy names the tool and the account folder', () => {
+  const claude = accountSchema.parse({
+    ...account, provider: 'claude', source: { kind: 'configDir', path: '/example/.claude-work' },
+    error: { kind: 'signedOut', message: 'Claude is signed out.', retryAfterSeconds: null, signedOutSince: '2026-10-16T08:00:00Z', signInCommand: 'CLAUDE_CONFIG_DIR=/example/.claude-work claude' },
+  })
+  assert.equal(signedOutMessage(claude, now), 'Signed out 2h ago · run claude in /example/.claude-work')
+  const keychain = accountSchema.parse({ ...claude, source: { kind: 'keychain' } })
+  assert.equal(signedOutMessage(keychain, now), 'Signed out 2h ago · run claude')
+  const codex = accountSchema.parse({ ...account, error: { kind: 'signedOut', message: 'Codex is signed out.', retryAfterSeconds: null, signInCommand: 'CODEX_HOME=/example/.codex-work codex login' } })
+  assert.equal(signedOutMessage(codex, now), 'Signed out · run codex login in /example/.codex-work')
+  assert.equal(signedOutMessage(account, now), null)
+  assert.equal(signedOutMessage(accountSchema.parse({ ...account, error: { kind: 'auth', message: 'Denied', retryAfterSeconds: null } }), now), null)
 })

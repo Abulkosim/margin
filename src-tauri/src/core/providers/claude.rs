@@ -1,6 +1,6 @@
 use super::{
     credentials_changed, http_error, malformed_credentials, malformed_response, nonempty_string,
-    now, percent, read_credentials, request_error, response_json, timestamp, token,
+    now, percent, read_credentials, request_error, response_json, signed_out, timestamp, token,
 };
 use crate::core::model::{
     valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, Snapshot,
@@ -9,27 +9,96 @@ use crate::core::model::{
 use reqwest::StatusCode;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
-const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
+const API_BASE_URL: &str = "https://api.anthropic.com";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
+const PROFILE_TTL: Duration = Duration::from_secs(3600);
+const EXPIRY_SKEW_MS: i64 = 60_000;
 
 struct Credentials {
     access_token: String,
     plan: Option<String>,
+    expires_at: Option<i64>,
+}
+
+#[derive(Default)]
+pub struct ProfileCache(Mutex<HashMap<String, CachedProfile>>);
+
+struct CachedProfile {
+    token: [u8; 32],
+    identity: Identity,
+    fetched: Instant,
+}
+
+impl ProfileCache {
+    fn fresh(&self, account: &str, token: &[u8; 32]) -> Option<Identity> {
+        let cache = self.0.lock().ok()?;
+        cache
+            .get(account)
+            .filter(|entry| &entry.token == token && entry.fetched.elapsed() < PROFILE_TTL)
+            .map(|entry| entry.identity.clone())
+    }
+
+    fn last(&self, account: &str) -> Option<Identity> {
+        let cache = self.0.lock().ok()?;
+        cache.get(account).map(|entry| entry.identity.clone())
+    }
+
+    fn store(&self, account: &str, token: [u8; 32], identity: Identity) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.insert(
+                account.to_owned(),
+                CachedProfile {
+                    token,
+                    identity,
+                    fetched: Instant::now(),
+                },
+            );
+        }
+    }
 }
 
 pub(super) async fn fetch(
     client: &reqwest::Client,
     account: &Account,
+    profiles: &ProfileCache,
+) -> Result<(Snapshot, Identity), UsageError> {
+    fetch_from(client, account, profiles, API_BASE_URL).await
+}
+
+async fn fetch_from(
+    client: &reqwest::Client,
+    account: &Account,
+    profiles: &ProfileCache,
+    base_url: &str,
 ) -> Result<(Snapshot, Identity), UsageError> {
     let credentials = load_credentials(&account.source).await?;
-    let mut response = usage_request(client, &credentials.access_token, true).await?;
+    if let Some(expires_at) = credentials
+        .expires_at
+        .filter(|expires_at| *expires_at <= chrono::Utc::now().timestamp_millis() + EXPIRY_SKEW_MS)
+    {
+        let since = chrono::DateTime::from_timestamp_millis(expires_at)
+            .map(|since| since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+        return Err(signed_out(
+            Provider::Claude,
+            sign_in_directory(&account.source),
+            since,
+        ));
+    }
+    let mut response = usage_request(client, base_url, &credentials.access_token, true).await?;
     if needs_query_fallback(response.status()) {
-        response = usage_request(client, &credentials.access_token, false).await?;
+        response = usage_request(client, base_url, &credentials.access_token, false).await?;
+    }
+    if response.status() == StatusCode::UNAUTHORIZED {
+        return Err(signed_out(
+            Provider::Claude,
+            sign_in_directory(&account.source),
+            None,
+        ));
     }
     if !response.status().is_success() {
         return Err(http_error(
@@ -39,33 +108,53 @@ pub(super) async fn fetch(
         ));
     }
     let snapshot = parse_usage(&response_json(response).await?)?;
-    let mut identity = Identity {
-        email: None,
-        plan: credentials.plan.clone(),
-        history_key: None,
+    let token_hash: [u8; 32] = Sha256::digest(credentials.access_token.as_bytes()).into();
+    let profile = match profiles.fresh(&account.id, &token_hash) {
+        Some(profile) => profile,
+        None => match profile_request(client, base_url, &credentials.access_token).await {
+            Some(profile) => {
+                profiles.store(&account.id, token_hash, profile.clone());
+                profile
+            }
+            None => profiles
+                .last(&account.id)
+                .unwrap_or_else(|| account.identity.clone()),
+        },
     };
-    let profile = client
-        .get(PROFILE_URL)
-        .bearer_auth(&credentials.access_token)
+    let identity = Identity {
+        email: profile.email,
+        plan: profile.plan.or(credentials.plan.clone()),
+        history_key: profile.history_key,
+    };
+    let current = load_credentials(&account.source).await?;
+    ensure_same_credentials(&credentials, &current)?;
+    Ok((snapshot, identity))
+}
+
+async fn profile_request(
+    client: &reqwest::Client,
+    base_url: &str,
+    access_token: &str,
+) -> Option<Identity> {
+    let response = client
+        .get(format!("{base_url}/api/oauth/profile"))
+        .bearer_auth(access_token)
         .header("anthropic-beta", "oauth-2025-04-20")
         .header("Accept", "application/json")
         .header("Cache-Control", "no-store")
         .timeout(Duration::from_secs(3))
         .send()
-        .await;
-    if let Ok(response) = profile {
-        if response.status().is_success() {
-            if let Ok(value) = response_json(response).await {
-                let profile = parse_profile(&value);
-                identity.email = profile.email;
-                identity.plan = profile.plan.or(identity.plan);
-                identity.history_key = profile.history_key;
-            }
-        }
+        .await
+        .ok()
+        .filter(|response| response.status().is_success())?;
+    Some(parse_profile(&response_json(response).await.ok()?))
+}
+
+fn sign_in_directory(source: &AccountSource) -> Option<&Path> {
+    match source {
+        AccountSource::ConfigDir { path, .. } => Some(Path::new(path)),
+        AccountSource::Keychain => None,
     }
-    let current = load_credentials(&account.source).await?;
-    ensure_same_credentials(&credentials, &current)?;
-    Ok((snapshot, identity))
 }
 
 fn ensure_same_credentials(
@@ -80,11 +169,12 @@ fn ensure_same_credentials(
 
 async fn usage_request(
     client: &reqwest::Client,
+    base_url: &str,
     access_token: &str,
     include_query: bool,
 ) -> Result<reqwest::Response, UsageError> {
     let mut request = client
-        .get(USAGE_URL)
+        .get(format!("{base_url}/api/oauth/usage"))
         .bearer_auth(access_token)
         .header("anthropic-beta", "oauth-2025-04-20")
         .header("Accept", "application/json")
@@ -198,18 +288,13 @@ fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
     Ok(Credentials {
         access_token: token(oauth.get("accessToken"))?,
         plan: plan.map(normalize_plan),
+        expires_at: oauth.get("expiresAt").and_then(Value::as_i64),
     })
 }
 
 #[cfg(target_os = "macos")]
 fn is_default_directory(path: &Path) -> bool {
-    let Some(home) = dirs::home_dir() else {
-        return false;
-    };
-    let Ok(default) = std::fs::canonicalize(home.join(".claude")) else {
-        return false;
-    };
-    std::fs::canonicalize(path).is_ok_and(|path| path == default)
+    super::is_home_directory(path, ".claude")
 }
 
 async fn read_keychain(service: String) -> Result<Credentials, UsageError> {
@@ -655,10 +740,12 @@ mod tests {
         let before = Credentials {
             access_token: "synthetic-before".into(),
             plan: Some("Pro".into()),
+            expires_at: None,
         };
         let after = Credentials {
             access_token: "synthetic-after".into(),
             plan: Some("Pro".into()),
+            expires_at: None,
         };
         assert_eq!(
             ensure_same_credentials(&before, &after).unwrap_err().kind,
@@ -701,6 +788,147 @@ attributes:
     "svce"<blob>=<NULL>
 "#;
         assert_eq!(parse_keychain_suffixes(dump), vec!["52eda417", "ac386099"]);
+    }
+
+    fn config_account(directory: &Path) -> Account {
+        Account {
+            id: "fixture-claude".into(),
+            provider: Provider::Claude,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: directory.to_string_lossy().into_owned(),
+                keychain_suffix: None,
+            },
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        }
+    }
+
+    fn write_token(directory: &Path, token: &str) {
+        let expires_at = chrono::Utc::now().timestamp_millis() + 3_600_000;
+        std::fs::write(
+            directory.join(".credentials.json"),
+            format!(r#"{{"claudeAiOauth":{{"accessToken":"{token}","expiresAt":{expires_at},"scopes":["user:profile"]}}}}"#),
+        )
+        .unwrap();
+    }
+
+    async fn profile_calls(server: &wiremock::MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.url.path() == "/api/oauth/profile")
+            .count()
+    }
+
+    #[tokio::test]
+    async fn expired_credentials_never_reach_the_network() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::any())
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(".credentials.json"),
+            include_str!("../../../fixtures/claude-credentials-expired.json"),
+        )
+        .unwrap();
+        let error = fetch_from(
+            &reqwest::Client::new(),
+            &config_account(directory.path()),
+            &ProfileCache::default(),
+            &server.uri(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, "signedOut");
+        assert_eq!(
+            error.signed_out_since.as_deref(),
+            Some("2025-10-16T10:00:00Z")
+        );
+        let command = error.sign_in_command.unwrap();
+        assert!(
+            command.starts_with("CLAUDE_CONFIG_DIR=")
+                || command.starts_with("$env:CLAUDE_CONFIG_DIR=")
+        );
+        assert_eq!(
+            command,
+            super::super::sign_in_command(Provider::Claude, Some(directory.path()))
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_is_requested_once_per_token_and_survives_failures() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::path("/api/oauth/usage"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(include_str!("../../../fixtures/claude-all-windows.json")),
+            )
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::path("/api/oauth/profile"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(include_str!(
+                    "../../../fixtures/claude-profile-live-schema.json"
+                )),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::path("/api/oauth/profile"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        let account = config_account(directory.path());
+        let client = reqwest::Client::new();
+        let profiles = ProfileCache::default();
+        write_token(directory.path(), "synthetic-one");
+        for _ in 0..5 {
+            let (_, identity) = fetch_from(&client, &account, &profiles, &server.uri())
+                .await
+                .unwrap();
+            assert_eq!(identity.email.as_deref(), Some("person@example.test"));
+        }
+        assert_eq!(profile_calls(&server).await, 1);
+        write_token(directory.path(), "synthetic-two");
+        let (_, identity) = fetch_from(&client, &account, &profiles, &server.uri())
+            .await
+            .unwrap();
+        assert_eq!(profile_calls(&server).await, 2);
+        assert_eq!(identity.email.as_deref(), Some("person@example.test"));
+        assert_eq!(identity.plan.as_deref(), Some("Pro"));
+    }
+
+    #[tokio::test]
+    async fn rejected_token_reads_as_signed_out() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::path("/api/oauth/usage"))
+            .respond_with(wiremock::ResponseTemplate::new(401))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        write_token(directory.path(), "synthetic-revoked");
+        let error = fetch_from(
+            &reqwest::Client::new(),
+            &config_account(directory.path()),
+            &ProfileCache::default(),
+            &server.uri(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, "signedOut");
+        assert!(error.signed_out_since.is_none());
+        assert!(error.sign_in_command.is_some());
     }
 
     #[test]

@@ -59,11 +59,10 @@ pub fn load(path: &Path) -> Result<StoredState, String> {
     for account in &mut state.accounts {
         account.refreshing = false;
         if account.snapshot.is_some() {
-            account.error = Some(super::model::UsageError {
-                kind: "stale".into(),
-                message: "Last saved reading. Waiting for a fresh update.".into(),
-                retry_after_seconds: None,
-            });
+            account.error = Some(super::model::UsageError::new(
+                "stale",
+                "Last saved reading. Waiting for a fresh update.",
+            ));
         }
     }
     Ok(state)
@@ -152,7 +151,17 @@ fn validate(state: &StoredState) -> Result<(), String> {
             validate_snapshot(snapshot)?;
         }
         if let Some(error) = &account.error {
-            if !valid_text(&error.kind, 128) || !valid_text(&error.message, 4096) {
+            if !valid_text(&error.kind, 128)
+                || !valid_text(&error.message, 4096)
+                || error
+                    .signed_out_since
+                    .as_deref()
+                    .is_some_and(|since| !valid_timestamp(since))
+                || error
+                    .sign_in_command
+                    .as_deref()
+                    .is_some_and(|command| !valid_text(command, 8192))
+            {
                 return Err(invalid_store());
             }
         }

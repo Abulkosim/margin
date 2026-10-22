@@ -27,9 +27,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **1.1 Per-config-dir Keychain accounts (mac).** Find how Claude Code derives the `-<hash>` suffix (inspect CLI bundle in `~/.cursor/extensions/anthropic.claude-code-*/` or npm package; likely a short sha256 of the config dir path). Read those items; allow adding a custom `CLAUDE_CONFIG_DIR` on mac that has no `.credentials.json`. Also enumerate existing suffixed items in discovery and show them as "Claude (Keychain · <hash>)" until a profile call gives the email.
   Verify: unit test for hash derivation against a known pair; on this Mac discovery shows >1 Claude account with distinct emails (manual run of the app, screenshot).
   Done 2026-10-22: suffix = sha256(CLAUDE_CONFIG_DIR string)[..8], confirmed from CLI 2.1.308. Suffixed items on this Mac are Claude Desktop Cowork session dirs, so discovery links items to known folders instead of enumerating. Manual 2-account check pending (needs `CLAUDE_CONFIG_DIR=~/.claude-work claude` sign-in) 👤.
-- [ ] **1.2 Local `expiresAt` check for Claude.** Skip the request when expired; show "Signed out since <time> · run `claude` in <dir>" with a copy button for the command. Keep last snapshot visible with age.
+- [x] **1.2 Local `expiresAt` check for Claude.** Skip the request when expired; show "Signed out since <time> · run `claude` in <dir>" with a copy button for the command. Keep last snapshot visible with age.
   Verify: fixture test; e2e state renders.
-- [ ] **1.3 Cache the Claude profile call** (per account, 1h or on token change). Halves requests, fewer 429s.
+- [x] **1.3 Cache the Claude profile call** (per account, 1h or on token change). Halves requests, fewer 429s.
   Verify: wiremock test asserts one profile call across N polls.
 - [ ] **1.4 Re-poll on wake / network return.** macOS `NSWorkspaceDidWake`, Windows `WM_POWERBROADCAST`, plus a wall-clock drift check in the poller (if `now - last_tick > 2×interval`, refresh).
   Verify: unit test on drift logic; manual sleep/wake on Mac, tray updates within 10s.

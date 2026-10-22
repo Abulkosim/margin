@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevron' | 'check' | 'close' | 'pin' | 'claude' | 'codex' | 'folder' | 'edit' | 'trash' | 'alert' | 'sun' | 'moon' | 'system' | 'external'; size?: number }>()
+defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevron' | 'check' | 'copy' | 'close' | 'pin' | 'claude' | 'codex' | 'folder' | 'edit' | 'trash' | 'alert' | 'sun' | 'moon' | 'system' | 'external'; size?: number }>()
 </script>
 
 <template>
@@ -11,6 +11,7 @@ defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevr
     <path v-else-if="name === 'back'" d="m14 6-6 6 6 6M8 12h12"/>
     <path v-else-if="name === 'chevron'" d="m8 10 4 4 4-4"/>
     <path v-else-if="name === 'check'" d="m5 12 4 4L19 6"/>
+    <template v-else-if="name === 'copy'"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></template>
     <path v-else-if="name === 'close'" d="m6 6 12 12M6 18 18 6"/>
     <path v-else-if="name === 'pin'" d="m16 3 5 5-4 1-4 5-1 4-6-6 4-1 5-4zM8 16l-5 5"/>
     <g v-else-if="name === 'claude'" stroke-width="1.8"><path d="m12 3 .2 18M3 12l18-.3M5.8 5.7l12.4 12.5M5.6 18.1 18.4 5.7M8.6 3.8l6.8 16.4M3.8 15.4l16.4-6.8M3.7 8.6l16.6 6.8M8.6 20.3l6.8-16.6"/></g>

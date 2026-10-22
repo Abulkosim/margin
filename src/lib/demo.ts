@@ -53,5 +53,20 @@ export function createDemoState(scenario: string | null): AppState {
       error: { kind: 'unauthorized', message: 'Your Claude session has expired. Run claude auth login, then refresh.', retryAfterSeconds: null },
     } : account)
   }
+  if (scenario === 'signed-out') {
+    state.accounts = state.accounts.map((account, index) => {
+      if (index === 0) return {
+        ...account,
+        snapshot: account.snapshot && { ...account.snapshot, fetchedAt: new Date(now - 2 * 3_600_000).toISOString() },
+        error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signedOutSince: new Date(now - 2 * 3_600_000).toISOString(), signInCommand: 'claude' },
+      }
+      if (index === 1) return {
+        ...account,
+        snapshot: null,
+        error: { kind: 'signedOut', message: 'Codex is signed out. Run CODEX_HOME=~/.codex-work codex login, then refresh.', retryAfterSeconds: null, signInCommand: 'CODEX_HOME=~/.codex-work codex login' },
+      }
+      return account
+    })
+  }
   return state
 }

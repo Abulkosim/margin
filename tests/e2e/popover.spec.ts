@@ -46,6 +46,25 @@ test('expired credentials preserve a labeled last-known reading', async ({ page 
   await expect(account.getByRole('progressbar', { name: 'Session remaining, last known', exact: true })).toHaveAttribute('aria-valuetext', '72 percent remaining, last known')
 })
 
+test('signed-out accounts keep the last reading and offer the sign-in command', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as unknown as { copied: string }).copied = text } } })
+  })
+  await page.goto('/?demo=1&state=signed-out')
+  const claude = page.getByRole('article', { name: 'Personal, Claude' })
+  await expect(claude.getByText('Last known', { exact: true })).toBeVisible()
+  await expect(claude.getByText('Signed out 2h ago · run claude in ~/.claude')).toBeVisible()
+  await expect(claude.getByRole('progressbar', { name: 'Session remaining, last known', exact: true })).toHaveAttribute('aria-valuenow', '72')
+  await claude.getByRole('button', { name: 'Copy command: claude', exact: true }).click()
+  await expect(claude.getByRole('button', { name: 'Command copied' })).toBeVisible()
+  expect(await page.evaluate(() => (window as unknown as { copied: string }).copied)).toBe('claude')
+  const codex = page.getByRole('article', { name: 'Work, Codex' })
+  await expect(codex.getByText('Signed out · run codex login in ~/.codex-work')).toBeVisible()
+  await expect(codex.locator('[role="progressbar"]')).toHaveCount(0)
+  await expect(codex.getByRole('button', { name: 'Copy command: CODEX_HOME=~/.codex-work codex login', exact: true })).toBeVisible()
+  await expect(codex.getByRole('button', { name: /Try again/ })).toBeVisible()
+})
+
 test('account without a reading shows no invented percentage', async ({ page }) => {
   await page.goto('/?demo=1&state=error')
   const account = page.getByRole('article', { name: 'Personal, Claude' })

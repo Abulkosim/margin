@@ -624,6 +624,13 @@ button:disabled:hover {
 .account-error .text-button {
   font-size: 13px;
 }
+.account-error-actions {
+  display: flex;
+  gap: 18px;
+}
+.sign-in-copy {
+  margin: 4px 0 0 19px;
+}
 .inline-empty {
   font-size: 13px;
   line-height: 1.6;

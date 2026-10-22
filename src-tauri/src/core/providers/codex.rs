@@ -1,7 +1,7 @@
 use super::{
     credentials_changed, http_error, malformed_credentials, malformed_response, nonempty_string,
-    now, percent, read_credentials, read_private_file, request_error, response_json, timestamp,
-    token,
+    now, percent, read_credentials, read_private_file, request_error, response_json, signed_out,
+    timestamp, token,
 };
 use crate::core::model::{
     Account, AccountSource, Identity, Provider, Snapshot, UsageError, UsageWindow,
@@ -49,6 +49,9 @@ pub(super) async fn fetch(
         request = request.header("ChatGPT-Account-Id", header);
     }
     let response = request.send().await.map_err(request_error)?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(signed_out(Provider::Codex, Some(directory), None));
+    }
     if !response.status().is_success() {
         return Err(http_error(
             Provider::Codex,

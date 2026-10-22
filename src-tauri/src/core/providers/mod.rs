@@ -37,9 +37,10 @@ pub fn http_client() -> Result<reqwest::Client, UsageError> {
 pub async fn fetch(
     client: &reqwest::Client,
     account: &Account,
+    profiles: &claude::ProfileCache,
 ) -> Result<(Snapshot, Identity), UsageError> {
     match account.provider {
-        Provider::Claude => claude::fetch(client, account).await,
+        Provider::Claude => claude::fetch(client, account, profiles).await,
         Provider::Codex => codex::fetch(client, account).await,
     }
 }
@@ -146,6 +147,53 @@ async fn response_json(mut response: reqwest::Response) -> Result<Value, UsageEr
     serde_json::from_slice(&bytes).map_err(|_| malformed_response())
 }
 
+fn signed_out(provider: Provider, directory: Option<&Path>, since: Option<String>) -> UsageError {
+    let command = sign_in_command(provider, directory);
+    let message = format!(
+        "{} is signed out. Run {command}, then refresh.",
+        provider.name()
+    );
+    UsageError {
+        signed_out_since: since,
+        sign_in_command: Some(command),
+        ..UsageError::new("signedOut", &message)
+    }
+}
+
+fn sign_in_command(provider: Provider, directory: Option<&Path>) -> String {
+    let (variable, program, default) = match provider {
+        Provider::Claude => ("CLAUDE_CONFIG_DIR", "claude", ".claude"),
+        Provider::Codex => ("CODEX_HOME", "codex login", ".codex"),
+    };
+    let Some(directory) = directory.filter(|directory| !is_home_directory(directory, default))
+    else {
+        return program.into();
+    };
+    let path = directory.to_string_lossy();
+    if cfg!(windows) {
+        format!("$env:{variable}='{}'; {program}", path.replace('\'', "''"))
+    } else if path
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"/._-+@%:,".contains(&byte))
+    {
+        format!("{variable}={path} {program}")
+    } else {
+        format!("{variable}='{}' {program}", path.replace('\'', "'\\''"))
+    }
+}
+
+fn is_home_directory(path: &Path, name: &str) -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    let default = home.join(name);
+    path == default
+        || std::fs::canonicalize(path)
+            .ok()
+            .zip(std::fs::canonicalize(&default).ok())
+            .is_some_and(|(path, default)| path == default)
+}
+
 fn request_error(error: reqwest::Error) -> UsageError {
     if error.is_timeout() {
         UsageError::new(
@@ -176,9 +224,8 @@ fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderM
             Provider::Codex => "Codex usage access was denied. Check this account's sign-in and subscription.",
         }),
         429 => UsageError {
-            kind: "rateLimited".into(),
-            message: "The provider asked us to wait. Retrying automatically.".into(),
             retry_after_seconds: retry_after(headers, Utc::now()),
+            ..UsageError::new("rateLimited", "The provider asked us to wait. Retrying automatically.")
         },
         300..=399 => UsageError::new("redirect", "The provider redirected the request. Credentials were not forwarded."),
         500..=599 => UsageError::new("provider", "The provider is temporarily unavailable. Retrying automatically."),
@@ -328,6 +375,41 @@ mod tests {
             "redirect"
         );
         assert!(!error.message.contains("Bearer"));
+    }
+
+    #[test]
+    fn sign_in_commands_target_the_account_folder() {
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(sign_in_command(Provider::Claude, None), "claude");
+        assert_eq!(
+            sign_in_command(Provider::Claude, Some(&home.join(".claude"))),
+            "claude"
+        );
+        assert_eq!(
+            sign_in_command(Provider::Codex, Some(&home.join(".codex"))),
+            "codex login"
+        );
+        let error = signed_out(
+            Provider::Codex,
+            Some(Path::new("/example/.codex-work")),
+            None,
+        );
+        assert_eq!(error.kind, "signedOut");
+        if cfg!(windows) {
+            assert_eq!(
+                error.sign_in_command.as_deref(),
+                Some("$env:CODEX_HOME='/example/.codex-work'; codex login")
+            );
+        } else {
+            assert_eq!(
+                error.sign_in_command.as_deref(),
+                Some("CODEX_HOME=/example/.codex-work codex login")
+            );
+            assert_eq!(
+                sign_in_command(Provider::Claude, Some(Path::new("/example/My Claude's"))),
+                "CLAUDE_CONFIG_DIR='/example/My Claude'\\''s' claude"
+            );
+        }
     }
 
     #[test]

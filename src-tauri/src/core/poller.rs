@@ -36,10 +36,13 @@ impl Schedule {
 }
 
 pub fn retry_delay(interval: u64, failures: u32, error: &UsageError) -> Duration {
+    if error.kind == "signedOut" && error.signed_out_since.is_some() {
+        return Duration::from_secs(interval);
+    }
     let backoff = interval
         .saturating_mul(1_u64 << failures.saturating_sub(1).min(6))
         .min(3600);
-    let minimum = if error.kind == "auth" || error.kind == "credentials" {
+    let minimum = if matches!(error.kind.as_str(), "auth" | "credentials" | "signedOut") {
         300
     } else {
         0
@@ -130,7 +133,8 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                 let runtime = runtime.clone();
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result = providers::fetch(&runtime.client, &account).await;
+                    let result =
+                        providers::fetch(&runtime.client, &account, &runtime.profiles).await;
                     let visible = app
                         .get_webview_window("main")
                         .is_some_and(|window| window.is_visible().unwrap_or(false));
@@ -248,23 +252,29 @@ mod tests {
     #[test]
     fn rate_limit_backoff_respects_retry_after() {
         let error = UsageError {
-            kind: "rateLimited".into(),
-            message: "Slow down".into(),
             retry_after_seconds: Some(7200),
+            ..UsageError::new("rateLimited", "Slow down")
         };
         assert_eq!(retry_delay(60, 1, &error), Duration::from_secs(7200));
     }
 
     #[test]
     fn failure_backoff_is_bounded() {
-        let error = UsageError {
-            kind: "network".into(),
-            message: "Offline".into(),
-            retry_after_seconds: None,
-        };
+        let error = UsageError::new("network", "Offline");
         assert_eq!(retry_delay(60, 1, &error), Duration::from_secs(60));
         assert_eq!(retry_delay(60, 3, &error), Duration::from_secs(240));
         assert_eq!(retry_delay(60, u32::MAX, &error), Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn local_sign_out_is_rechecked_without_backoff() {
+        let local = UsageError {
+            signed_out_since: Some("2026-10-16T10:00:00Z".into()),
+            ..UsageError::new("signedOut", "Signed out")
+        };
+        assert_eq!(retry_delay(60, 5, &local), Duration::from_secs(60));
+        let rejected = UsageError::new("signedOut", "Signed out");
+        assert_eq!(retry_delay(60, 1, &rejected), Duration::from_secs(300));
     }
 
     #[test]

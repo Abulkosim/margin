@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import type { Account, Settings } from '../lib/model'
-import { accountIsStale, formatMoney, providerName, relativeAge } from '../lib/format'
+import { accountIsStale, formatMoney, providerName, relativeAge, signedOutMessage } from '../lib/format'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -13,7 +13,32 @@ const expanded = ref(false)
 const historyOpen = ref(false)
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)
-const errorMessage = computed(() => props.connectionError ?? props.account.error?.message)
+const errorMessage = computed(() => props.connectionError ?? signedOutMessage(props.account, props.now) ?? props.account.error?.message)
+const signInCommand = computed(() => props.connectionError ? null : props.account.error?.signInCommand ?? null)
+const copied = ref(false)
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(copiedTimer))
+
+async function copyCommand() {
+  const command = signInCommand.value
+  if (!command) return
+  try {
+    await navigator.clipboard.writeText(command)
+  } catch {
+    const field = document.createElement('textarea')
+    field.value = command
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.opacity = '0'
+    document.body.append(field)
+    field.select()
+    document.execCommand('copy')
+    field.remove()
+  }
+  copied.value = true
+  clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => { copied.value = false }, 1600)
+}
 const extraWindows = computed(() => props.account.snapshot?.windows.slice(2) ?? [])
 const hasDetails = computed(() => extraWindows.value.length > 0 || props.account.snapshot?.extraUsage)
 const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
@@ -45,13 +70,17 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
         <span>{{ expanded ? 'Show less' : extraWindows.length ? `${extraWindows.length} more ${extraWindows.length === 1 ? 'window' : 'windows'}` : 'Extra usage' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: expanded }" />
       </button>
       <div v-if="stale" class="stale-note"><AppIcon name="alert" :size="13" /><p><span>Updated {{ relativeAge(account.snapshot.fetchedAt, now) }}.</span> {{ errorMessage ?? 'Waiting for a fresh reading.' }}</p></div>
+      <AppTooltip v-if="stale && signInCommand" :text="signInCommand"><button class="text-button sign-in-copy" :aria-label="copied ? 'Command copied' : `Copy command: ${signInCommand}`" @click="copyCommand">{{ copied ? 'Copied' : 'Copy command' }} <AppIcon :name="copied ? 'check' : 'copy'" :size="12" /></button></AppTooltip>
     </template>
 
     <div v-else-if="refreshing" class="quota-loading" aria-label="Loading account usage" role="status"><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/></div>
     <div v-else class="account-error">
       <div class="account-error-title"><AppIcon name="alert" :size="15" /><span>{{ errorMessage ? 'Usage unavailable' : 'Waiting for usage' }}</span></div>
       <p>{{ errorMessage ?? 'Refresh to read this account’s usage.' }}</p>
-      <button class="text-button" :disabled="busy" @click="$emit('refresh')">Try again <AppIcon name="refresh" :size="12" /></button>
+      <div class="account-error-actions">
+        <AppTooltip v-if="signInCommand" :text="signInCommand"><button class="text-button" :aria-label="copied ? 'Command copied' : `Copy command: ${signInCommand}`" @click="copyCommand">{{ copied ? 'Copied' : 'Copy command' }} <AppIcon :name="copied ? 'check' : 'copy'" :size="12" /></button></AppTooltip>
+        <button class="text-button" :disabled="busy" @click="$emit('refresh')">Try again <AppIcon name="refresh" :size="12" /></button>
+      </div>
     </div>
     <button class="details-toggle history-toggle" :aria-expanded="historyOpen" :aria-controls="`history-${account.id}`" @click="historyOpen = !historyOpen"><span>{{ historyOpen ? 'Hide history' : 'History' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: historyOpen }" /></button>
     <UsageHistory v-if="historyOpen" :id="`history-${account.id}`" :account="account" :demo="demo" :now="now" />
