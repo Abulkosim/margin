@@ -90,6 +90,9 @@ test('IPC validation rejects impossible or malformed quota data', () => {
 
 test('settings use the same limits as Rust', () => {
   assert.equal(settingsSchema.safeParse(defaultSettings).success, true)
+  const { trayMetric: _, ...legacy } = defaultSettings
+  assert.equal(settingsSchema.parse(legacy).trayMetric, 'core')
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, trayMetric: 'opus' }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 15 }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 600, idlePollIntervalSeconds: 300 }).success, false)
   for (const thresholds of [[], [80, 80], [95, 80], [80.5], [101]]) {

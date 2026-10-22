@@ -1,7 +1,7 @@
 use super::{
     model::{Account, UsageWindow},
     poller,
-    settings::TrayMode,
+    settings::{TrayMetric, TrayMode},
 };
 use crate::runtime::{AppState, Runtime};
 use chrono::Utc;
@@ -145,18 +145,54 @@ fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow) -> Option<
     placed.arrow_x
 }
 
-fn limiting_window(account: &Account) -> Option<&UsageWindow> {
-    account
-        .snapshot
-        .as_ref()?
-        .windows
-        .iter()
-        .filter(|window| window.used_percent.is_finite())
-        .max_by(|left, right| left.used_percent.total_cmp(&right.used_percent))
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowKind {
+    Session,
+    Weekly,
+    Other,
 }
 
-fn remaining(account: &Account) -> Option<f64> {
-    limiting_window(account).map(|window| 100.0 - window.used_percent)
+fn window_kind(window: &UsageWindow) -> WindowKind {
+    match window.id.as_str() {
+        "five_hour" | "primary_window" => WindowKind::Session,
+        "seven_day" | "secondary_window" => WindowKind::Weekly,
+        _ => WindowKind::Other,
+    }
+}
+
+fn expired(window: &UsageWindow, now: chrono::DateTime<Utc>) -> bool {
+    window.resets_at.as_ref().is_some_and(|reset| {
+        chrono::DateTime::parse_from_rfc3339(reset).is_ok_and(|reset| reset <= now)
+    })
+}
+
+fn counts(window: &UsageWindow, metric: TrayMetric, now: chrono::DateTime<Utc>) -> bool {
+    let kind = window_kind(window);
+    match metric {
+        TrayMetric::All => true,
+        TrayMetric::Core => kind != WindowKind::Other && !expired(window, now),
+        TrayMetric::Session => kind == WindowKind::Session && !expired(window, now),
+        TrayMetric::Weekly => kind == WindowKind::Weekly && !expired(window, now),
+    }
+}
+
+fn limiting_window(
+    account: &Account,
+    metric: TrayMetric,
+    now: chrono::DateTime<Utc>,
+) -> Option<&UsageWindow> {
+    let windows = &account.snapshot.as_ref()?.windows;
+    let most_used = |metric| {
+        windows
+            .iter()
+            .filter(|window| window.used_percent.is_finite() && counts(window, metric, now))
+            .max_by(|left, right| left.used_percent.total_cmp(&right.used_percent))
+    };
+    most_used(metric).or_else(|| most_used(TrayMetric::All))
+}
+
+fn remaining(account: &Account, metric: TrayMetric) -> Option<f64> {
+    limiting_window(account, metric, Utc::now()).map(|window| 100.0 - window.used_percent)
 }
 
 fn stale(account: &Account, state: &AppState) -> bool {
@@ -194,7 +230,9 @@ fn selected(state: &AppState) -> Option<&Account> {
         .accounts
         .iter()
         .filter(|account| !stale(account, state))
-        .filter_map(|account| remaining(account).map(|value| (account, value)))
+        .filter_map(|account| {
+            remaining(account, state.settings.tray_metric).map(|value| (account, value))
+        })
         .min_by(|left, right| left.1.total_cmp(&right.1))
         .map(|(account, _)| account)
         .or_else(|| state.accounts.first())
@@ -243,12 +281,14 @@ pub fn ring_rgba(remaining: Option<f64>, stale: bool, monochrome: bool) -> Vec<u
 
 pub fn update(app: &AppHandle, state: &AppState) {
     let account = selected(state);
-    let amount = account.and_then(remaining);
+    let window = account
+        .and_then(|account| limiting_window(account, state.settings.tray_metric, Utc::now()));
+    let amount = window.map(|window| 100.0 - window.used_percent);
     let is_stale = account.is_some_and(|account| stale(account, state));
     let pixels = ring_rgba(amount, is_stale, cfg!(target_os = "macos"));
     let tooltip = match (account, amount) {
         (Some(account), Some(amount)) => {
-            let window = limiting_window(account)
+            let window = window
                 .map(|window| window.label.chars().take(64).collect::<String>())
                 .unwrap_or_default();
             let amount = if amount > 0.0 && amount < 1.0 {
@@ -571,6 +611,147 @@ mod tests {
             assert!(stale(&state.accounts[0], &state));
             state.accounts[0] = account("a", &[10.0]);
         }
+    }
+
+    fn windowed(id: &str, windows: &[(&str, f64, Option<i64>)]) -> Account {
+        let mut account = account(id, &[]);
+        if let Some(snapshot) = account.snapshot.as_mut() {
+            snapshot.windows = windows
+                .iter()
+                .map(|(id, used, reset_hours)| UsageWindow {
+                    id: (*id).into(),
+                    label: (*id).into(),
+                    used_percent: *used,
+                    resets_at: reset_hours
+                        .map(|hours| (Utc::now() + chrono::Duration::hours(hours)).to_rfc3339()),
+                    window_seconds: None,
+                })
+                .collect();
+        }
+        account
+    }
+
+    fn limiting_id(account: &Account, metric: TrayMetric) -> Option<&str> {
+        limiting_window(account, metric, Utc::now()).map(|window| window.id.as_str())
+    }
+
+    #[test]
+    fn window_kinds_match_provider_ids() {
+        for (id, kind) in [
+            ("five_hour", WindowKind::Session),
+            ("primary_window", WindowKind::Session),
+            ("seven_day", WindowKind::Weekly),
+            ("secondary_window", WindowKind::Weekly),
+            ("seven_day_opus", WindowKind::Other),
+            ("seven_day_sonnet", WindowKind::Other),
+            ("seven_day_routines", WindowKind::Other),
+            ("seven_day_cowork", WindowKind::Other),
+            ("weekly_scoped_0123456789abcdef", WindowKind::Other),
+            ("extra_0123456789abcdef_primary_window", WindowKind::Other),
+            ("extra_0123456789abcdef_secondary_window", WindowKind::Other),
+        ] {
+            let account = windowed("a", &[(id, 1.0, None)]);
+            let window = &account.snapshot.as_ref().unwrap().windows[0];
+            assert_eq!(window_kind(window), kind, "{id}");
+        }
+    }
+
+    #[test]
+    fn core_metric_ignores_model_scoped_and_expired_windows() {
+        let claude = windowed(
+            "a",
+            &[
+                ("five_hour", 40.0, Some(-1)),
+                ("seven_day", 30.0, Some(48)),
+                ("seven_day_opus", 99.0, Some(48)),
+                ("weekly_scoped_0123456789abcdef", 97.0, Some(48)),
+                ("seven_day_cowork", 95.0, Some(48)),
+            ],
+        );
+        assert_eq!(limiting_id(&claude, TrayMetric::Core), Some("seven_day"));
+        assert_eq!(
+            limiting_id(&claude, TrayMetric::All),
+            Some("seven_day_opus")
+        );
+        assert_eq!(limiting_id(&claude, TrayMetric::Weekly), Some("seven_day"));
+        assert_eq!(
+            limiting_id(&claude, TrayMetric::Session),
+            Some("seven_day_opus")
+        );
+
+        let codex = windowed(
+            "b",
+            &[
+                ("primary_window", 70.0, Some(2)),
+                ("secondary_window", 20.0, Some(100)),
+                ("extra_0123456789abcdef_primary_window", 90.0, Some(2)),
+            ],
+        );
+        assert_eq!(
+            limiting_id(&codex, TrayMetric::Core),
+            Some("primary_window")
+        );
+        assert_eq!(
+            limiting_id(&codex, TrayMetric::Session),
+            Some("primary_window")
+        );
+        assert_eq!(
+            limiting_id(&codex, TrayMetric::Weekly),
+            Some("secondary_window")
+        );
+        assert_eq!(
+            limiting_id(&codex, TrayMetric::All),
+            Some("extra_0123456789abcdef_primary_window")
+        );
+    }
+
+    #[test]
+    fn core_metric_falls_back_to_any_window_without_core_windows() {
+        let account = windowed(
+            "a",
+            &[
+                ("seven_day_sonnet", 60.0, None),
+                ("seven_day_opus", 80.0, None),
+            ],
+        );
+        assert_eq!(
+            limiting_id(&account, TrayMetric::Core),
+            Some("seven_day_opus")
+        );
+        assert_eq!(limiting_id(&windowed("b", &[]), TrayMetric::Core), None);
+    }
+
+    #[test]
+    fn lowest_account_uses_the_selected_metric() {
+        let mut state = AppState {
+            revision: 0,
+            accounts: vec![
+                windowed(
+                    "a",
+                    &[
+                        ("five_hour", 20.0, Some(2)),
+                        ("seven_day_opus", 99.0, Some(48)),
+                    ],
+                ),
+                windowed(
+                    "b",
+                    &[("five_hour", 60.0, Some(2)), ("seven_day", 10.0, Some(48))],
+                ),
+            ],
+            settings: Settings {
+                tray_mode: TrayMode::Lowest,
+                ..Settings::default()
+            },
+            refreshing: false,
+            notice: None,
+            recovery: false,
+            recovered: Vec::new(),
+        };
+        assert_eq!(selected(&state).unwrap().id, "b");
+        state.settings.tray_metric = TrayMetric::All;
+        assert_eq!(selected(&state).unwrap().id, "a");
+        state.settings.tray_metric = TrayMetric::Weekly;
+        assert_eq!(selected(&state).unwrap().id, "a");
     }
 
     #[test]

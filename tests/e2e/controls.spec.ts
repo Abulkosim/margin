@@ -3,7 +3,7 @@ import { createDemoState } from '../../src/lib/demo.ts'
 import { accountSchema, type AppState } from '../../src/lib/model.ts'
 
 declare global {
-  interface Window { __CONTROL_TEST__?: { rejectPending: () => void } }
+  interface Window { __CONTROL_TEST__?: { rejectPending: () => void; saved: unknown[] } }
 }
 
 async function installDesktopBridge(page: Page, options: { state: AppState; failure: 'none' | 'save' | 'remove' }): Promise<void> {
@@ -13,7 +13,8 @@ async function installDesktopBridge(page: Page, options: { state: AppState; fail
     let revision = state.revision
     const listeners = new Map<string, (event: { payload: unknown }) => void>()
     let rejectPending: (() => void) | undefined
-    window.__CONTROL_TEST__ = { rejectPending: () => { rejectPending?.(); rejectPending = undefined } }
+    const saved: unknown[] = []
+    window.__CONTROL_TEST__ = { rejectPending: () => { rejectPending?.(); rejectPending = undefined }, saved }
     function fail(message: string): Promise<never> {
       return new Promise((_resolve, reject) => { rejectPending = () => reject(new Error(message)) })
     }
@@ -25,6 +26,7 @@ async function installDesktopBridge(page: Page, options: { state: AppState; fail
           if (command === 'save_settings') {
             if (failure === 'save') return fail('Could not save settings. Try again.')
             settings = args?.settings
+            saved.push(settings)
             revision++
           }
           if (command === 'remove_account') {
@@ -102,6 +104,22 @@ test('selects support Arrow, Home, End, and typeahead selection', async ({ page 
   await expect(tray).toBeFocused()
 })
 
+test('tray metric defaults to session and weekly and saves the choice', async ({ page }) => {
+  await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const metric = page.getByRole('combobox', { name: 'Tray shows', exact: true })
+  await expect(metric).toContainText('Session and weekly')
+  await metric.click()
+  await expect(page.getByRole('option')).toHaveText(['Session and weekly', 'Session only', 'Weekly only', 'Any window'])
+  await page.getByRole('option', { name: 'Weekly only', exact: true }).click()
+  await expect(metric).toContainText('Weekly only')
+  await expect(metric).toBeFocused()
+  const saved = await page.evaluate(() => window.__CONTROL_TEST__?.saved ?? [])
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ trayMetric: 'weekly', trayMode: 'pinned' })
+})
+
 test('Escape closes a select before leaving Settings and returns trigger focus', async ({ page }) => {
   await page.goto('/?demo=1')
   await openSettings(page)
@@ -127,7 +145,7 @@ for (const theme of ['light', 'dark']) {
     await page.goto('/')
     await openSettings(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-    for (const label of ['Tray account', 'Refresh while open', 'Refresh in background']) {
+    for (const label of ['Tray account', 'Tray shows', 'Refresh while open', 'Refresh in background']) {
       const trigger = page.getByRole('combobox', { name: label, exact: true })
       await trigger.click()
       const menu = page.getByRole('listbox')

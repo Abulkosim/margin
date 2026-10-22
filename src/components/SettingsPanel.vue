@@ -39,6 +39,12 @@ const trayOptions = computed(() => [
   { value: 'lowest', label: 'Lowest remaining' },
   ...props.accounts.map(account => ({ value: account.id, label: account.label, description: providerName(account.provider) })),
 ])
+const metricOptions: { value: Settings['trayMetric']; label: string }[] = [
+  { value: 'core', label: 'Session and weekly' },
+  { value: 'session', label: 'Session only' },
+  { value: 'weekly', label: 'Weekly only' },
+  { value: 'all', label: 'Any window' },
+]
 const refreshOptions = computed(() => intervalOptions([30, 60, 120, 300], props.settings.pollIntervalSeconds))
 const idleOptions = computed(() => intervalOptions([300, 600, 900], props.settings.idlePollIntervalSeconds))
 const themes: { id: Settings['theme']; label: string; icon: 'system' | 'sun' | 'moon' }[] = [
@@ -102,6 +108,11 @@ async function setTray(value: string): Promise<void> {
     const id = accountIdSchema.safeParse(value)
     if (id.success && props.accounts.some(account => account.id === id.data)) await patchSettings({ trayMode: 'pinned', pinnedAccountId: id.data })
   }
+}
+
+async function setMetric(value: string): Promise<void> {
+  const metric = metricOptions.find(option => option.value === value)
+  if (metric) await patchSettings({ trayMetric: metric.value })
 }
 
 async function toggleThreshold(value: number): Promise<void> {
@@ -173,8 +184,12 @@ async function confirmRemove(): Promise<void> {
         <section class="settings-section">
           <h2>Tray &amp; refresh</h2>
           <div class="setting-row">
-            <div><label for="tray-account">Tray account</label><p>Shows the lowest remaining window.</p></div>
+            <div><label for="tray-account">Tray account</label><p>Which account the icon follows.</p></div>
             <AppSelect id="tray-account" :model-value="selectedMode" :options="trayOptions" :disabled="busy" @update:model-value="setTray"/>
+          </div>
+          <div class="setting-row">
+            <div><label for="tray-metric">Tray shows</label><p>Which limits the icon counts.</p></div>
+            <AppSelect id="tray-metric" :model-value="settings.trayMetric" :options="metricOptions" :disabled="busy" @update:model-value="setMetric"/>
           </div>
           <div class="setting-row">
             <label for="refresh-interval">Refresh while open</label>

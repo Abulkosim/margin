@@ -18,6 +18,16 @@ pub enum TrayMode {
     Lowest,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TrayMetric {
+    #[default]
+    Core,
+    All,
+    Session,
+    Weekly,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -27,6 +37,7 @@ pub struct Settings {
     pub notifications: bool,
     pub thresholds: Vec<u8>,
     pub tray_mode: TrayMode,
+    pub tray_metric: TrayMetric,
     pub pinned_account_id: Option<String>,
     pub autostart: bool,
 }
@@ -40,6 +51,7 @@ impl Default for Settings {
             notifications: false,
             thresholds: vec![80, 95, 100],
             tray_mode: TrayMode::Pinned,
+            tray_metric: TrayMetric::Core,
             pinned_account_id: None,
             autostart: false,
         }
@@ -110,6 +122,13 @@ impl Settings {
                 notes,
             ),
             tray_mode: field(&map, "trayMode", defaults.tray_mode, "Tray account", notes),
+            tray_metric: field(
+                &map,
+                "trayMetric",
+                defaults.tray_metric,
+                "Tray shows",
+                notes,
+            ),
             pinned_account_id: field(
                 &map,
                 "pinnedAccountId",
@@ -210,5 +229,27 @@ mod tests {
         assert_eq!(settings.thresholds, vec![80, 95, 100]);
         assert!(settings.validate().is_ok());
         assert_eq!(notes.len(), 3);
+    }
+
+    #[test]
+    fn tray_metric_defaults_to_core_and_recovers_unknown_values() {
+        let mut notes = Vec::new();
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMode": "lowest" })),
+            &mut notes,
+        );
+        assert_eq!(settings.tray_metric, TrayMetric::Core);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMetric": "weekly" })),
+            &mut notes,
+        );
+        assert_eq!(settings.tray_metric, TrayMetric::Weekly);
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMetric": "opus" })),
+            &mut notes,
+        );
+        assert_eq!(settings.tray_metric, TrayMetric::Core);
+        assert_eq!(notes, vec!["Tray shows was reset to its default."]);
     }
 }
