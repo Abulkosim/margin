@@ -115,3 +115,10 @@ export function signedOutMessage(account: Account, now: number): string | null {
   const folder = account.source.kind === 'configDir' ? ` in ${account.source.path}` : ''
   return `${status} · run ${program}${folder}`
 }
+
+export function resetClock(resetsAt: string | null, now: number): string | null {
+  if (!resetsAt) return null
+  const time = Date.parse(resetsAt)
+  if (!Number.isFinite(time) || time <= now) return null
+  return clockTime(new Date(time), now)
+}

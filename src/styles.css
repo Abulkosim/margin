@@ -1664,3 +1664,14 @@ input::placeholder {
   }
 }
 .load-error-symbol{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:var(--warning-soft);color:var(--warning);margin-bottom:24px}
+.quota-window {
+  container-type: inline-size;
+}
+.quota-reset-at {
+  color: var(--tertiary);
+}
+@container (max-width: 250px) {
+  .quota-reset-at {
+    display: none;
+  }
+}
