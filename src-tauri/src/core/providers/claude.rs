@@ -2,6 +2,8 @@ use super::{
     credentials_changed, http_error, malformed_credentials, malformed_response, nonempty_string,
     now, percent, read_credentials, request_error, response_json, signed_out, timestamp, token,
 };
+#[cfg(test)]
+use crate::core::model::WindowScope;
 use crate::core::model::{
     valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, Snapshot,
     UsageError, UsageWindow,
@@ -396,31 +398,41 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         return Err(malformed_response());
     }
     let mut windows = Vec::new();
-    for (id, label, seconds) in [
-        ("five_hour", "Session", 18_000),
-        ("seven_day", "Weekly", 604_800),
-        ("seven_day_sonnet", "Sonnet", 604_800),
-        ("seven_day_opus", "Opus", 604_800),
-        ("seven_day_routines", "Routines", 604_800),
-        ("seven_day_cowork", "Cowork", 604_800),
-    ] {
-        let Some(window) = value.get(id).filter(|value| !value.is_null()) else {
-            continue;
-        };
-        if !window.is_object() {
-            return Err(malformed_response());
+    let fixed = |windows: &mut Vec<UsageWindow>, entries: &[(&str, &str, u64)]| {
+        for &(id, label, seconds) in entries {
+            let Some(window) = value.get(id).filter(|value| !value.is_null()) else {
+                continue;
+            };
+            if !window.is_object() {
+                return Err(malformed_response());
+            }
+            let Some(utilization) = window.get("utilization").filter(|value| !value.is_null())
+            else {
+                continue;
+            };
+            if windows
+                .iter()
+                .any(|known: &UsageWindow| known.label.eq_ignore_ascii_case(label))
+            {
+                continue;
+            }
+            windows.push(UsageWindow {
+                id: id.into(),
+                label: label.into(),
+                used_percent: percent(utilization)?,
+                resets_at: timestamp(window.get("resets_at"))?,
+                window_seconds: Some(seconds),
+            });
         }
-        let Some(utilization) = window.get("utilization").filter(|value| !value.is_null()) else {
-            continue;
-        };
-        windows.push(UsageWindow {
-            id: id.into(),
-            label: label.into(),
-            used_percent: percent(utilization)?,
-            resets_at: timestamp(window.get("resets_at"))?,
-            window_seconds: Some(seconds),
-        });
-    }
+        Ok(())
+    };
+    fixed(
+        &mut windows,
+        &[
+            ("five_hour", "Session", 18_000),
+            ("seven_day", "Weekly", 604_800),
+        ],
+    )?;
     let mut scoped_ids = HashSet::new();
     if let Some(limits) = value.get("limits").filter(|value| !value.is_null()) {
         for limit in limits.as_array().ok_or_else(malformed_response)? {
@@ -450,13 +462,22 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
             }
             windows.push(UsageWindow {
                 id,
-                label: format!("{model_name} weekly"),
+                label: model_name,
                 used_percent: percent(utilization)?,
                 resets_at: timestamp(limit.get("resets_at"))?,
                 window_seconds: Some(604_800),
             });
         }
     }
+    fixed(
+        &mut windows,
+        &[
+            ("seven_day_sonnet", "Sonnet", 604_800),
+            ("seven_day_opus", "Opus", 604_800),
+            ("seven_day_routines", "Routines", 604_800),
+            ("seven_day_cowork", "Cowork", 604_800),
+        ],
+    )?;
     let extra_usage = parse_extra_usage(value.get("extra_usage"))?;
     if windows.len() > 64 {
         return Err(malformed_response());
@@ -628,9 +649,98 @@ mod tests {
         let snapshot = parse_usage(&value).unwrap();
         assert_eq!(snapshot.windows.len(), 7);
         assert_eq!(snapshot.windows[0].used_percent, 34.0);
-        assert_eq!(snapshot.windows[6].label, "Example model weekly");
+        let labels: Vec<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.label.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Session",
+                "Weekly",
+                "Example model",
+                "Sonnet",
+                "Opus",
+                "Routines",
+                "Cowork"
+            ]
+        );
+        let scopes: Vec<_> = snapshot.windows.iter().map(UsageWindow::scope).collect();
+        assert_eq!(
+            scopes,
+            [
+                WindowScope::Core,
+                WindowScope::Core,
+                WindowScope::Model,
+                WindowScope::Model,
+                WindowScope::Model,
+                WindowScope::Other,
+                WindowScope::Other
+            ]
+        );
         assert_eq!(snapshot.extra_usage.as_ref().unwrap().spent, 12.34);
         assert_eq!(snapshot.extra_usage.unwrap().limit, Some(50.0));
+    }
+
+    #[test]
+    fn model_scoped_weekly_limits_are_named_tagged_and_stable() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/claude-weekly-scoped.json"))
+                .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        let models: Vec<_> = snapshot
+            .windows
+            .iter()
+            .filter(|window| window.scope() == WindowScope::Model)
+            .map(|window| (window.label.as_str(), window.used_percent))
+            .collect();
+        assert_eq!(models, [("Fable", 66.0), ("Opus", 100.0), ("Sonnet", 9.0)]);
+        assert_eq!(snapshot.windows[0].scope(), WindowScope::Core);
+        assert_eq!(snapshot.windows[1].scope(), WindowScope::Core);
+        assert!(snapshot.windows[2].id.starts_with("weekly_scoped_"));
+        assert_eq!(snapshot.windows[4].id, "seven_day_sonnet");
+        assert_eq!(snapshot.windows[2].window_seconds, Some(604_800));
+        let ids = |snapshot: &Snapshot| -> Vec<String> {
+            snapshot
+                .windows
+                .iter()
+                .map(|window| window.id.clone())
+                .collect()
+        };
+        assert_eq!(ids(&snapshot), ids(&parse_usage(&value).unwrap()));
+        assert_eq!(
+            snapshot.windows[2].id,
+            format!(
+                "weekly_scoped_{}",
+                &format!("{:x}", Sha256::digest(b"Fable"))[..16]
+            )
+        );
+        let wire = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(wire["windows"][2]["scope"], "model");
+        assert_eq!(wire["windows"][0]["scope"], "core");
+    }
+
+    #[test]
+    fn scoped_limit_for_a_listed_model_does_not_duplicate_it() {
+        let snapshot = parse_usage(&json!({
+            "seven_day_opus": {"utilization": 40},
+            "limits": [{"kind": "weekly_scoped", "percent": 41, "scope": {"model": {"display_name": "Opus"}}}]
+        }))
+        .unwrap();
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Opus");
+        assert_eq!(snapshot.windows[0].used_percent, 41.0);
+    }
+
+    #[test]
+    fn overuse_is_capped_at_the_limit() {
+        let snapshot = parse_usage(
+            &json!({"five_hour": {"utilization": 104.2}, "seven_day": {"utilization": 100}}),
+        )
+        .unwrap();
+        assert_eq!(snapshot.windows[0].used_percent, 100.0);
+        assert_eq!(snapshot.windows[1].used_percent, 100.0);
     }
 
     #[test]
@@ -662,7 +772,7 @@ mod tests {
 
     #[test]
     fn invalid_measured_values_fail_closed() {
-        for utilization in [json!(-2), json!(101), json!("22")] {
+        for utilization in [json!(-2), json!(-0.1), json!("22")] {
             assert!(parse_usage(&json!({"five_hour": {"utilization": utilization}})).is_err());
         }
         assert!(

@@ -250,10 +250,10 @@ fn retry_after(headers: &HeaderMap, now: DateTime<Utc>) -> Option<u64> {
 
 fn percent(value: &Value) -> Result<f64, UsageError> {
     let value = value.as_f64().ok_or_else(malformed_response)?;
-    if !value.is_finite() || !(0.0..=100.0).contains(&value) {
+    if !value.is_finite() || value < 0.0 {
         return Err(malformed_response());
     }
-    Ok(value)
+    Ok(value.min(100.0))
 }
 
 fn timestamp(value: Option<&Value>) -> Result<Option<String>, UsageError> {
@@ -305,12 +305,14 @@ mod tests {
     static SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
-    fn percentages_never_guess_or_clamp_invalid_values() {
-        for value in [json!(null), json!("50"), json!(-1), json!(101)] {
+    fn percentages_reject_invalid_values_and_cap_overuse() {
+        for value in [json!(null), json!("50"), json!(-1), json!(-0.5)] {
             assert!(percent(&value).is_err());
         }
         assert_eq!(percent(&json!(0)).unwrap(), 0.0);
         assert_eq!(percent(&json!(100)).unwrap(), 100.0);
+        assert_eq!(percent(&json!(104.2)).unwrap(), 100.0);
+        assert_eq!(percent(&json!(1e6)).unwrap(), 100.0);
     }
 
     #[test]

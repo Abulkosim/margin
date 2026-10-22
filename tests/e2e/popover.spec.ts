@@ -29,12 +29,66 @@ test('provider filters and account details are interactive', async ({ page }) =>
   await expect(page.getByRole('article')).toHaveCount(1)
   await expect(page.getByRole('heading', { name: 'Work', exact: true })).toBeVisible()
   await page.getByRole('button', { name: /^All/ }).click()
+  const work = page.getByRole('article', { name: 'Work, Codex' })
+  await expect(work.getByText('Spark · session', { exact: true })).toHaveCount(0)
+  await work.getByRole('button', { name: '1 more window' }).click()
+  await expect(work.getByText('Spark · session', { exact: true })).toBeVisible()
+  await expect(work.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   const personal = page.getByRole('article', { name: 'Personal, Claude' })
-  await personal.getByRole('button', { name: '1 more window' }).click()
-  await expect(personal.getByText('Sonnet', { exact: true })).toBeVisible()
+  await expect(personal.getByRole('button', { name: /more window/ })).toHaveCount(0)
   await personal.getByRole('button', { name: 'Pin Personal to tray' }).click()
   await expect(personal.getByRole('button', { name: 'Unpin Personal from tray' })).toHaveAttribute('aria-pressed', 'true')
 })
+
+test('model limits show as chips under the weekly row', async ({ page }) => {
+  await page.goto('/?demo=1')
+  const personal = page.getByRole('article', { name: 'Personal, Claude' })
+  const chips = personal.getByRole('list', { name: 'Model limits' }).getByRole('listitem')
+  await expect(chips).toHaveCount(3)
+  await expect(personal.locator('.model-chip-name')).toHaveText(['Fable', 'Opus', 'Sonnet'])
+  await expect(personal.locator('.model-chip-value')).toHaveText(['34%', '12%', '66%'])
+  await expect(personal.locator('.model-chip').nth(1)).toHaveClass(/quota-low/)
+  await expect(personal.locator('.quota-window')).toHaveCount(2)
+  const weekly = await personal.locator('.quota-window').nth(1).boundingBox()
+  const row = await personal.locator('.model-chips').boundingBox()
+  expect(weekly && row && row.y >= weekly.y + weekly.height).toBe(true)
+  const fable = personal.getByRole('progressbar', { name: 'Fable weekly remaining', exact: true })
+  await expect(fable).toHaveAttribute('aria-valuenow', '34')
+  await expect(fable).toHaveAttribute('aria-valuetext', /^34 percent remaining, resets in 4d \d+h$/)
+  await page.keyboard.press('Tab')
+  await fable.focus()
+  await expect(page.getByRole('tooltip')).toHaveText(/^Fable weekly · resets in 4d \d+h$/)
+  const studio = page.getByRole('article', { name: 'Studio, Claude' })
+  await expect(studio.locator('.model-chip-name')).toHaveText(['Sonnet'])
+  await expect(page.getByRole('article', { name: 'Work, Codex' }).locator('.model-chips')).toHaveCount(0)
+})
+
+test('model chips wrap at 360px without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  await page.goto('/?demo=1')
+  const personal = page.getByRole('article', { name: 'Personal, Claude' })
+  await expect(personal.locator('.model-chip')).toHaveCount(3)
+  await personal.locator('.model-chips').evaluate(list => {
+    for (const item of [...list.children]) list.append(item.cloneNode(true))
+  })
+  const rows = await personal.locator('.model-chip').evaluateAll(chips => new Set(chips.map(chip => Math.round(chip.getBoundingClientRect().top))).size)
+  expect(rows).toBeGreaterThan(1)
+  const list = await personal.locator('.model-chips').boundingBox()
+  for (const box of await personal.locator('.model-chip').evaluateAll(chips => chips.map(chip => chip.getBoundingClientRect().toJSON() as DOMRect))) {
+    expect(list && box.right <= list.x + list.width + 0.5).toBe(true)
+  }
+  expect(await personal.locator('.model-chips').evaluate(list => list.scrollWidth <= list.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`${theme} model chips screenshot`, async ({ page }, info) => {
+    await page.goto(`/?demo=1&theme=${theme}`)
+    const personal = page.getByRole('article', { name: 'Personal, Claude' })
+    await expect(personal.locator('.model-chip')).toHaveCount(3)
+    await personal.screenshot({ path: info.outputPath(`chips-personal-${theme}.png`) })
+  })
+}
 
 test('expired credentials preserve a labeled last-known reading', async ({ page }) => {
   await page.goto('/?demo=1&state=stale')

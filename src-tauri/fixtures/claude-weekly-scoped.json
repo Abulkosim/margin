@@ -1,0 +1,31 @@
+{
+  "five_hour": { "utilization": 22, "resets_at": "2026-10-16T15:00:00Z" },
+  "seven_day": { "utilization": 48, "resets_at": "2026-10-20T10:00:00Z" },
+  "seven_day_sonnet": { "utilization": 9, "resets_at": "2026-10-20T10:00:00Z" },
+  "seven_day_opus": null,
+  "seven_day_routines": null,
+  "seven_day_cowork": null,
+  "limits": [
+    { "kind": "session", "group": "session", "percent": 22, "resets_at": "2026-10-16T15:00:00Z", "scope": null, "is_active": true },
+    { "kind": "weekly_all", "group": "weekly", "percent": 48, "resets_at": "2026-10-20T10:00:00Z", "scope": null, "is_active": false },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 66,
+      "severity": "normal",
+      "resets_at": "2026-10-20T10:00:00Z",
+      "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null },
+      "is_active": true
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 104.2,
+      "severity": "critical",
+      "resets_at": "2026-10-20T10:00:00Z",
+      "scope": { "model": { "id": null, "display_name": "Opus" }, "surface": null },
+      "is_active": false
+    }
+  ],
+  "extra_usage": null
+}

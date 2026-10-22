@@ -1,4 +1,4 @@
-import type { Account, Settings } from './model'
+import type { Account, Settings, UsageWindow, WindowScope } from './model'
 import type { Pace } from './pace'
 
 export function remainingPercent(used: number): number {
@@ -17,6 +17,26 @@ function shortDuration(milliseconds: number): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ${minutes % 60}m`
   return `${Math.floor(hours / 24)}d ${hours % 24}h`
+}
+
+const coreWindowIds = new Set(['five_hour', 'seven_day', 'primary_window', 'secondary_window'])
+const modelWindowIds = new Set(['seven_day_sonnet', 'seven_day_opus'])
+
+export function windowScope(window: UsageWindow): WindowScope {
+  if (window.scope) return window.scope
+  if (coreWindowIds.has(window.id)) return 'core'
+  return modelWindowIds.has(window.id) || window.id.startsWith('weekly_scoped_') ? 'model' : 'other'
+}
+
+export function groupWindows(windows: UsageWindow[]): { rows: UsageWindow[]; models: UsageWindow[]; more: UsageWindow[] } {
+  const rows = windows.filter(window => windowScope(window) === 'core')
+  if (!rows.length) return { rows: windows.slice(0, 2), models: [], more: windows.slice(2) }
+  return { rows, models: windows.filter(window => windowScope(window) === 'model'), more: windows.filter(window => windowScope(window) === 'other') }
+}
+
+export function modelWindowSummary(window: UsageWindow, now: number): string {
+  const reset = resetCountdown(window.resetsAt, now)
+  return `${window.label} weekly · ${reset.charAt(0).toLowerCase()}${reset.slice(1)}`
 }
 
 export function resetCountdown(resetsAt: string | null, now: number): string {

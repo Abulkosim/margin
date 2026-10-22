@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, formatMoney, paceText, providerName, relativeAge, retryingMessage, signedOutMessage } from '../lib/format'
+import { accountIsStale, formatMoney, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, retryingMessage, signedOutMessage } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { fitPace, paceWindowIds, projectPace } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
@@ -48,7 +48,9 @@ async function copyCommand() {
   clearTimeout(copiedTimer)
   copiedTimer = setTimeout(() => { copied.value = false }, 1600)
 }
-const extraWindows = computed(() => props.account.snapshot?.windows.slice(2) ?? [])
+const groups = computed(() => groupWindows(props.account.snapshot?.windows ?? []))
+const extraWindows = computed(() => groups.value.more)
+const spokenReset = (window: UsageWindow): string => resetCountdown(window.resetsAt, props.now).toLowerCase()
 const hasDetails = computed(() => extraWindows.value.length > 0 || props.account.snapshot?.extraUsage)
 const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 </script>
@@ -67,7 +69,18 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
 
     <template v-if="account.snapshot">
       <div v-if="account.snapshot.windows.length" class="quota-list">
-        <QuotaWindow v-for="window in account.snapshot.windows.slice(0, 2)" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" />
+        <QuotaWindow v-for="window in groups.rows" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" />
+        <ul v-if="groups.models.length" class="model-chips" aria-label="Model limits">
+          <li v-for="window in groups.models" :key="window.id">
+            <AppTooltip :text="modelWindowSummary(window, now)">
+              <span class="model-chip" :class="{ 'quota-low': window.usedPercent >= 80, 'quota-empty': window.usedPercent >= 100 }" tabindex="0" role="progressbar" :aria-label="`${window.label} weekly remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining, ${spokenReset(window)}${stale ? ', last known' : ''}`">
+                <span class="model-chip-name">{{ window.label }}</span>
+                <span class="model-chip-value">{{ formatRemaining(window.usedPercent) }}%</span>
+                <span class="model-chip-meter"><span :style="{ width: `${remainingPercent(window.usedPercent)}%` }" /></span>
+              </span>
+            </AppTooltip>
+          </li>
+        </ul>
         <template v-if="expanded"><QuotaWindow v-for="window in extraWindows" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" /></template>
       </div>
       <p v-else class="inline-empty">No usage windows reported by {{ providerName(account.provider) }}.</p>

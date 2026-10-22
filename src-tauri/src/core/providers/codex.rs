@@ -376,6 +376,7 @@ fn append_windows(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::model::WindowScope;
     use serde_json::json;
 
     fn jwt(claims: Value) -> String {
@@ -449,6 +450,12 @@ mod tests {
         assert_eq!(snapshot.windows[0].used_percent, 28.0);
         assert_eq!(snapshot.windows[1].label, "Weekly");
         assert_eq!(snapshot.windows[2].label, "Spark · session");
+        assert_eq!(snapshot.windows[0].scope(), WindowScope::Core);
+        assert!(snapshot
+            .windows
+            .iter()
+            .skip(2)
+            .all(|window| window.scope() == WindowScope::Other));
         assert_eq!(snapshot.windows[3].window_seconds, Some(604_800));
     }
 
@@ -475,12 +482,16 @@ mod tests {
             parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 0}}})).unwrap();
         assert_eq!(snapshot.windows[0].resets_at, None);
         assert_eq!(snapshot.windows[0].window_seconds, None);
-        for value in [json!(-1), json!(101), json!("50")] {
+        for value in [json!(-1), json!("50")] {
             assert!(parse_usage(
                 &json!({"rate_limit": {"primary_window": {"used_percent": value}}})
             )
             .is_err());
         }
+        let capped =
+            parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 104.2}}}))
+                .unwrap();
+        assert_eq!(capped.windows[0].used_percent, 100.0);
     }
 
     #[test]

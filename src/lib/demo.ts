@@ -15,7 +15,9 @@ export function createDemoState(scenario: string | null): AppState {
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, windows: [
           { id: 'five_hour', label: 'Session', usedPercent: 28, resetsAt: future(2.3), windowSeconds: 18_000 },
           { id: 'seven_day', label: 'Weekly', usedPercent: 58, resetsAt: future(102), windowSeconds: 604_800 },
-          { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 34, resetsAt: future(102), windowSeconds: 604_800 },
+          { id: 'weekly_scoped_5d1e5ac9f2d0b7a4', label: 'Fable', usedPercent: 66, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
+          { id: 'weekly_scoped_0c3e7b2a91f4d658', label: 'Opus', usedPercent: 88, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
+          { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 34, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
         ] },
       },
       {
@@ -25,6 +27,7 @@ export function createDemoState(scenario: string | null): AppState {
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, windows: [
           { id: 'primary_window', label: 'Session', usedPercent: 9, resetsAt: future(3.68), windowSeconds: 18_000 },
           { id: 'secondary_window', label: 'Weekly', usedPercent: 32, resetsAt: future(122), windowSeconds: 604_800 },
+          { id: 'extra_8f14e45fceea167a_primary_window', label: 'Spark · session', usedPercent: 12, resetsAt: future(3.68), windowSeconds: 18_000, scope: 'other' },
         ] },
       },
       {
@@ -34,6 +37,7 @@ export function createDemoState(scenario: string | null): AppState {
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: { spent: 4.28, limit: 20, currency: 'USD' }, windows: [
           { id: 'five_hour', label: 'Session', usedPercent: 82, resetsAt: future(0.75), windowSeconds: 18_000 },
           { id: 'seven_day', label: 'Weekly', usedPercent: 14, resetsAt: future(56), windowSeconds: 604_800 },
+          { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 21, resetsAt: future(56), windowSeconds: 604_800, scope: 'model' },
         ] },
       },
     ],

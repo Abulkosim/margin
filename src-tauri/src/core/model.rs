@@ -80,14 +80,83 @@ pub struct Identity {
     pub history_key: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum WindowScope {
+    Core,
+    Model,
+    #[default]
+    Other,
+}
+
+impl WindowScope {
+    pub fn infer(id: &str) -> Self {
+        match id {
+            "five_hour" | "seven_day" | "primary_window" | "secondary_window" => Self::Core,
+            "seven_day_sonnet" | "seven_day_opus" => Self::Model,
+            id if id.starts_with("weekly_scoped_") => Self::Model,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(from = "WireUsageWindow", into = "WireUsageWindow")]
 pub struct UsageWindow {
     pub id: String,
     pub label: String,
     pub used_percent: f64,
     pub resets_at: Option<String>,
     pub window_seconds: Option<u64>,
+}
+
+impl UsageWindow {
+    pub fn scope(&self) -> WindowScope {
+        WindowScope::infer(&self.id)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WireUsageWindow {
+    id: String,
+    label: String,
+    used_percent: f64,
+    resets_at: Option<String>,
+    window_seconds: Option<u64>,
+    #[serde(default)]
+    scope: WindowScope,
+}
+
+impl From<WireUsageWindow> for UsageWindow {
+    fn from(wire: WireUsageWindow) -> Self {
+        let label = match wire.label.strip_suffix(" weekly") {
+            Some(model) if wire.id.starts_with("weekly_scoped_") && !model.is_empty() => {
+                model.to_owned()
+            }
+            _ => wire.label,
+        };
+        Self {
+            id: wire.id,
+            label,
+            used_percent: wire.used_percent,
+            resets_at: wire.resets_at,
+            window_seconds: wire.window_seconds,
+        }
+    }
+}
+
+impl From<UsageWindow> for WireUsageWindow {
+    fn from(window: UsageWindow) -> Self {
+        Self {
+            scope: window.scope(),
+            id: window.id,
+            label: window.label,
+            used_percent: window.used_percent,
+            resets_at: window.resets_at,
+            window_seconds: window.window_seconds,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -165,7 +234,7 @@ mod tests {
             identity: Identity::default(),
             snapshot: Some(Snapshot {
                 windows: vec![UsageWindow {
-                    id: "primary".into(),
+                    id: "primary_window".into(),
                     label: "Session".into(),
                     used_percent: 23.0,
                     resets_at: None,
@@ -182,7 +251,41 @@ mod tests {
         assert_eq!(value["source"]["kind"], "configDir");
         assert!(value["source"].get("keychainSuffix").is_none());
         assert_eq!(value["snapshot"]["windows"][0]["usedPercent"], 23.0);
+        assert_eq!(value["snapshot"]["windows"][0]["scope"], "core");
         assert!(value.get("accessToken").is_none());
         assert!(value.get("refreshToken").is_none());
+    }
+
+    #[test]
+    fn stored_windows_without_scope_infer_it_from_the_id() {
+        let window = |id: &str, label: &str| {
+            serde_json::from_value::<UsageWindow>(serde_json::json!({
+                "id": id, "label": label, "usedPercent": 10.0, "resetsAt": null, "windowSeconds": 604_800
+            }))
+            .unwrap()
+        };
+        assert_eq!(window("five_hour", "Session").scope(), WindowScope::Core);
+        assert_eq!(
+            window("secondary_window", "Weekly").scope(),
+            WindowScope::Core
+        );
+        assert_eq!(
+            window("seven_day_sonnet", "Sonnet").scope(),
+            WindowScope::Model
+        );
+        let scoped = window("weekly_scoped_0123456789abcdef", "Fable weekly");
+        assert_eq!(scoped.scope(), WindowScope::Model);
+        assert_eq!(scoped.label, "Fable");
+        assert_eq!(
+            window("seven_day_cowork", "Cowork").scope(),
+            WindowScope::Other
+        );
+        assert_eq!(
+            window("extra_0123456789abcdef_primary_window", "Spark · session").scope(),
+            WindowScope::Other
+        );
+        let restored: UsageWindow =
+            serde_json::from_value(serde_json::to_value(scoped.clone()).unwrap()).unwrap();
+        assert_eq!(restored, scoped);
     }
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown, retryingMessage, signedOutMessage } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, formatRemaining, groupWindows, modelWindowSummary, remainingPercent, relativeAge, resetCountdown, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -139,4 +139,22 @@ test('signed-out copy names the tool and the account folder', () => {
   assert.equal(signedOutMessage(codex, now), 'Signed out · run codex login in /example/.codex-work')
   assert.equal(signedOutMessage(account, now), null)
   assert.equal(signedOutMessage(accountSchema.parse({ ...account, error: { kind: 'auth', message: 'Denied', retryAfterSeconds: null } }), now), null)
+})
+
+test('model limits are grouped apart from core rows and other windows', () => {
+  const window = (id: string, label: string, scope?: 'core' | 'model' | 'other') => usageWindowSchema.parse({ id, label, usedPercent: 10, resetsAt: '2026-10-20T16:00:00Z', windowSeconds: 604800, scope })
+  const windows = [
+    window('five_hour', 'Session'), window('seven_day', 'Weekly'),
+    window('weekly_scoped_0123456789abcdef', 'Fable'), window('seven_day_opus', 'Opus'),
+    window('seven_day_cowork', 'Cowork'), window('custom', 'Pinned', 'model'),
+  ]
+  assert.deepEqual(windows.map(windowScope), ['core', 'core', 'model', 'model', 'other', 'model'])
+  const groups = groupWindows(windows)
+  assert.deepEqual(groups.rows.map(entry => entry.label), ['Session', 'Weekly'])
+  assert.deepEqual(groups.models.map(entry => entry.label), ['Fable', 'Opus', 'Pinned'])
+  assert.deepEqual(groups.more.map(entry => entry.label), ['Cowork'])
+  assert.deepEqual(groupWindows(windows.slice(2)).rows.map(entry => entry.label), ['Fable', 'Opus'])
+  assert.equal(modelWindowSummary(windows[2]!, now), 'Fable weekly · resets in 4d 6h')
+  assert.equal(windowScope(window('extra_0123456789abcdef_primary_window', 'Spark · session')), 'other')
+  assert.throws(() => usageWindowSchema.parse({ id: 'x', label: 'X', usedPercent: 1, resetsAt: null, windowSeconds: null, scope: 'weekly' }))
 })

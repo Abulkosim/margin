@@ -473,6 +473,77 @@ button:disabled:hover {
 .quota-empty .quota-track {
   background: var(--warning-soft);
 }
+.model-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.model-chips>li {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.model-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 8px 5px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--hover);
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: default;
+  transition: background-color .18s;
+}
+.model-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.model-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--secondary);
+}
+.model-chip-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.model-chip-meter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+}
+.model-chip-meter>span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .22s ease,background-color .22s ease;
+}
+.model-chip.quota-low .model-chip-value {
+  color: var(--warning);
+}
+.model-chip.quota-low .model-chip-meter>span {
+  background: var(--warning);
+}
+.model-chip.quota-empty {
+  background: var(--warning-soft);
+}
+.account-stale .model-chip-meter {
+  opacity: .65;
+}
 .details-toggle {
   display: flex;
   align-items: center;

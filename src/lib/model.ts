@@ -21,6 +21,7 @@ export const usageWindowSchema = z.object({
   usedPercent: z.number().min(0).max(100),
   resetsAt: z.string().datetime({ offset: true }).nullable(),
   windowSeconds: z.number().int().nonnegative().nullable(),
+  scope: z.enum(['core', 'model', 'other']).optional(),
 })
 export const accountSchema = z.object({
   id: accountIdSchema,
@@ -67,6 +68,7 @@ export type AccountId = z.infer<typeof accountIdSchema>
 export type Account = z.infer<typeof accountSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type UsageWindow = z.infer<typeof usageWindowSchema>
+export type WindowScope = NonNullable<UsageWindow['scope']>
 export type AppState = z.infer<typeof appStateSchema>
 
 export const defaultSettings: Settings = {
