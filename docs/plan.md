@@ -56,8 +56,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Done 2026-10-22: `scope` core|model|other derived from window id, chips under Weekly, shared `percent()` caps >100 for both providers; fixture `claude-weekly-scoped.json`. Overview screenshots to recapture at 2.11.
 - [ ] **2.5 Limit-reset grants, read-only.** Parse count/type/expiry from Claude usage response (confirm shape from a live sanitized capture). Show "1 reset available · expires in 3d". Never redeem.
   Verify: fixture test; e2e; grep proves no POST to reset endpoints.
-- [ ] **2.6 Notifications v2.** One-time permission prompt; on by default; thresholds editable; "window reset" alert optional; click opens popover; tolerate ±60s reset jitter; alert when a period is first seen already past a threshold.
+- [x] **2.6 Notifications v2.** One-time permission prompt; on by default; thresholds editable; "window reset" alert optional; click opens popover; tolerate ±60s reset jitter; alert when a period is first seen already past a threshold.
   Verify: unit tests on dedupe; manual Mac notification once.
+  Done 2026-10-22: on by default (existing stores keep their value), threshold chips 50/80/90/95/100, reset alert opt-in (only after a usage alert in the period), ±60s jitter, first-seen alert once, click opens popover via `on_action`. Plugin 2.7.0 never prompts on desktop so "denied" cannot occur. Manual Mac notification check at 2.11 smoke 👤.
 - [ ] **2.7 Compact overview mode.** Settings toggle: one row per account (name · session % · weekly % · next reset), history/extra behind expand. Popover height adapts to content.
   Verify: e2e screenshots 1 and 5 accounts, light+dark.
 - [ ] **2.8 Absolute reset time shown** next to countdown on hover/expand ("in 2h 14m · 16:30").
