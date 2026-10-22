@@ -26,7 +26,7 @@ Configuration folders come from these places ([`accounts.rs`](src-tauri/src/core
 
 - `~/.claude` and `~/.codex`.
 - The folders named by the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` environment variables, when set.
-- Hidden folders directly in your home folder whose name contains `claude` or `codex` (case-insensitive). Margin lists your home folder to find them. A folder is added only if it contains the provider's credential file.
+- Hidden folders directly in your home folder whose name contains `claude` or `codex` (case-insensitive). Margin lists your home folder to find them. A folder is added only if it contains the provider's credential file or, for Claude on macOS, has a matching Keychain item.
 - Folders you add in Settings.
 
 On Windows, `~` is your user profile folder.
@@ -35,11 +35,12 @@ From Claude credentials, Margin uses the `claudeAiOauth` access token, its scope
 
 ### macOS Keychain
 
-On macOS only, Margin reads one generic password item:
+On macOS only, Claude Code stores tokens in Keychain instead of `.credentials.json`. Margin lists Keychain item names with `/usr/bin/security dump-keychain`. This reads names and attributes only, never passwords. It then reads generic password items with `/usr/bin/security find-generic-password -s <service> -w`:
 
-- Service `Claude Code-credentials`, read with `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w`.
+- `Claude Code-credentials`, for `~/.claude`. Read during discovery when no `~/.claude` account is found, and at refresh when `~/.claude/.credentials.json` has no usable token.
+- `Claude Code-credentials-<suffix>`, for another Claude configuration folder Margin knows about. The suffix is the first 8 hex characters of the SHA-256 of the folder path, as Claude Code computes it. Read at refresh when that folder has no usable `.credentials.json`.
 
-It reads this item during discovery when no `~/.claude` account is found, and at refresh when `~/.claude/.credentials.json` has no usable token. macOS may ask you to allow access. No other Keychain items are read.
+Items that match no known folder are ignored. macOS may ask you to allow access. No other Keychain items are read.
 
 ## Network requests
 

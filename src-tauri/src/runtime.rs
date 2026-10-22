@@ -168,6 +168,7 @@ mod tests {
             color: "#ffffff".into(),
             source: AccountSource::ConfigDir {
                 path: directory.path().to_string_lossy().into_owned(),
+                keychain_suffix: None,
             },
             identity: Identity::default(),
             snapshot: None,

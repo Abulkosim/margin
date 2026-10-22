@@ -298,11 +298,8 @@ fn validate(saved: &SavedHistory) -> Result<(), String> {
             return Err(READ_ERROR.into());
         }
     }
-    match &saved.source {
-        AccountSource::ConfigDir { path }
-            if path.len() <= 4096 && Path::new(path).is_absolute() => {}
-        AccountSource::Keychain if saved.provider == Provider::Claude => {}
-        _ => return Err(READ_ERROR.into()),
+    if !saved.source.is_valid_for(saved.provider) {
+        return Err(READ_ERROR.into());
     }
     if saved
         .identity
@@ -394,6 +391,7 @@ mod tests {
             color: "#ffffff".into(),
             source: AccountSource::ConfigDir {
                 path: std::env::temp_dir().to_string_lossy().into_owned(),
+                keychain_suffix: None,
             },
             identity: Identity {
                 email: Some("example@example.test".into()),
@@ -588,6 +586,7 @@ mod tests {
         assert!(store.get(&changed, at(120)).points[1].gap_before);
         changed.source = AccountSource::ConfigDir {
             path: "/other".into(),
+            keychain_suffix: None,
         };
         assert!(store.get(&changed, at(120)).points.is_empty());
         store.remove(&changed.id).unwrap();

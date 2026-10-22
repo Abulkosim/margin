@@ -28,7 +28,7 @@ pub(super) async fn fetch(
     client: &reqwest::Client,
     account: &Account,
 ) -> Result<(Snapshot, Identity), UsageError> {
-    let AccountSource::ConfigDir { path } = &account.source else {
+    let AccountSource::ConfigDir { path, .. } = &account.source else {
         return Err(UsageError::new(
             "credentials",
             "Add the configuration folder containing this Codex account's auth.json.",

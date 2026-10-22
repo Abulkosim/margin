@@ -24,8 +24,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 
 ## Phase 1 — Make the headline feature true (v0.4.0) ⛳
 
-- [ ] **1.1 Per-config-dir Keychain accounts (mac).** Find how Claude Code derives the `-<hash>` suffix (inspect CLI bundle in `~/.cursor/extensions/anthropic.claude-code-*/` or npm package; likely a short sha256 of the config dir path). Read those items; allow adding a custom `CLAUDE_CONFIG_DIR` on mac that has no `.credentials.json`. Also enumerate existing suffixed items in discovery and show them as "Claude (Keychain · <hash>)" until a profile call gives the email.
+- [x] **1.1 Per-config-dir Keychain accounts (mac).** Find how Claude Code derives the `-<hash>` suffix (inspect CLI bundle in `~/.cursor/extensions/anthropic.claude-code-*/` or npm package; likely a short sha256 of the config dir path). Read those items; allow adding a custom `CLAUDE_CONFIG_DIR` on mac that has no `.credentials.json`. Also enumerate existing suffixed items in discovery and show them as "Claude (Keychain · <hash>)" until a profile call gives the email.
   Verify: unit test for hash derivation against a known pair; on this Mac discovery shows >1 Claude account with distinct emails (manual run of the app, screenshot).
+  Done 2026-10-22: suffix = sha256(CLAUDE_CONFIG_DIR string)[..8], confirmed from CLI 2.1.308. Suffixed items on this Mac are Claude Desktop Cowork session dirs, so discovery links items to known folders instead of enumerating. Manual 2-account check pending (needs `CLAUDE_CONFIG_DIR=~/.claude-work claude` sign-in) 👤.
 - [ ] **1.2 Local `expiresAt` check for Claude.** Skip the request when expired; show "Signed out since <time> · run `claude` in <dir>" with a copy button for the command. Keep last snapshot visible with age.
   Verify: fixture test; e2e state renders.
 - [ ] **1.3 Cache the Claude profile call** (per account, 1h or on token change). Halves requests, fewer 429s.

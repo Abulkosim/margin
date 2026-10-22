@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, formatRemaining, remainingPercent, relativeAge, resetCountdown } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -84,4 +84,12 @@ test('spend-only accounts remain valid without inventing quota windows', () => {
   const state = appStateSchema.parse({ revision: 0, accounts: [spendOnly], settings: defaultSettings, refreshing: false })
   assert.equal(state.accounts[0]?.snapshot?.windows.length, 0)
   assert.equal(state.notice, null)
+})
+
+test('keychain-backed Claude sources parse and describe where the token lives', () => {
+  const claude = (source: unknown) => accountSchema.parse({ ...account, provider: 'claude', source })
+  assert.equal(accountSource(claude({ kind: 'keychain' })), 'macOS Keychain')
+  assert.throws(() => claude({ kind: 'keychainItem', suffix: '52eda417' }))
+  assert.equal(accountSource(claude({ kind: 'configDir', path: '/example/.claude-work', keychainSuffix: 'dd1118a7' })), '/example/.claude-work · Keychain')
+  assert.equal(accountSource(account), '/example/.codex-work')
 })

@@ -52,5 +52,7 @@ export function providerName(provider: Account['provider']): string {
 }
 
 export function accountSource(account: Account): string {
-  return account.source.kind === 'keychain' ? 'macOS Keychain' : account.source.path
+  const source = account.source
+  if (source.kind === 'keychain') return 'macOS Keychain'
+  return source.keychainSuffix ? `${source.path} · Keychain` : source.path
 }

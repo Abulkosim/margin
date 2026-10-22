@@ -26,7 +26,7 @@ export const accountSchema = z.object({
   label: z.string(),
   color: z.string(),
   source: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('configDir'), path: z.string() }),
+    z.object({ kind: z.literal('configDir'), path: z.string(), keychainSuffix: z.string().optional() }),
     z.object({ kind: z.literal('keychain') }),
   ]),
   identity: z.object({ email: z.string().nullable(), plan: z.string().nullable() }),

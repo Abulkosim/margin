@@ -75,8 +75,16 @@ Sign in through Claude Code or Codex first. Margin reads those existing OAuth cr
 
 | Provider | Default credentials | Custom configuration |
 | --- | --- | --- |
-| Claude | `~/.claude/.credentials.json`; macOS `Claude Code-credentials` Keychain item as fallback | `CLAUDE_CONFIG_DIR` or an added folder |
+| Claude | `~/.claude/.credentials.json`; macOS `Claude Code-credentials` Keychain item as fallback | `CLAUDE_CONFIG_DIR` or an added folder; macOS `Claude Code-credentials-<suffix>` Keychain item |
 | Codex | `~/.codex/auth.json` | `CODEX_HOME` or an added folder |
+
+To run a second Claude account, start Claude Code with its own folder and sign in:
+
+```sh
+CLAUDE_CONFIG_DIR=~/.claude-work claude
+```
+
+Margin finds `~/.claude-work` automatically; for a folder elsewhere, add it in Settings. On macOS, the token stays in Keychain and Margin reads the item for that folder.
 
 Discovery also checks home dotfolders containing `claude` or `codex`. It deduplicates configuration paths. On Windows, `~` means your user profile folder. Apps launched from Finder or the Start menu may not inherit terminal environment variables; add custom folders in Settings if needed.
 

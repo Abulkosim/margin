@@ -61,6 +61,13 @@ pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, St
     runtime
         .change(app, move |state| {
             for account in discovered {
+                if let Some(existing) = state.accounts.iter_mut().find(|existing| {
+                    existing.id == account.id
+                        && accounts::gains_keychain_link(&existing.source, &account.source)
+                }) {
+                    existing.source = account.source;
+                    continue;
+                }
                 if state.accounts.len() >= 100 {
                     break;
                 }
@@ -98,6 +105,9 @@ pub async fn add_account(
             .map_err(|_| "Could not inspect that folder.")??;
     runtime
         .change(&app, move |state| {
+            if accounts::link_keychain_item(&mut state.accounts, &account) {
+                return Ok(());
+            }
             if state.accounts.iter().any(|item| item.id == account.id) {
                 return Err("That account folder is already connected.".into());
             }

@@ -33,8 +33,42 @@ impl Provider {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AccountSource {
-    ConfigDir { path: String },
+    ConfigDir {
+        path: String,
+        #[serde(
+            default,
+            rename = "keychainSuffix",
+            skip_serializing_if = "Option::is_none"
+        )]
+        keychain_suffix: Option<String>,
+    },
     Keychain,
+}
+
+impl AccountSource {
+    pub fn is_valid_for(&self, provider: Provider) -> bool {
+        match self {
+            Self::ConfigDir {
+                path,
+                keychain_suffix,
+            } => {
+                path.len() <= 4096
+                    && !path.chars().any(char::is_control)
+                    && std::path::Path::new(path).is_absolute()
+                    && keychain_suffix.as_deref().is_none_or(|suffix| {
+                        provider == Provider::Claude && valid_keychain_suffix(suffix)
+                    })
+            }
+            Self::Keychain => provider == Provider::Claude,
+        }
+    }
+}
+
+pub fn valid_keychain_suffix(suffix: &str) -> bool {
+    suffix.len() == 8
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -117,6 +151,7 @@ mod tests {
             color: "#ffffff".into(),
             source: AccountSource::ConfigDir {
                 path: "/example".into(),
+                keychain_suffix: None,
             },
             identity: Identity::default(),
             snapshot: Some(Snapshot {
@@ -136,6 +171,7 @@ mod tests {
         let value = serde_json::to_value(account).unwrap();
         assert_eq!(value["provider"], "codex");
         assert_eq!(value["source"]["kind"], "configDir");
+        assert!(value["source"].get("keychainSuffix").is_none());
         assert_eq!(value["snapshot"]["windows"][0]["usedPercent"], 23.0);
         assert!(value.get("accessToken").is_none());
         assert!(value.get("refreshToken").is_none());

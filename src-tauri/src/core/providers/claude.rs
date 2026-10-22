@@ -3,7 +3,8 @@ use super::{
     now, percent, read_credentials, request_error, response_json, timestamp, token,
 };
 use crate::core::model::{
-    Account, AccountSource, ExtraUsage, Identity, Provider, Snapshot, UsageError, UsageWindow,
+    valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, Snapshot,
+    UsageError, UsageWindow,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -14,6 +15,7 @@ use std::time::Duration;
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
+const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
 struct Credentials {
     access_token: String,
@@ -99,26 +101,65 @@ fn needs_query_fallback(status: StatusCode) -> bool {
 
 async fn load_credentials(source: &AccountSource) -> Result<Credentials, UsageError> {
     match source {
-        AccountSource::ConfigDir { path } => {
-            let result = read_credentials(
-                &Path::new(path).join(".credentials.json"),
-                parse_credentials,
-                2,
-            )
-            .await;
+        AccountSource::ConfigDir {
+            path,
+            keychain_suffix,
+        } => {
+            let file = Path::new(path).join(".credentials.json");
+            #[cfg(target_os = "macos")]
+            if keychain_suffix.is_some() && !file.exists() {
+                return read_keychain(keychain_service(keychain_suffix.as_deref())).await;
+            }
+            let result = read_credentials(&file, parse_credentials, 2).await;
             #[cfg(target_os = "macos")]
             if result
                 .as_ref()
                 .err()
                 .is_some_and(|error| error.kind == "credentials")
-                && is_default_directory(Path::new(path))
             {
-                return read_keychain().await;
+                if keychain_suffix.is_some() {
+                    return read_keychain(keychain_service(keychain_suffix.as_deref())).await;
+                }
+                if is_default_directory(Path::new(path)) {
+                    return read_keychain(keychain_service(None)).await;
+                }
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = keychain_suffix;
             result
         }
-        AccountSource::Keychain => read_keychain().await,
+        AccountSource::Keychain => read_keychain(keychain_service(None)).await,
     }
+}
+
+pub(crate) fn keychain_service(suffix: Option<&str>) -> String {
+    match suffix {
+        Some(suffix) => format!("{KEYCHAIN_SERVICE}-{suffix}"),
+        None => KEYCHAIN_SERVICE.into(),
+    }
+}
+
+pub fn keychain_suffix(config_dir: &str) -> String {
+    let digest = Sha256::digest(config_dir.as_bytes());
+    format!("{digest:x}")[..8].to_owned()
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn parse_keychain_suffixes(dump: &str) -> Vec<String> {
+    let prefix = format!("\"svce\"<blob>=\"{KEYCHAIN_SERVICE}-");
+    let mut suffixes = Vec::new();
+    for line in dump.lines() {
+        let Some(rest) = line.trim().strip_prefix(&prefix) else {
+            continue;
+        };
+        let Some(suffix) = rest.strip_suffix('"') else {
+            continue;
+        };
+        if valid_keychain_suffix(suffix) && !suffixes.iter().any(|known| known == suffix) {
+            suffixes.push(suffix.to_owned());
+        }
+    }
+    suffixes
 }
 
 fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
@@ -171,17 +212,18 @@ fn is_default_directory(path: &Path) -> bool {
     std::fs::canonicalize(path).is_ok_and(|path| path == default)
 }
 
-async fn read_keychain() -> Result<Credentials, UsageError> {
+async fn read_keychain(service: String) -> Result<Credentials, UsageError> {
     #[cfg(target_os = "macos")]
     {
-        tokio::task::spawn_blocking(|| {
-            read_keychain_bytes().and_then(|bytes| parse_credentials(&bytes))
+        tokio::task::spawn_blocking(move || {
+            read_keychain_bytes(&service).and_then(|bytes| parse_credentials(&bytes))
         })
         .await
         .map_err(|_| keychain_error())?
     }
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = service;
         Err(UsageError::new("credentials", "Keychain accounts are only available on macOS. Add this account's configuration folder."))
     }
 }
@@ -193,7 +235,7 @@ fn keychain_error() -> UsageError {
 
 #[cfg(target_os = "macos")]
 pub(crate) fn keychain_available() -> bool {
-    read_keychain_bytes()
+    read_keychain_bytes(KEYCHAIN_SERVICE)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         .is_some_and(|value| {
@@ -205,18 +247,30 @@ pub(crate) fn keychain_available() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn read_keychain_bytes() -> Result<Vec<u8>, UsageError> {
+pub(crate) fn keychain_suffixes() -> Vec<String> {
+    run_security(&["dump-keychain"], 32 * 1024 * 1024)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|dump| parse_keychain_suffixes(&dump))
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn read_keychain_bytes(service: &str) -> Result<Vec<u8>, UsageError> {
+    run_security(
+        &["find-generic-password", "-s", service, "-w"],
+        super::MAX_PRIVATE_FILE_BYTES,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn run_security(args: &[&str], limit: u64) -> Result<Vec<u8>, UsageError> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     use std::time::Instant;
 
     let mut child = Command::new("/usr/bin/security")
-        .args([
-            "find-generic-password",
-            "-s",
-            "Claude Code-credentials",
-            "-w",
-        ])
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -226,7 +280,7 @@ fn read_keychain_bytes() -> Result<Vec<u8>, UsageError> {
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         stdout
-            .take(super::MAX_PRIVATE_FILE_BYTES + 1)
+            .take(limit + 1)
             .read_to_end(&mut bytes)
             .map(|_| bytes)
     });
@@ -246,7 +300,7 @@ fn read_keychain_bytes() -> Result<Vec<u8>, UsageError> {
         .join()
         .map_err(|_| keychain_error())?
         .map_err(|_| keychain_error())?;
-    if !succeeded || bytes.len() as u64 > super::MAX_PRIVATE_FILE_BYTES {
+    if !succeeded || bytes.len() as u64 > limit {
         return Err(keychain_error());
     }
     Ok(bytes)
@@ -611,6 +665,42 @@ mod tests {
             "credentialsChanged"
         );
         assert!(ensure_same_credentials(&before, &before).is_ok());
+    }
+
+    #[test]
+    fn keychain_suffix_matches_claude_code_scheme() {
+        assert_eq!(
+            keychain_suffix("/var/folders/57/qqyts3xn2494yf95yb3r_n200000gn/T/claude-hostloop-plugins/e4062e16ea6c1eaf"),
+            "96e73013"
+        );
+        assert_eq!(keychain_suffix("/Users/example/.claude-work"), "dd1118a7");
+        assert_ne!(
+            keychain_suffix("/Users/example/.claude-work"),
+            keychain_suffix("/Users/example/.claude-work/")
+        );
+        assert_eq!(
+            keychain_service(Some("96e73013")),
+            "Claude Code-credentials-96e73013"
+        );
+        assert_eq!(keychain_service(None), "Claude Code-credentials");
+    }
+
+    #[test]
+    fn keychain_listing_yields_only_valid_unique_suffixes() {
+        let dump = r#"keychain: "/Users/example/Library/Keychains/login.keychain-db"
+class: "genp"
+attributes:
+    "acct"<blob>="example"
+    "svce"<blob>="Claude Code-credentials"
+    "svce"<blob>="Claude Code-credentials-52eda417"
+    "svce"<blob>="Claude Code-credentials-52eda417"
+    "svce"<blob>="Claude Code-credentials-ac386099"
+    "svce"<blob>="Claude Code-credentials-NOTHEX00"
+    "svce"<blob>="Claude Code-credentials-ac38609"
+    "svce"<blob>="Other Code-credentials-8389e6a0"
+    "svce"<blob>=<NULL>
+"#;
+        assert_eq!(parse_keychain_suffixes(dump), vec!["52eda417", "ac386099"]);
     }
 
     #[test]

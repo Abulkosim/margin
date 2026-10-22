@@ -1,5 +1,5 @@
 use super::{
-    model::{Account, AccountSource, Provider, Snapshot},
+    model::{Account, Snapshot},
     notifications::AlertMemory,
     settings::Settings,
 };
@@ -129,13 +129,8 @@ fn validate(state: &StoredState) -> Result<(), String> {
         {
             return Err(invalid_store());
         }
-        match &account.source {
-            AccountSource::ConfigDir { path }
-                if path.len() <= 4096
-                    && !path.chars().any(char::is_control)
-                    && Path::new(path).is_absolute() => {}
-            AccountSource::Keychain if account.provider == Provider::Claude => {}
-            _ => return Err(invalid_store()),
+        if !account.source.is_valid_for(account.provider) {
+            return Err(invalid_store());
         }
         for text in [&account.identity.email, &account.identity.plan]
             .into_iter()
@@ -239,7 +234,7 @@ fn valid_timestamp(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::model::{ExtraUsage, Identity, UsageWindow};
+    use crate::core::model::{AccountSource, ExtraUsage, Identity, Provider, UsageWindow};
 
     fn sample_account() -> Account {
         Account {
@@ -249,6 +244,7 @@ mod tests {
             color: "#123456".into(),
             source: AccountSource::ConfigDir {
                 path: std::env::temp_dir().to_string_lossy().into_owned(),
+                keychain_suffix: None,
             },
             identity: Identity::default(),
             snapshot: Some(Snapshot {
@@ -319,6 +315,7 @@ mod tests {
         let mut state = sample_state();
         state.accounts[0].source = AccountSource::ConfigDir {
             path: "../.codex".into(),
+            keychain_suffix: None,
         };
         assert!(validate(&state).is_err());
         state.accounts[0].source = AccountSource::Keychain;
@@ -420,5 +417,62 @@ mod tests {
             assert!(load(&path).is_err());
             assert_eq!(fs::read(&path).unwrap(), bytes);
         }
+    }
+
+    #[test]
+    fn version_one_sources_load_and_keychain_links_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let folder = std::env::temp_dir().to_string_lossy().into_owned();
+        let legacy = serde_json::json!({
+            "version": 1,
+            "accounts": [
+                {"id": "claude-legacy", "provider": "claude", "label": "Claude", "color": "#b48265", "source": {"kind": "keychain"}, "identity": {"email": null, "plan": null}, "snapshot": null, "error": null, "refreshing": false},
+                {"id": "claude-folder", "provider": "claude", "label": "Work", "color": "#b48265", "source": {"kind": "configDir", "path": folder}, "identity": {"email": null, "plan": null}, "snapshot": null, "error": null, "refreshing": false}
+            ],
+            "settings": serde_json::to_value(Settings::default()).unwrap()
+        });
+        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let mut state = load(&path).unwrap();
+        assert_eq!(state.accounts[0].source, AccountSource::Keychain);
+        assert_eq!(
+            state.accounts[1].source,
+            AccountSource::ConfigDir {
+                path: folder.clone(),
+                keychain_suffix: None
+            }
+        );
+        state.accounts[1].source = AccountSource::ConfigDir {
+            path: folder,
+            keychain_suffix: Some("ac386099".into()),
+        };
+        save(&path, &state).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["accounts"][0]["source"]["kind"], "keychain");
+        assert_eq!(saved["accounts"][1]["source"]["keychainSuffix"], "ac386099");
+        let restored = load(&path).unwrap();
+        assert_eq!(restored.accounts[0].source, state.accounts[0].source);
+        assert_eq!(restored.accounts[1].source, state.accounts[1].source);
+    }
+
+    #[test]
+    fn rejects_invalid_keychain_suffixes_and_codex_keychain_links() {
+        let mut state = sample_state();
+        let path = std::env::temp_dir().to_string_lossy().into_owned();
+        state.accounts[0].provider = Provider::Claude;
+        for suffix in ["52EDA417", "52eda41", "52eda4170", "../../x", ""] {
+            state.accounts[0].source = AccountSource::ConfigDir {
+                path: path.clone(),
+                keychain_suffix: Some(suffix.into()),
+            };
+            assert!(validate(&state).is_err());
+        }
+        state.accounts[0].source = AccountSource::ConfigDir {
+            path,
+            keychain_suffix: Some("52eda417".into()),
+        };
+        assert!(validate(&state).is_ok());
+        state.accounts[0].provider = Provider::Codex;
+        assert!(validate(&state).is_err());
     }
 }
