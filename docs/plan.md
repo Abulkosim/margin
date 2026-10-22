@@ -31,9 +31,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Verify: fixture test; e2e state renders.
 - [x] **1.3 Cache the Claude profile call** (per account, 1h or on token change). Halves requests, fewer 429s.
   Verify: wiremock test asserts one profile call across N polls.
-- [ ] **1.4 Re-poll on wake / network return.** macOS `NSWorkspaceDidWake`, Windows `WM_POWERBROADCAST`, plus a wall-clock drift check in the poller (if `now - last_tick > 2×interval`, refresh).
-  Verify: unit test on drift logic; manual sleep/wake on Mac, tray updates within 10s.
-- [ ] **1.5 Rate-limited / credentials-changed are not "attention" states** until data is actually older than 2× interval. Keep subtle "retrying" text.
+- [x] **1.4 Re-poll on wake / network return.** macOS `NSWorkspaceDidWake`, Windows `WM_POWERBROADCAST`, plus a wall-clock drift check in the poller (if `now - last_tick > 2×interval`, refresh).
+  Verify: unit test on drift logic; manual sleep/wake on Mac, tray updates within 10s. Done 2026-10-22 (NSWorkspaceDidWake + wall-clock drift; Windows drift only). Manual sleep/wake check pending 👤.
+- [x] **1.5 Rate-limited / credentials-changed are not "attention" states** until data is actually older than 2× interval. Keep subtle "retrying" text.
   Verify: e2e for both states.
 - [ ] **1.6 Store recovery.** Per-account tolerant validation; "Back up and reset settings" button in the recovery state.
   Verify: unit test with one corrupt account keeps the others; e2e of recovery screen.

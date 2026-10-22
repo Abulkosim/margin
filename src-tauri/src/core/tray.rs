@@ -160,7 +160,10 @@ fn remaining(account: &Account) -> Option<f64> {
 }
 
 fn stale(account: &Account, state: &AppState) -> bool {
-    if account.error.is_some() {
+    if account.error.as_ref().is_some_and(|error| {
+        account.snapshot.is_none()
+            || !matches!(error.kind.as_str(), "rateLimited" | "credentialsChanged")
+    }) {
         return true;
     }
     account.snapshot.as_ref().is_some_and(|snapshot| {
@@ -542,6 +545,28 @@ mod tests {
         let pinned = selected(&state).unwrap();
         assert_eq!(pinned.id, "a");
         assert!(stale(pinned, &state));
+    }
+
+    #[test]
+    fn transient_errors_keep_fresh_readings_live() {
+        let mut state = AppState {
+            revision: 0,
+            accounts: vec![account("a", &[10.0])],
+            settings: Settings::default(),
+            refreshing: false,
+            notice: None,
+        };
+        for kind in ["rateLimited", "credentialsChanged"] {
+            state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
+            assert!(!stale(&state.accounts[0], &state));
+            if let Some(snapshot) = state.accounts[0].snapshot.as_mut() {
+                snapshot.fetched_at = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+            }
+            assert!(stale(&state.accounts[0], &state));
+            state.accounts[0].snapshot = None;
+            assert!(stale(&state.accounts[0], &state));
+            state.accounts[0] = account("a", &[10.0]);
+        }
     }
 
     #[test]

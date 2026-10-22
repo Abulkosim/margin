@@ -65,6 +65,23 @@ test('signed-out accounts keep the last reading and offer the sign-in command', 
   await expect(codex.getByRole('button', { name: /Try again/ })).toBeVisible()
 })
 
+test('rate-limited and switched accounts retry without asking for attention', async ({ page }, info) => {
+  await page.goto('/?demo=1&state=retrying&theme=dark')
+  const limited = page.getByRole('article', { name: 'Personal, Claude' })
+  await expect(limited.getByRole('status').filter({ hasText: /^Rate limited · retrying in [34]m$/ })).toBeVisible()
+  await expect(limited.getByText('Last known', { exact: true })).toHaveCount(0)
+  await expect(limited.getByRole('progressbar', { name: 'Session remaining', exact: true })).toHaveAttribute('aria-valuenow', '72')
+  const changed = page.getByRole('article', { name: 'Work, Codex' })
+  await expect(changed.getByText('Retrying…', { exact: true })).toBeVisible()
+  await expect(changed.getByText('Last known', { exact: true })).toHaveCount(0)
+  const old = page.getByRole('article', { name: 'Studio, Claude' })
+  await expect(old.getByText('Last known', { exact: true })).toBeVisible()
+  await expect(old.getByText(/Updated 32m ago/)).toBeVisible()
+  await expect(old.getByText(/retrying in/)).toHaveCount(0)
+  await expect(page.getByText('1 account needs attention', { exact: true })).toBeVisible()
+  await info.attach('retrying-dark', { body: await page.screenshot(), contentType: 'image/png' })
+})
+
 test('account without a reading shows no invented percentage', async ({ page }) => {
   await page.goto('/?demo=1&state=error')
   const account = page.getByRole('article', { name: 'Personal, Claude' })

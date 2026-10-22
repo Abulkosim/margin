@@ -224,7 +224,8 @@ fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderM
             Provider::Codex => "Codex usage access was denied. Check this account's sign-in and subscription.",
         }),
         429 => UsageError {
-            retry_after_seconds: retry_after(headers, Utc::now()),
+            retry_after_seconds: retry_after(headers, Utc::now())
+                .and_then(|seconds| u32::try_from(seconds).ok()),
             ..UsageError::new("rateLimited", "The provider asked us to wait. Retrying automatically.")
         },
         300..=399 => UsageError::new("redirect", "The provider redirected the request. Credentials were not forwarded."),

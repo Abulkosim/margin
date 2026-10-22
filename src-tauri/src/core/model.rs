@@ -111,11 +111,13 @@ pub struct Snapshot {
 pub struct UsageError {
     pub kind: String,
     pub message: String,
-    pub retry_after_seconds: Option<u64>,
+    pub retry_after_seconds: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signed_out_since: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sign_in_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<i64>,
 }
 
 impl UsageError {
@@ -126,6 +128,7 @@ impl UsageError {
             retry_after_seconds: None,
             signed_out_since: None,
             sign_in_command: None,
+            retry_at: None,
         }
     }
 }

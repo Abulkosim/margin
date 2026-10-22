@@ -61,6 +61,8 @@ pub fn run() {
                 }
                 let view = runtime.inner.lock().await.view.clone();
                 runtime::publish(&handle, &view);
+                #[cfg(target_os = "macos")]
+                poller::watch_wake(runtime.clone());
                 poller::start(handle.clone(), runtime);
                 if !std::env::args().any(|argument| argument == "--background") {
                     tray::show(&handle, false);

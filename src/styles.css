@@ -513,6 +513,16 @@ button:disabled:hover {
 .account-stale .quota-track {
   opacity: .65;
 }
+.retry-note {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--tertiary);
+  font-variant-numeric: tabular-nums;
+}
 .stale-note {
   display: flex;
   gap: 6px;

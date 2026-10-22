@@ -68,5 +68,26 @@ export function createDemoState(scenario: string | null): AppState {
       return account
     })
   }
+  if (scenario === 'retrying') {
+    const fetchedAt = (minutes: number): string => new Date(now - minutes * 60_000).toISOString()
+    state.accounts = state.accounts.map((account, index) => {
+      if (!account.snapshot) return account
+      if (index === 0) return {
+        ...account,
+        snapshot: { ...account.snapshot, fetchedAt: fetchedAt(2) },
+        error: { kind: 'rateLimited', message: 'The provider asked us to wait. Retrying automatically.', retryAfterSeconds: 240, retryAt: now + 4 * 60_000 },
+      }
+      if (index === 1) return {
+        ...account,
+        snapshot: { ...account.snapshot, fetchedAt: fetchedAt(1) },
+        error: { kind: 'credentialsChanged', message: 'The CLI account changed during refresh. Refresh again to read the current account.', retryAfterSeconds: null },
+      }
+      return {
+        ...account,
+        snapshot: { ...account.snapshot, fetchedAt: fetchedAt(32) },
+        error: { kind: 'rateLimited', message: 'The provider asked us to wait. Retrying automatically.', retryAfterSeconds: null },
+      }
+    })
+  }
   return state
 }

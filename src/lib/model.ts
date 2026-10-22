@@ -45,6 +45,7 @@ export const accountSchema = z.object({
     retryAfterSeconds: z.number().nonnegative().nullable(),
     signedOutSince: z.string().datetime({ offset: true }).optional(),
     signInCommand: z.string().optional(),
+    retryAt: z.number().int().nonnegative().optional(),
   }).nullable(),
   refreshing: z.boolean(),
 })

@@ -1,11 +1,12 @@
 use super::{model::UsageError, notifications, providers, tray};
 use crate::runtime::{publish, Runtime};
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
@@ -16,7 +17,11 @@ pub struct Schedule {
     pub failures: u32,
     pub in_flight: bool,
     pub generation: u64,
+    pub wake_retries: u8,
 }
+
+const WAKE_RETRIES: u8 = 6;
+const WAKE_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 impl Schedule {
     fn new(delay: Duration) -> Self {
@@ -27,6 +32,7 @@ impl Schedule {
             failures: 0,
             in_flight: false,
             generation: 0,
+            wake_retries: 0,
         }
     }
 
@@ -50,28 +56,72 @@ pub fn retry_delay(interval: u64, failures: u32, error: &UsageError) -> Duration
     Duration::from_secs(
         backoff
             .max(minimum)
-            .max(error.retry_after_seconds.unwrap_or(0).min(86400)),
+            .max(u64::from(error.retry_after_seconds.unwrap_or(0)).min(86400)),
     )
 }
 
-pub async fn refresh(runtime: &Runtime) {
-    let mut inner = runtime.inner.lock().await;
+pub fn resumed(last_tick: SystemTime, now: SystemTime, interval: Duration) -> bool {
+    now.duration_since(last_tick)
+        .is_ok_and(|gap| gap > interval.saturating_mul(2))
+}
+
+fn bring_forward(schedules: &mut HashMap<String, Schedule>, after_wake: bool) {
     let now = Instant::now();
-    for schedule in inner.schedules.values_mut() {
+    for schedule in schedules.values_mut() {
+        if after_wake {
+            schedule.wake_retries = WAKE_RETRIES;
+        }
         if !schedule.in_flight {
             schedule.next = now.max(schedule.not_before);
         }
     }
-    drop(inner);
+}
+
+pub async fn refresh(runtime: &Runtime) {
+    bring_forward(&mut runtime.inner.lock().await.schedules, false);
     runtime.wake.notify_one();
+}
+
+pub async fn refresh_after_wake(runtime: &Runtime) {
+    bring_forward(&mut runtime.inner.lock().await.schedules, true);
+    runtime.wake.notify_one();
+}
+
+#[cfg(target_os = "macos")]
+pub fn watch_wake(runtime: Arc<Runtime>) {
+    use objc2_app_kit::{NSWorkspace, NSWorkspaceDidWakeNotification};
+    use objc2_foundation::NSNotification;
+    use std::ptr::NonNull;
+
+    let block = block2::RcBlock::new(move |_: NonNull<NSNotification>| {
+        let runtime = runtime.clone();
+        tauri::async_runtime::spawn(async move { refresh_after_wake(&runtime).await });
+    });
+    let center = NSWorkspace::sharedWorkspace().notificationCenter();
+    let observer = unsafe {
+        center.addObserverForName_object_queue_usingBlock(
+            Some(NSWorkspaceDidWakeNotification),
+            None,
+            None,
+            &block,
+        )
+    };
+    std::mem::forget(observer);
 }
 
 pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
     static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
     tauri::async_runtime::spawn(async move {
         let mut last_tray_update = Instant::now();
+        let mut last_tick = SystemTime::now();
         loop {
             let mut inner = runtime.inner.lock().await;
+            let tick = SystemTime::now();
+            let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
+            if resumed(last_tick, tick, interval) {
+                bring_forward(&mut inner.schedules, true);
+            }
+            last_tick = tick;
             let ids: Vec<String> = inner
                 .view
                 .accounts
@@ -193,23 +243,42 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         .bytes()
                         .fold(0_u64, |sum, byte| sum + u64::from(byte))
                         % 7;
+                    let mut retry_at = None;
                     if let Some(schedule) = inner.schedules.get_mut(&account.id) {
                         schedule.in_flight = false;
                         let now = Instant::now();
                         if let Some(error) = error {
-                            schedule.failures = schedule.failures.saturating_add(1);
-                            let delay = retry_delay(interval, schedule.failures, &error);
-                            schedule.next = now + delay + Duration::from_secs(jitter);
-                            schedule.not_before = if error.kind == "rateLimited" {
-                                schedule.next
+                            if error.kind == "network" && schedule.wake_retries > 0 {
+                                schedule.wake_retries -= 1;
+                                schedule.next = now + WAKE_RETRY_DELAY;
+                                schedule.not_before = schedule.next;
                             } else {
-                                now + Duration::from_secs(5)
-                            };
+                                schedule.wake_retries = 0;
+                                schedule.failures = schedule.failures.saturating_add(1);
+                                let delay = retry_delay(interval, schedule.failures, &error);
+                                schedule.next = now + delay + Duration::from_secs(jitter);
+                                schedule.not_before = if error.kind == "rateLimited" {
+                                    schedule.next
+                                } else {
+                                    now + Duration::from_secs(5)
+                                };
+                            }
+                            if error.kind == "rateLimited" {
+                                let delay = schedule.next.saturating_duration_since(now);
+                                retry_at = Some(
+                                    chrono::Utc::now().timestamp_millis()
+                                        + i64::try_from(delay.as_millis()).unwrap_or(i64::MAX / 2),
+                                );
+                            }
                         } else {
+                            schedule.wake_retries = 0;
                             schedule.failures = 0;
                             schedule.next = now + Duration::from_secs(interval + jitter);
                             schedule.not_before = now + Duration::from_secs(5);
                         }
+                    }
+                    if let Some(error) = inner.view.accounts[index].error.as_mut() {
+                        error.retry_at = retry_at;
                     }
                     inner.view.refreshing = inner.view.accounts.iter().any(|item| item.refreshing);
                     inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
@@ -275,6 +344,37 @@ mod tests {
         assert_eq!(retry_delay(60, 5, &local), Duration::from_secs(60));
         let rejected = UsageError::new("signedOut", "Signed out");
         assert_eq!(retry_delay(60, 1, &rejected), Duration::from_secs(300));
+    }
+
+    #[test]
+    fn wall_clock_gap_beyond_two_intervals_is_a_wake() {
+        let last = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let interval = Duration::from_secs(60);
+        assert!(!resumed(last, last + Duration::from_secs(1), interval));
+        assert!(!resumed(last, last + Duration::from_secs(120), interval));
+        assert!(resumed(last, last + Duration::from_secs(121), interval));
+        assert!(resumed(
+            last,
+            last + Duration::from_secs(8 * 3600),
+            interval
+        ));
+        assert!(!resumed(last, last - Duration::from_secs(3600), interval));
+    }
+
+    #[test]
+    fn wake_refresh_keeps_rate_limit_cooldown() {
+        let mut schedules = HashMap::new();
+        let mut limited = Schedule::new(Duration::from_secs(600));
+        limited.not_before = Instant::now() + Duration::from_secs(600);
+        schedules.insert("limited".to_owned(), limited);
+        schedules.insert("idle".to_owned(), Schedule::new(Duration::from_secs(600)));
+        bring_forward(&mut schedules, true);
+        let now = Instant::now();
+        assert!(schedules["idle"].ready(now));
+        assert!(!schedules["limited"].ready(now));
+        assert!(schedules
+            .values()
+            .all(|schedule| schedule.wake_retries == WAKE_RETRIES));
     }
 
     #[test]

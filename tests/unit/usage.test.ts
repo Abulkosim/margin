@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown, signedOutMessage } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, formatRemaining, remainingPercent, relativeAge, resetCountdown, retryingMessage, signedOutMessage } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -44,6 +44,26 @@ test('errors and elapsed resets mark last-known values stale', () => {
   } })
   assert.equal(accountIsStale(expired, defaultSettings, now), true)
   assert.equal(expired.snapshot?.windows[0]?.usedPercent, 93.2)
+})
+
+test('rate limits and account switches retry quietly until the reading is old', () => {
+  const later = Date.parse('2026-10-16T10:11:00Z')
+  const rateLimited = { ...account, error: { kind: 'rateLimited', message: 'Wait', retryAfterSeconds: 240, retryAt: now + 240_000 } }
+  assert.equal(accountIsStale(rateLimited, defaultSettings, now), false)
+  assert.equal(retryingMessage(rateLimited, defaultSettings, now), 'Rate limited · retrying in 4m')
+  assert.equal(retryingMessage({ ...rateLimited, error: { ...rateLimited.error, retryAt: now - 1 } }, defaultSettings, now), 'Rate limited · retrying…')
+  assert.equal(accountIsStale(rateLimited, defaultSettings, later), true)
+  assert.equal(retryingMessage(rateLimited, defaultSettings, later), null)
+
+  const changed = { ...account, error: { kind: 'credentialsChanged', message: 'Changed', retryAfterSeconds: null } }
+  assert.equal(accountIsStale(changed, defaultSettings, now), false)
+  assert.equal(retryingMessage(changed, defaultSettings, now), 'Retrying…')
+  assert.equal(accountIsStale(changed, defaultSettings, later), true)
+  assert.equal(retryingMessage(changed, defaultSettings, later), null)
+
+  assert.equal(accountIsStale({ ...changed, snapshot: null }, defaultSettings, now), true)
+  assert.equal(retryingMessage(changed, defaultSettings, now, true), null)
+  assert.equal(retryingMessage({ ...account, error: { kind: 'network', message: 'Offline', retryAfterSeconds: null } }, defaultSettings, now), null)
 })
 
 test('no snapshot remains unknown instead of becoming empty quota', () => {

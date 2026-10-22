@@ -9,16 +9,20 @@ export function formatRemaining(used: number): string {
   return remaining > 0 && remaining < 1 ? '<1' : Math.round(remaining).toString()
 }
 
+function shortDuration(milliseconds: number): string {
+  if (milliseconds < 60_000) return '<1m'
+  const minutes = Math.ceil(milliseconds / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ${minutes % 60}m`
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`
+}
+
 export function resetCountdown(resetsAt: string | null, now: number): string {
   if (!resetsAt) return 'Reset time unavailable'
   const milliseconds = Date.parse(resetsAt) - now
   if (milliseconds <= 0) return 'Reset pending'
-  if (milliseconds < 60_000) return 'Resets in <1m'
-  const minutes = Math.ceil(milliseconds / 60_000)
-  if (minutes < 60) return `Resets in ${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Resets in ${hours}h ${minutes % 60}m`
-  return `Resets in ${Math.floor(hours / 24)}d ${hours % 24}h`
+  return `Resets in ${shortDuration(milliseconds)}`
 }
 
 export function relativeAge(timestamp: string, now: number): string {
@@ -32,11 +36,21 @@ export function relativeAge(timestamp: string, now: number): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
+const transientErrors = new Set(['rateLimited', 'credentialsChanged'])
+
 export function accountIsStale(account: Account, settings: Settings, now: number, connectionInterrupted = false): boolean {
-  if (connectionInterrupted || account.error) return true
+  if (connectionInterrupted) return true
+  if (account.error && !(account.snapshot && transientErrors.has(account.error.kind))) return true
   if (!account.snapshot) return false
   return now - Date.parse(account.snapshot.fetchedAt) > Math.max(settings.idlePollIntervalSeconds * 2, 180) * 1000
     || account.snapshot.windows.some(window => window.resetsAt !== null && Date.parse(window.resetsAt) <= now)
+}
+
+export function retryingMessage(account: Account, settings: Settings, now: number, connectionInterrupted = false): string | null {
+  const error = account.error
+  if (!error || !transientErrors.has(error.kind) || accountIsStale(account, settings, now, connectionInterrupted)) return null
+  if (error.kind !== 'rateLimited') return 'Retrying…'
+  return error.retryAt && error.retryAt > now ? `Rate limited · retrying in ${shortDuration(error.retryAt - now)}` : 'Rate limited · retrying…'
 }
 
 export function formatMoney(amount: number, currency: string): string {

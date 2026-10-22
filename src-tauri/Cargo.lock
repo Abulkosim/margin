@@ -2218,6 +2218,7 @@ name = "margin"
 version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "chrono",
  "dirs 6.0.0",
  "objc2",

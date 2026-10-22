@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { Account, Settings } from '../lib/model'
-import { accountIsStale, formatMoney, providerName, relativeAge, signedOutMessage } from '../lib/format'
+import { accountIsStale, formatMoney, providerName, relativeAge, retryingMessage, signedOutMessage } from '../lib/format'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -12,6 +12,7 @@ defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
+const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)
 const errorMessage = computed(() => props.connectionError ?? signedOutMessage(props.account, props.now) ?? props.account.error?.message)
 const signInCommand = computed(() => props.connectionError ? null : props.account.error?.signInCommand ?? null)
@@ -69,6 +70,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
       <button v-if="hasDetails" class="details-toggle" :aria-expanded="expanded" @click="expanded = !expanded">
         <span>{{ expanded ? 'Show less' : extraWindows.length ? `${extraWindows.length} more ${extraWindows.length === 1 ? 'window' : 'windows'}` : 'Extra usage' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: expanded }" />
       </button>
+      <p v-if="retrying" class="retry-note" role="status"><AppIcon name="refresh" :size="12" />{{ retrying }}</p>
       <div v-if="stale" class="stale-note"><AppIcon name="alert" :size="13" /><p><span>Updated {{ relativeAge(account.snapshot.fetchedAt, now) }}.</span> {{ errorMessage ?? 'Waiting for a fresh reading.' }}</p></div>
       <AppTooltip v-if="stale && signInCommand" :text="signInCommand"><button class="text-button sign-in-copy" :aria-label="copied ? 'Command copied' : `Copy command: ${signInCommand}`" @click="copyCommand">{{ copied ? 'Copied' : 'Copy command' }} <AppIcon :name="copied ? 'check' : 'copy'" :size="12" /></button></AppTooltip>
     </template>
