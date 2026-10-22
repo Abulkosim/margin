@@ -112,7 +112,7 @@ Margin checks for updates only when you ask. It installs only after you confirm.
 
 Installers are not signed by Apple or Microsoft yet. macOS builds are ad-hoc signed. See [Install](README.md#install) for first-launch steps.
 
-Each release includes `SHA256SUMS.txt` with checksums for every release file. Compare your download against it:
+Each release includes `SHA256SUMS.txt` with checksums for every installer and updater file. Releases after v0.3.0 also have GitHub build attestations; see [Verify a download](README.md#verify-a-download). Compare your download against the checksums:
 
 ```sh
 shasum -a 256 Margin_<version>_universal.dmg

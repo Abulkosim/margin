@@ -175,6 +175,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -183,6 +185,23 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
+      - name: Resolve release asset names
+        id: assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sbom=sbom/margin-$version.sbom.spdx.json" >> "$GITHUB_OUTPUT"
+          mkdir -p sbom
+      - name: Generate SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c
+        with:
+          path: .
+          format: spdx-json
+          output-file: ${{ steps.assets.outputs.sbom }}
+          upload-artifact: false
+          upload-release-assets: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: installers-*
@@ -195,11 +214,31 @@ jobs:
         run: node scripts/updater-manifest.mjs release-artifacts "$RELEASE_TAG"
       - name: Generate release checksums
         run: node scripts/checksums.mjs release-artifacts
+      - name: Attest release provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: |
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_universal.dmg
+            release-artifacts/Margin.app.tar.gz
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_x64-setup.exe
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_x64_en-US.msi
+            release-artifacts/latest.json
+            release-artifacts/SHA256SUMS.txt
+      - name: Attest SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          sbom-path: ${{ steps.assets.outputs.sbom }}
+          subject-path: |
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_universal.dmg
+            release-artifacts/Margin.app.tar.gz
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_x64-setup.exe
+            release-artifacts/Margin_${{ steps.assets.outputs.version }}_x64_en-US.msi
       - name: Create or update draft
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
+          SBOM_PATH: ${{ steps.assets.outputs.sbom }}
         run: |
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then
             if [[ "$draft" != "true" ]]; then
@@ -209,4 +248,4 @@ jobs:
           else
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "Margin $RELEASE_TAG" --notes-file "changelogs/$RELEASE_TAG.md"
           fi
-          gh release upload "$RELEASE_TAG" release-artifacts/* --clobber
+          gh release upload "$RELEASE_TAG" release-artifacts/* "$SBOM_PATH" --clobber

@@ -69,6 +69,15 @@ Early releases have no verified publisher signature. If SmartScreen shows its re
 
 Each release includes `SHA256SUMS.txt`. Compare the downloaded installer's checksum with that file using `shasum -a 256 <file>` on macOS or `Get-FileHash <file> -Algorithm SHA256` in PowerShell.
 
+### Verify a download
+
+Releases after v0.3.0 carry GitHub build attestations and an SPDX SBOM (`margin-<version>.sbom.spdx.json`). With the [GitHub CLI](https://cli.github.com), check that a file was built by this repository's release workflow:
+
+```sh
+gh attestation verify Margin_<version>_universal.dmg --repo Abulkosim/margin
+gh attestation verify Margin_<version>_x64-setup.exe --repo Abulkosim/margin
+```
+
 ## Connect accounts
 
 Sign in through Claude Code or Codex first. Margin reads those existing OAuth credentials; API-key-only accounts are unsupported. Add each extra configuration folder in Settings; keep each account in its own folder.

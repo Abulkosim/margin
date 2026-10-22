@@ -18,9 +18,9 @@ Never put real credential files, token values, account IDs, or unredacted provid
 - Ubuntu: installs the pinned pnpm version, checks types, builds the interface, runs unit tests, updater release tests, and browser tests.
 - macOS: checks Rust formatting, builds frontend assets, runs Clippy and unit tests, builds universal Apple Silicon/Intel app and DMG bundles.
 - Windows: checks Rust formatting, builds frontend assets, runs Clippy and unit tests, builds x64 NSIS and MSI installers.
-- Release tag pushes in `Abulkosim/margin` only: signs updater artifacts, validates matching versions and lockfiles, waits for all jobs to pass, verifies each updater signature and its signed version, generates `latest.json` and SHA-256 checksums, and creates or updates a draft GitHub release.
+- Release tag pushes in `Abulkosim/margin` only: signs updater artifacts, validates matching versions and lockfiles, waits for all jobs to pass, verifies each updater signature and its signed version, generates `latest.json` and SHA-256 checksums, generates an SPDX SBOM of the Rust and npm lockfiles, records GitHub build provenance for the four installers, `latest.json` and `SHA256SUMS.txt`, attests the SBOM against the four installers, and creates or updates a draft GitHub release.
 
-Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rust dependency updates. Builds have read-only repository access; only the release job has write access. Pull requests, main builds, forks, and manual workflow runs disable updater artifact generation and receive no signing secrets. The release pipeline uses the existing standard GitHub runners and GitHub Releases; no additional hosted service is required.
+Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rust dependency updates. Builds have read-only repository access; only the release job has write access, plus the OIDC token and attestation permissions needed for provenance. Pull requests, main builds, forks, and manual workflow runs disable updater artifact generation and receive no signing secrets. The release pipeline uses the existing standard GitHub runners and GitHub Releases; no additional hosted service is required.
 
 ## Publish
 
@@ -28,7 +28,14 @@ Download and exercise the macOS artifact from the draft release. The owner confi
 
 Record the tested OS versions and remaining limitations in `docs/verification.md` and the release notes, then publish through GitHub Releases. The workflow refuses to overwrite assets on a published release; use a new patch version for fixes.
 
-Require green frontend and native CI jobs before publishing. Verify the downloaded files against `SHA256SUMS.txt`. The release contains the DMG, universal `.app.tar.gz`, NSIS EXE, MSI, three updater `.sig` files, and `latest.json`; checksums cover all eight files. The pipeline refuses missing, duplicate, unexpected, incorrectly signed, or mismatched-version updater assets.
+Require green frontend and native CI jobs before publishing. Verify the downloaded files against `SHA256SUMS.txt`. The release contains the DMG, universal `.app.tar.gz`, NSIS EXE, MSI, three updater `.sig` files, `latest.json`, and `margin-X.Y.Z.sbom.spdx.json`; checksums cover the first eight files. Verify provenance and the SBOM attestation for the downloaded installers:
+
+```sh
+for f in Margin_X.Y.Z_universal.dmg Margin.app.tar.gz Margin_X.Y.Z_x64-setup.exe Margin_X.Y.Z_x64_en-US.msi latest.json SHA256SUMS.txt; do
+  gh attestation verify "$f" --repo Abulkosim/margin
+done
+gh attestation verify Margin_X.Y.Z_universal.dmg --repo Abulkosim/margin --predicate-type https://spdx.dev/Document/v2.3
+``` The pipeline refuses missing, duplicate, unexpected, incorrectly signed, or mismatched-version updater assets.
 
 ## Updates
 
