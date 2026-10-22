@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/Abulkosim/margin/discussions
+    about: Ask how something works or discuss an idea before filing a request.
+  - name: Security vulnerability
+    url: https://github.com/Abulkosim/margin/security/advisories/new
+    about: Report privately. See SECURITY.md for scope. Do not open a public issue.

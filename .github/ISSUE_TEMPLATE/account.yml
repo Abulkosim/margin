@@ -1,0 +1,88 @@
+name: Account not found or wrong numbers
+description: An account is missing, signed out, stale, or shows usage that does not match the provider.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste tokens, `.credentials.json` or `auth.json` contents, Keychain values, account IDs, or unredacted emails. Redact screenshots.
+        Check [Connect accounts](https://github.com/Abulkosim/margin#connect-accounts) and [What Margin reads](https://github.com/Abulkosim/margin/blob/main/PRIVACY.md#what-margin-reads) first.
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options: [Claude, Codex]
+    validations:
+      required: true
+  - type: dropdown
+    id: signin
+    attributes:
+      label: How is this account signed in?
+      options:
+        - claude login, default folder (~/.claude)
+        - claude login with CLAUDE_CONFIG_DIR
+        - codex login, default folder (~/.codex)
+        - codex login with CODEX_HOME
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: folder
+    attributes:
+      label: Configuration folder
+      description: Path only. Say whether discovery found it or you added it in Settings.
+      placeholder: ~/.claude-work, added in Settings
+  - type: dropdown
+    id: credential
+    attributes:
+      label: Where are the credentials stored?
+      description: Check that the file exists. Do not open or paste it.
+      options:
+        - .credentials.json in the folder (Claude)
+        - macOS Keychain, Claude Code-credentials or Claude Code-credentials-<suffix> (Claude)
+        - auth.json in the folder (Codex)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Margin version
+      placeholder: 0.4.0
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and architecture
+      placeholder: macOS 15, Apple Silicon / Windows 11, x64
+    validations:
+      required: true
+  - type: input
+    id: cli
+    attributes:
+      label: CLI version
+      placeholder: output of claude --version or codex --version
+  - type: dropdown
+    id: launch
+    attributes:
+      label: How was Margin started?
+      description: Apps started from Finder or the Start menu may not see terminal environment variables.
+      options:
+        - Finder, Dock, or Start menu
+        - Launch at login
+        - Terminal
+  - type: textarea
+    id: shown
+    attributes:
+      label: What Margin shows
+      description: Missing account, signed out, stale with its age, the exact error text, or the percentage and reset time shown.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: For wrong numbers, what the provider shows and when you checked.
+    validations:
+      required: true

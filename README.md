@@ -112,41 +112,9 @@ Margin does not write to CLI credential files, rotate CLI tokens, read browser c
 
 See [PRIVACY.md](PRIVACY.md) for exact files, Keychain items, and hosts. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
-## Preview the interface
-
-Requires Node.js 24 and pnpm 11.25.0.
-
-```sh
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Append `?demo=1` to the local URL printed by Vite. This previews clearly labeled sample accounts without reading credentials or making provider requests. The plain URL shows a desktop-app entry screen. The [design study](design/directions.html) explores the initial visual directions.
-
 ## Develop
 
-Built with Tauri 2, Rust, Vue 3, Reka UI, TypeScript, and Vite. Install Node.js 24, pnpm 11.25.0, [Tauri's platform prerequisites](https://v2.tauri.app/start/prerequisites/), and stable Rust with [rustup](https://rustup.rs). macOS needs Xcode Command Line Tools. Windows needs Microsoft C++ Build Tools with Desktop development with C++ and WebView2.
-
-```sh
-pnpm install --frozen-lockfile
-pnpm tauri dev
-```
-
-Run the checks:
-
-```sh
-pnpm build
-pnpm test
-pnpm exec playwright install chromium webkit
-pnpm test:e2e
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-```
-
-`pnpm build` includes TypeScript checks and produces the frontend assets required by native Rust checks. Browser tests cover the preview interface; native behavior needs the [platform smoke checks](docs/verification.md#native-smoke-checks). Provider tests use [synthetic and sanitized live-schema fixtures](src-tauri/fixtures/README.md), without credentials or network requests.
-
-Build an installer on the target OS with `pnpm tauri build`. The [release workflow](.github/workflows/ci.yml) builds macOS universal and Windows x64 installers and drafts releases on `v*` tags. Follow the [release runbook](docs/releasing.md) before tagging.
+To run from source, preview the interface with sample data, or run the tests, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contribute
 
