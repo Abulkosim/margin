@@ -15,7 +15,9 @@ for (const theme of ['dark', 'light']) {
     await page.goto(`/?demo=1&theme=${theme}`)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await expect(page.getByRole('article')).toHaveCount(3)
-    await expect(page.getByRole('heading', { name: 'Usage remaining' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Usage remaining', level: 1 })).toBeAttached()
+    await expect(page.getByRole('article').first()).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Filter by provider' })).toBeVisible()
     await expect(page.getByText('Sample data', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await info.attach(`overview-${theme}`, { body: await page.screenshot(), contentType: 'image/png' })
@@ -221,4 +223,19 @@ test('skipped accounts are noted in settings', async ({ page }) => {
   await page.goto('/?demo=1&state=recovered')
   await page.getByRole('button', { name: 'Open settings' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Skipped account “Old work” because its saved data couldn’t be read. A backup is kept next to the settings file.' })).toBeVisible()
+})
+
+test('accounts start right under the header', async ({ page }) => {
+  await page.goto('/?demo=1')
+  const shellTop = await page.locator('.app-shell').evaluate(element => element.getBoundingClientRect().top)
+  const cardTop = await page.getByRole('article').first().evaluate(element => element.getBoundingClientRect().top)
+  expect(cardTop - shellTop).toBeLessThan(72)
+  const header = page.locator('.app-header')
+  expect((await header.boundingBox())?.height).toBeLessThanOrEqual(56)
+})
+
+test('provider filters only appear when both providers have accounts', async ({ page }) => {
+  await page.goto('/?demo=1&state=claude-only')
+  await expect(page.getByRole('article')).toHaveCount(2)
+  await expect(page.getByRole('group', { name: 'Filter by provider' })).toHaveCount(0)
 })

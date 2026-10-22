@@ -170,7 +170,7 @@ test('Escape closes a select before leaving Settings and returns trigger focus',
   await expect(trigger).toBeFocused()
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('heading', { name: 'Usage remaining', exact: true })).toBeVisible()
+  await expect(page.getByRole('article').first()).toBeVisible()
 })
 
 for (const theme of ['light', 'dark']) {
@@ -419,7 +419,7 @@ test('tooltips support focus and Escape without native title bubbles', async ({ 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await expect(settings).toBeFocused()
-  await expect(page.getByRole('heading', { name: 'Usage remaining', exact: true })).toBeVisible()
+  await expect(page.getByRole('article').first()).toBeVisible()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.getByRole('tab', { name: /^Accounts/ }).click()

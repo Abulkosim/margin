@@ -100,6 +100,7 @@ export function createDemoState(scenario: string | null): AppState {
     state.notice = 'Margin’s settings file is damaged or unsupported. Settings file: ~/Library/Application Support/com.abulkosim.margin/state.json.'
   }
   if (scenario === 'single') state.accounts = state.accounts.slice(0, 1)
+  if (scenario === 'claude-only') state.accounts = state.accounts.filter(account => account.provider === 'claude')
   if (scenario === 'compact') {
     state.settings = { ...state.settings, overviewLayout: 'compact', trayMode: 'pinned', pinnedAccountId: accountIdSchema.parse('demo-claude-personal') }
     state.accounts = [...state.accounts, accountSchema.parse({
