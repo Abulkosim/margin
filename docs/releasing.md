@@ -60,9 +60,9 @@ This ignored integration test uses the pinned updater plugin and real public key
 
 v0.1.1 and earlier have no updater and need one manual upgrade to the first updater-enabled release. Publish the complete asset set together; a draft does not replace the current public update endpoint. Never edit a published release's signed files or reuse a version. To stop offering a bad release, mark it as a prerelease so the latest-release endpoint returns to the previous stable release, then ship a higher fixed version. Clients already updated do not automatically downgrade.
 
-## Roll back v0.4.0
+## Roll back v0.5.0
 
-Quit Margin and reinstall [v0.3.0](https://github.com/Abulkosim/margin/releases/tag/v0.3.0). Both versions use the same settings format; keep the existing local settings. v0.3.0 ignores Keychain-only Claude accounts and does not know the `keychainSuffix` field, so those accounts disappear until v0.4.0 is reinstalled. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
+Quit Margin and reinstall [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0). Both versions use settings format v1; v0.4.0 drops the new fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes and keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
 
 ## Package managers
 
