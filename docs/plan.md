@@ -54,8 +54,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **2.4 Per-model windows first-class.** Fable/Opus/Sonnet weekly shown as compact chips on the card, not buried. Add fixture with `limits[]` `weekly_scoped` + `scope.model.display_name: "Fable"`. Clamp >100% instead of failing the snapshot.
   Verify: fixture test; e2e.
   Done 2026-10-22: `scope` core|model|other derived from window id, chips under Weekly, shared `percent()` caps >100 for both providers; fixture `claude-weekly-scoped.json`. Overview screenshots to recapture at 2.11.
-- [ ] **2.5 Limit-reset grants, read-only.** Parse count/type/expiry from Claude usage response (confirm shape from a live sanitized capture). Show "1 reset available · expires in 3d". Never redeem.
+- [x] **2.5 Limit-reset grants, read-only.** Parse count/type/expiry from Claude usage response (confirm shape from a live sanitized capture). Show "1 reset available · expires in 3d". Never redeem.
   Verify: fixture test; e2e; grep proves no POST to reset endpoints.
+  Done 2026-10-22: Claude `cedar_ember.grants`, Codex inline `rate_limit_reset_credits` + GET `/wham/rate-limit-reset-credits` only when the inline count > 0; a test scans src-tauri for non-GET methods. Shapes from CodexBar, no live capture with a non-empty grant yet.
 - [x] **2.6 Notifications v2.** One-time permission prompt; on by default; thresholds editable; "window reset" alert optional; click opens popover; tolerate ±60s reset jitter; alert when a period is first seen already past a threshold.
   Verify: unit tests on dedupe; manual Mac notification once.
   Done 2026-10-22: on by default (existing stores keep their value), threshold chips 50/80/90/95/100, reset alert opt-in (only after a usage alert in the period), ±60s jitter, first-seen alert once, click opens popover via `on_action`. Plugin 2.7.0 never prompts on desktop so "denied" cannot occur. Manual Mac notification check at 2.11 smoke 👤.
@@ -81,7 +82,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [ ] **3.7 Own Homebrew tap** `Abulkosim/homebrew-tap` with cask `margin`, `auto_updates true`, updated from release job (needs PAT 👤).
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged.
 - [x] **3.9 Repo hygiene.** Discussions on, feature-request + account issue forms, `config.yml`, PR template, CONTRIBUTING.md, CODE_OF_CONDUCT.md. Done 2026-10-22.
-- [ ] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath.
+- [x] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath. Done 2026-10-22: `site/index.html`, `og.png`, `pages.yml`. 👤 Settings → Pages → Source "GitHub Actions", then set homepage to https://abulkosim.github.io/margin/.
 - [x] **3.11 Decide repo name** — renamed to `Abulkosim/margin` 2026-10-22; GitHub redirects the old slug. Updater manifest still uses the old slug until v0.4.0 is the oldest supported version.
 - [ ] **3.12 Listings.** PRs: awesome-mac, open-source-mac-os-apps (drafts prepared by loop, submitted 👤). awesome-claude-code via web form 👤 on/after **2026-10-30**.
 - [ ] **3.13 Launch posts 👤** — drafts prepared by loop, posted by owner in own words, spaced over days: r/ClaudeAI (showcase flair), r/ClaudeCode, r/codex, r/macapps, r/windowsapps, X clip. Show HN last, after 3.1–3.4, owner-written.
