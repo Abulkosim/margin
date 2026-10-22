@@ -66,7 +66,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [ ] **3.3 15s demo GIF** (tray → popover → countdown tick → history) from the real app, light theme. Also a 1280×640 social preview PNG; 👤 owner uploads it in repo settings.
 - [ ] **3.4 Artifact attestations + SBOM** in the release job (`actions/attest-build-provenance`, `anchore/sbom-action`; perms `id-token: write`, `attestations: write`). README: `gh attestation verify <file> --repo Abulkosim/margin`.
   Verify: next release assets verify.
-- [ ] **3.5 PRIVACY.md + SECURITY.md.** Exact files/Keychain items read, exact hosts contacted (api.anthropic.com, chatgpt.com, github.com for updates), no telemetry, never writes. Private vulnerability reporting on 👤 (settings toggle).
+- [x] **3.5 PRIVACY.md + SECURITY.md.** Exact files/Keychain items read, exact hosts contacted (api.anthropic.com, chatgpt.com, github.com for updates), no telemetry, never writes. Private vulnerability reporting and Discussions enabled 2026-10-22. Keychain section to update after 1.1.
 - [ ] **3.6 CI hardening.** `cargo audit`/`cargo deny`, `pnpm audit`, OpenSSF Scorecard action + badge, CodeQL default 👤 (settings), wiremock tests for provider `fetch` (400 fallback, 401, 429, swap), poller tests.
 - [ ] **3.7 Own Homebrew tap** `Abulkosim/homebrew-tap` with cask `margin`, `auto_updates true`, updated from release job (needs PAT 👤).
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged.
