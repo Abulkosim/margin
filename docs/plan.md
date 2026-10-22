@@ -77,7 +77,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
   Done 2026-10-22: `security.yml` (cargo audit, cargo deny with `src-tauri/deny.toml`, pnpm audit high), `scorecard.yml` (publishes results; needs code scanning on 👤), wiremock fetch tests for both providers. Fixed 3 RustSEC advisories (webpki) and vue 3.5.43 (GHSA-g2v6-rqmx-r4w6). CodeQL default setup still 👤.
 - [ ] **3.7 Own Homebrew tap** `Abulkosim/homebrew-tap` with cask `margin`, `auto_updates true`, updated from release job (needs PAT 👤).
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged.
-- [ ] **3.9 Repo hygiene.** Discussions on 👤, feature-request template, `config.yml`, CONTRIBUTING.md.
+- [x] **3.9 Repo hygiene.** Discussions on, feature-request + account issue forms, `config.yml`, PR template, CONTRIBUTING.md, CODE_OF_CONDUCT.md. Done 2026-10-22.
 - [ ] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath.
 - [x] **3.11 Decide repo name** — renamed to `Abulkosim/margin` 2026-10-22; GitHub redirects the old slug. Updater manifest still uses the old slug until v0.4.0 is the oldest supported version.
 - [ ] **3.12 Listings.** PRs: awesome-mac, open-source-mac-os-apps (drafts prepared by loop, submitted 👤). awesome-claude-code via web form 👤 on/after **2026-10-30**.
