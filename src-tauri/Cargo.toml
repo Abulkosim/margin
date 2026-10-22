@@ -36,6 +36,7 @@ tauri-plugin-updater = { version = "=2.14.0", default-features = false, features
 [dev-dependencies]
 tauri = { version = "2.12.4", features = ["test"] }
 wiremock = "0.6.5"
+png = "0.18"
 
 [[test]]
 name = "native_geometry"
@@ -47,8 +48,11 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAppl
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSView", "NSVisualEffectView", "NSWindow", "NSScreen", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSResponder", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSView", "NSVisualEffectView", "NSWindow", "NSScreen", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSFont", "NSFontDescriptor", "objc2-core-foundation", "NSResponder", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSArray", "NSGeometry", "NSNotification", "NSOperation", "NSString", "block2"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
 
 [profile.release]
 codegen-units = 1

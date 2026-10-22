@@ -120,6 +120,35 @@ test('tray metric defaults to session and weekly and saves the choice', async ({
   expect(saved[0]).toMatchObject({ trayMetric: 'weekly', trayMode: 'pinned' })
 })
 
+test.describe('macOS tray percentage', () => {
+  test.use({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' })
+
+  test('shows the toggle off by default and saves it', async ({ page }) => {
+    await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+    await page.goto('/')
+    await openSettings(page)
+    const toggle = page.getByRole('switch', { name: 'Show percentage next to icon', exact: true })
+    await expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-checked', 'true')
+    const saved = await page.evaluate(() => window.__CONTROL_TEST__?.saved ?? [])
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ trayShowPercent: true, trayMetric: 'core' })
+  })
+})
+
+test.describe('Windows tray percentage', () => {
+  test.use({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+
+  test('hides the macOS-only toggle', async ({ page }) => {
+    await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+    await page.goto('/')
+    await openSettings(page)
+    await expect(page.getByRole('combobox', { name: 'Tray shows', exact: true })).toBeVisible()
+    await expect(page.getByText('Show percentage next to icon')).toHaveCount(0)
+  })
+})
+
 test('Escape closes a select before leaving Settings and returns trigger focus', async ({ page }) => {
   await page.goto('/?demo=1')
   await openSettings(page)

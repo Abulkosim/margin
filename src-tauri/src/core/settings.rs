@@ -38,6 +38,7 @@ pub struct Settings {
     pub thresholds: Vec<u8>,
     pub tray_mode: TrayMode,
     pub tray_metric: TrayMetric,
+    pub tray_show_percent: bool,
     pub pinned_account_id: Option<String>,
     pub autostart: bool,
 }
@@ -52,6 +53,7 @@ impl Default for Settings {
             thresholds: vec![80, 95, 100],
             tray_mode: TrayMode::Pinned,
             tray_metric: TrayMetric::Core,
+            tray_show_percent: false,
             pinned_account_id: None,
             autostart: false,
         }
@@ -127,6 +129,13 @@ impl Settings {
                 "trayMetric",
                 defaults.tray_metric,
                 "Tray shows",
+                notes,
+            ),
+            tray_show_percent: field(
+                &map,
+                "trayShowPercent",
+                defaults.tray_show_percent,
+                "Show percentage",
                 notes,
             ),
             pinned_account_id: field(
@@ -251,5 +260,33 @@ mod tests {
         );
         assert_eq!(settings.tray_metric, TrayMetric::Core);
         assert_eq!(notes, vec!["Tray shows was reset to its default."]);
+    }
+
+    #[test]
+    fn tray_show_percent_defaults_off_and_recovers_bad_values() {
+        let mut notes = Vec::new();
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMode": "lowest" })),
+            &mut notes,
+        );
+        assert!(!settings.tray_show_percent);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayShowPercent": true })),
+            &mut notes,
+        );
+        assert!(settings.tray_show_percent);
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayShowPercent": "yes" })),
+            &mut notes,
+        );
+        assert!(!settings.tray_show_percent);
+        assert_eq!(notes, vec!["Show percentage was reset to its default."]);
+        let saved = serde_json::to_value(Settings {
+            tray_show_percent: true,
+            ..Settings::default()
+        })
+        .unwrap();
+        assert_eq!(saved["trayShowPercent"], true);
     }
 }

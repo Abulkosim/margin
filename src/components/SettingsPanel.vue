@@ -45,6 +45,7 @@ const metricOptions: { value: Settings['trayMetric']; label: string }[] = [
   { value: 'weekly', label: 'Weekly only' },
   { value: 'all', label: 'Any window' },
 ]
+const isMac = navigator.userAgent.includes('Mac')
 const refreshOptions = computed(() => intervalOptions([30, 60, 120, 300], props.settings.pollIntervalSeconds))
 const idleOptions = computed(() => intervalOptions([300, 600, 900], props.settings.idlePollIntervalSeconds))
 const themes: { id: Settings['theme']; label: string; icon: 'system' | 'sun' | 'moon' }[] = [
@@ -191,6 +192,7 @@ async function confirmRemove(): Promise<void> {
             <div><label for="tray-metric">Tray shows</label><p>Which limits the icon counts.</p></div>
             <AppSelect id="tray-metric" :model-value="settings.trayMetric" :options="metricOptions" :disabled="busy" @update:model-value="setMetric"/>
           </div>
+          <div v-if="isMac" class="setting-row"><span id="tray-percent-label" class="setting-label">Show percentage next to icon</span><AppSwitch :model-value="settings.trayShowPercent" aria-labelledby="tray-percent-label" :disabled="busy" @update:model-value="patchSettings({ trayShowPercent: $event })"/></div>
           <div class="setting-row">
             <label for="refresh-interval">Refresh while open</label>
             <AppSelect id="refresh-interval" :model-value="String(settings.pollIntervalSeconds)" :options="refreshOptions" :disabled="busy" @update:model-value="setIntervalSetting($event, 'pollIntervalSeconds')"/>

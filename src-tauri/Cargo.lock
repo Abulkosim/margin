@@ -2224,6 +2224,7 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "png 0.18.1",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2238,6 +2239,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 0.8.2",
+ "windows-registry",
  "wiremock",
 ]
 

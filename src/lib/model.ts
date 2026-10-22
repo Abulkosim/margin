@@ -11,6 +11,7 @@ export const settingsSchema = z.object({
     .refine(values => values.every((value, index) => index === 0 || value > (values[index - 1] ?? 0)), 'Thresholds must be distinct and increasing'),
   trayMode: z.enum(['pinned', 'lowest']),
   trayMetric: z.enum(['core', 'all', 'session', 'weekly']).default('core'),
+  trayShowPercent: z.boolean().default(false),
   pinnedAccountId: accountIdSchema.nullable(),
   autostart: z.boolean(),
 }).refine(value => value.idlePollIntervalSeconds >= value.pollIntervalSeconds, 'Background refresh must be slower than active refresh')
@@ -75,6 +76,7 @@ export const defaultSettings: Settings = {
   thresholds: [80, 95, 100],
   trayMode: 'pinned',
   trayMetric: 'core',
+  trayShowPercent: false,
   pinnedAccountId: null,
   autostart: false,
 }

@@ -1,13 +1,13 @@
 use super::{
     model::{Account, UsageWindow},
     poller,
+    ring::{ring_rgba, IconStyle},
     settings::{TrayMetric, TrayMode},
 };
 use crate::runtime::{AppState, Runtime};
 use chrono::Utc;
 use serde::Serialize;
 use std::{
-    f64::consts::{FRAC_PI_2, TAU},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -25,6 +25,8 @@ struct Presentation {
     revision: u64,
     pixels: Vec<u8>,
     tooltip: String,
+    #[cfg(target_os = "macos")]
+    title: Option<String>,
 }
 
 #[derive(Default)]
@@ -238,45 +240,70 @@ fn selected(state: &AppState) -> Option<&Account> {
         .or_else(|| state.accounts.first())
 }
 
-pub fn ring_rgba(remaining: Option<f64>, stale: bool, monochrome: bool) -> Vec<u8> {
-    let size = 44;
-    let mut bytes = vec![0_u8; size * size * 4];
-    let value = remaining.map(|value| value.clamp(0.0, 100.0) / 100.0);
-    for y in 0..size {
-        for x in 0..size {
-            let mut alpha = 0.0_f64;
-            for sy in 0..4 {
-                for sx in 0..4 {
-                    let dx = x as f64 + (sx as f64 + 0.5) / 4.0 - 22.0;
-                    let dy = y as f64 + (sy as f64 + 0.5) / 4.0 - 22.0;
-                    let radius = dx.hypot(dy);
-                    let angle = (dy.atan2(dx) + FRAC_PI_2).rem_euclid(TAU) / TAU;
-                    if (14.5..18.5).contains(&radius) {
-                        alpha += match value {
-                            Some(value) if angle <= value => 255.0,
-                            Some(_) => 55.0,
-                            None if (angle * 12.0).fract() < 0.55 => 170.0,
-                            None => 0.0,
-                        };
-                    }
-                    if stale && dx.abs() <= 4.5 && dy.abs() <= 1.2 {
-                        alpha += 255.0;
-                    }
-                }
-            }
-            let offset = (y * size + x) * 4;
-            let color = if monochrome {
-                [0, 0, 0]
-            } else if value.is_some_and(|value| value <= 0.05) {
-                [224, 156, 98]
-            } else {
-                [134, 174, 151]
-            };
-            bytes[offset..offset + 3].copy_from_slice(&color);
-            bytes[offset + 3] = (alpha / 16.0).round().min(255.0) as u8;
-        }
+fn icon_style() -> IconStyle {
+    if cfg!(target_os = "macos") {
+        IconStyle::Template
+    } else {
+        taskbar_style()
     }
-    bytes
+}
+
+#[cfg(windows)]
+fn taskbar_style() -> IconStyle {
+    let light = windows_registry::CURRENT_USER
+        .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|key| key.get_u32("SystemUsesLightTheme"))
+        .is_ok_and(|value| value == 1);
+    if light {
+        IconStyle::LightTaskbar
+    } else {
+        IconStyle::DarkTaskbar
+    }
+}
+
+#[cfg(not(windows))]
+fn taskbar_style() -> IconStyle {
+    IconStyle::DarkTaskbar
+}
+
+fn icon_size(app: &AppHandle) -> u32 {
+    if cfg!(target_os = "macos") {
+        return 36;
+    }
+    let scale = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map_or(1.0, |monitor| monitor.scale_factor());
+    (16.0 * scale).round().clamp(16.0, 64.0) as u32
+}
+
+fn percent_label(amount: f64) -> String {
+    if amount > 0.0 && amount < 1.0 {
+        "<1".into()
+    } else {
+        format!("{:.0}", amount.floor())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_tabular_title(tray: &tauri::tray::TrayIcon, title: Option<&str>) -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSFont, NSFontWeightRegular};
+
+    if tray.set_title(title).is_err() {
+        return false;
+    }
+    let _ = tray.with_inner_tray_icon(|tray| {
+        let mtm = MainThreadMarker::new()?;
+        let button = tray.ns_status_item()?.button(mtm)?;
+        let size = NSFont::menuBarFontOfSize(0.0).pointSize();
+        let font =
+            NSFont::monospacedDigitSystemFontOfSize_weight(size, unsafe { NSFontWeightRegular });
+        button.setFont(Some(&font));
+        Some(())
+    });
+    true
 }
 
 pub fn update(app: &AppHandle, state: &AppState) {
@@ -285,22 +312,22 @@ pub fn update(app: &AppHandle, state: &AppState) {
         .and_then(|account| limiting_window(account, state.settings.tray_metric, Utc::now()));
     let amount = window.map(|window| 100.0 - window.used_percent);
     let is_stale = account.is_some_and(|account| stale(account, state));
-    let pixels = ring_rgba(amount, is_stale, cfg!(target_os = "macos"));
+    let size = icon_size(app);
+    let pixels = ring_rgba(size, amount, is_stale, icon_style());
+    #[cfg(target_os = "macos")]
+    let title = amount
+        .filter(|_| state.settings.tray_show_percent)
+        .map(|amount| format!("{}%", percent_label(amount)));
     let tooltip = match (account, amount) {
         (Some(account), Some(amount)) => {
             let window = window
                 .map(|window| window.label.chars().take(64).collect::<String>())
                 .unwrap_or_default();
-            let amount = if amount > 0.0 && amount < 1.0 {
-                "<1".into()
-            } else {
-                format!("{:.0}", amount.floor())
-            };
             format!(
                 "Margin · {} · {} · {}% remaining{}",
                 account.label,
                 window,
-                amount,
+                percent_label(amount),
                 if is_stale { " · last known" } else { "" }
             )
         }
@@ -323,7 +350,7 @@ pub fn update(app: &AppHandle, state: &AppState) {
         previous.revision = revision;
         if previous.pixels != pixels {
             let updated = tray.set_icon_with_as_template(
-                Some(Image::new_owned(pixels.clone(), 44, 44)),
+                Some(Image::new_owned(pixels.clone(), size, size)),
                 cfg!(target_os = "macos"),
             );
             if updated.is_ok() {
@@ -332,6 +359,10 @@ pub fn update(app: &AppHandle, state: &AppState) {
         }
         if previous.tooltip != tooltip && tray.set_tooltip(Some(&tooltip)).is_ok() {
             previous.tooltip = tooltip;
+        }
+        #[cfg(target_os = "macos")]
+        if previous.title != title && set_tabular_title(&tray, title.as_deref()) {
+            previous.title = title;
         }
     });
 }
@@ -479,11 +510,10 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
     TrayIconBuilder::with_id("margin")
-        .icon(Image::new_owned(
-            ring_rgba(None, false, cfg!(target_os = "macos")),
-            44,
-            44,
-        ))
+        .icon({
+            let size = icon_size(app);
+            Image::new_owned(ring_rgba(size, None, false, icon_style()), size, size)
+        })
         .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("Margin · Checking accounts")
         .menu(&menu)
@@ -752,17 +782,6 @@ mod tests {
         assert_eq!(selected(&state).unwrap().id, "a");
         state.settings.tray_metric = TrayMetric::Weekly;
         assert_eq!(selected(&state).unwrap().id, "a");
-    }
-
-    #[test]
-    fn ring_is_rgba_with_transparent_corners_and_distinct_unknown_state() {
-        let full = ring_rgba(Some(100.0), false, true);
-        let empty = ring_rgba(Some(0.0), false, true);
-        let unknown = ring_rgba(None, false, true);
-        assert_eq!(full.len(), 44 * 44 * 4);
-        assert_eq!(full[3], 0);
-        assert_ne!(unknown, empty);
-        assert_ne!(full, empty);
     }
 
     #[test]

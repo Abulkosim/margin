@@ -93,6 +93,9 @@ test('settings use the same limits as Rust', () => {
   const { trayMetric: _, ...legacy } = defaultSettings
   assert.equal(settingsSchema.parse(legacy).trayMetric, 'core')
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, trayMetric: 'opus' }).success, false)
+  const { trayShowPercent: __, ...withoutPercent } = defaultSettings
+  assert.equal(settingsSchema.parse(withoutPercent).trayShowPercent, false)
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, trayShowPercent: 'yes' }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 15 }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 600, idlePollIntervalSeconds: 300 }).success, false)
   for (const thresholds of [[], [80, 80], [95, 80], [80.5], [101]]) {
