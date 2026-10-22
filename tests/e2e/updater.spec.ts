@@ -12,10 +12,10 @@ declare global {
   }
 }
 
-async function bridge(page: Page, theme: 'light' | 'dark' = 'light'): Promise<void> {
+async function bridge(page: Page, theme: 'light' | 'dark' = 'light', initial: unknown = { kind: 'idle' }): Promise<void> {
   const appState = createDemoState(null)
   appState.settings.theme = theme
-  await page.addInitScript(state => {
+  await page.addInitScript(({ state, initial }) => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>()
     const calls: { command: string; args?: Record<string, unknown> }[] = []
     let finish: ((payload: unknown) => void) | undefined
@@ -30,7 +30,7 @@ async function bridge(page: Page, theme: 'light' | 'dark' = 'light'): Promise<vo
       core: { async invoke(command, args) {
         if (command === 'get_state') return state
         if (command === 'get_popover_placement') return { revision: 0, arrowX: null }
-        if (command === 'get_update_status') return { revision: 0, state: { kind: 'idle' } }
+        if (command === 'get_update_status') return { revision: 0, state: initial }
         if (command === 'check_for_update' || command === 'install_update') {
           calls.push({ command, args })
           return new Promise((resolve, reject) => {
@@ -45,11 +45,11 @@ async function bridge(page: Page, theme: 'light' | 'dark' = 'light'): Promise<vo
         return () => { listeners.delete(name) }
       } },
     }
-  }, appState)
+  }, { state: appState, initial })
 }
 
 async function openUpdates(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Open settings', exact: true }).click()
+  await page.getByRole('button', { name: /^(Open settings|Settings, update available)$/ }).click()
   await page.getByRole('region', { name: 'Updates', exact: true }).scrollIntoViewIfNeeded()
 }
 
@@ -75,6 +75,7 @@ test('updates require explicit check and install, preserve focus, and survive Se
   await expect(updates.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
   await expect(action).toBeFocused()
   await page.getByRole('button', { name: 'Back to overview' }).click()
+  await expect(page.getByRole('button', { name: 'Settings, update available', exact: true })).toBeVisible()
   await openUpdates(page)
   await expect(updates.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
   await expect(action).toHaveAttribute('aria-disabled', 'true')
@@ -133,4 +134,61 @@ test('preview explains desktop-only updates without invoking the bridge', async 
   await action.focus()
   await page.keyboard.press('Enter')
   expect(await page.evaluate(() => window.__UPDATE_TEST__?.calls)).toEqual([])
+})
+
+test('a found update puts a dot on Settings until it is no longer pending', async ({ page }) => {
+  await bridge(page, 'light', { kind: 'available', version: '0.9.0' })
+  await page.goto('/')
+  const gear = page.getByRole('button', { name: 'Settings, update available', exact: true })
+  await expect(gear.locator('.update-dot')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toHaveCount(0)
+  await gear.click()
+  const updates = page.getByRole('region', { name: 'Updates', exact: true })
+  await updates.scrollIntoViewIfNeeded()
+  await expect(updates.locator('.update-dot')).toBeVisible()
+  await expect(updates.getByRole('status')).toHaveText('Version 0.9.0 available.')
+  await page.evaluate(() => window.__UPDATE_TEST__?.emit({ revision: 1, state: { kind: 'current' } }))
+  await expect(updates.locator('.update-dot')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Back to overview' }).click()
+  await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toBeVisible()
+  await expect(page.locator('.update-dot')).toHaveCount(0)
+})
+
+test('no update dot while idle, checking, up to date, or after a failed check', async ({ page }) => {
+  await bridge(page)
+  await page.goto('/')
+  const gear = page.getByRole('button', { name: 'Open settings', exact: true })
+  await expect(gear).toBeVisible()
+  for (const [revision, state] of [[1, { kind: 'checking' }], [2, { kind: 'current' }], [3, { kind: 'error', message: 'Couldn’t check for updates.' }]] as const) {
+    await page.evaluate(payload => window.__UPDATE_TEST__?.emit(payload), { revision, state })
+    await expect(gear).toBeVisible()
+    await expect(page.locator('.update-dot')).toHaveCount(0)
+  }
+  await page.evaluate(() => window.__UPDATE_TEST__?.emit({ revision: 4, state: { kind: 'available', version: '0.9.0' } }))
+  await expect(page.getByRole('button', { name: 'Settings, update available', exact: true })).toBeVisible()
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`${theme} preview update-available state shows the dot without invoking the bridge`, async ({ page }, info) => {
+    await bridge(page)
+    await page.goto(`/?demo=1&state=update-available&theme=${theme}`)
+    const gear = page.getByRole('button', { name: 'Settings, update available', exact: true })
+    await expect(gear.locator('.update-dot')).toBeVisible()
+    await info.attach(`updater-${theme}-dot`, { body: await page.locator('.app-header').screenshot(), contentType: 'image/png' })
+    await gear.click()
+    const updates = page.getByRole('region', { name: 'Updates', exact: true })
+    await updates.scrollIntoViewIfNeeded()
+    await expect(updates.locator('.update-dot')).toBeVisible()
+    await expect(updates.getByRole('status')).toHaveText('Version 0.9.0 available.')
+    await expect(updates.getByRole('button')).toHaveAttribute('aria-disabled', 'true')
+    await info.attach(`updater-${theme}-dot-settings`, { body: await updates.screenshot(), contentType: 'image/png' })
+    expect(await page.evaluate(() => window.__UPDATE_TEST__?.calls)).toEqual([])
+  })
+}
+
+test('preview without an update has no dot', async ({ page }) => {
+  await bridge(page)
+  await page.goto('/?demo=1')
+  await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toBeVisible()
+  await expect(page.locator('.update-dot')).toHaveCount(0)
 })

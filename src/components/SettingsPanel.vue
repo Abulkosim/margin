@@ -218,7 +218,7 @@ async function confirmRemove(): Promise<void> {
           <h2>Startup</h2>
           <div class="setting-row"><span id="autostart-label" class="setting-label">Launch at login</span><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
         </section>
-        <UpdateSettings :state="updateState" :busy="updateBusy" :demo="demo" @check="$emit('checkUpdate')" @install="$emit('installUpdate')"/>
+        <UpdateSettings :state="updateState" :busy="updateBusy" :demo="demo" :auto-check="settings.autoCheckUpdates" :settings-busy="busy" @check="$emit('checkUpdate')" @install="$emit('installUpdate')" @auto-check="patchSettings({ autoCheckUpdates: $event })"/>
         <p class="settings-footnote">Version {{ version }}</p>
       </TabsContent>
 

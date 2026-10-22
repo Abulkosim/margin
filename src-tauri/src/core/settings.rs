@@ -52,6 +52,7 @@ pub struct Settings {
     pub tray_show_percent: bool,
     pub pinned_account_id: Option<String>,
     pub autostart: bool,
+    pub auto_check_updates: bool,
 }
 
 impl Default for Settings {
@@ -69,6 +70,7 @@ impl Default for Settings {
             tray_show_percent: false,
             pinned_account_id: None,
             autostart: false,
+            auto_check_updates: true,
         }
     }
 }
@@ -177,6 +179,13 @@ impl Settings {
                 "autostart",
                 defaults.autostart,
                 "Launch at login",
+                notes,
+            ),
+            auto_check_updates: field(
+                &map,
+                "autoCheckUpdates",
+                defaults.auto_check_updates,
+                "Check for updates daily",
                 notes,
             ),
         };
@@ -379,5 +388,30 @@ mod tests {
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["notifyOnReset"], false);
         assert_eq!(saved["notificationPermission"], "unasked");
+    }
+
+    #[test]
+    fn daily_update_checks_default_on_and_recover_bad_values() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert!(Settings::recover(value, &mut notes).auto_check_updates);
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "autoCheckUpdates": false })),
+            &mut notes,
+        );
+        assert!(!settings.auto_check_updates);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "autoCheckUpdates": "daily" })),
+            &mut notes,
+        );
+        assert!(settings.auto_check_updates);
+        assert_eq!(
+            notes,
+            vec!["Check for updates daily was reset to its default."]
+        );
+        let saved = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(saved["autoCheckUpdates"], true);
     }
 }

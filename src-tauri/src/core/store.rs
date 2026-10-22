@@ -28,6 +28,8 @@ pub struct StoredState {
     pub alerts: AlertMemory,
     #[serde(default)]
     pub ignored_sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_update_check_at: Option<String>,
     #[serde(skip)]
     pub recovered: Vec<String>,
 }
@@ -247,12 +249,17 @@ fn decode(value: Value) -> Result<StoredState, String> {
         recovered
             .push("Some removed accounts couldn’t be read and may return on Find accounts.".into());
     }
+    let last_update_check_at = match root.remove("lastUpdateCheckAt") {
+        Some(Value::String(value)) if valid_timestamp(&value) => Some(value),
+        _ => None,
+    };
     Ok(StoredState {
         version: 1,
         accounts,
         settings,
         alerts,
         ignored_sources,
+        last_update_check_at,
         recovered,
     })
 }
@@ -270,6 +277,13 @@ fn validate(state: &StoredState) -> Result<(), String> {
         return Err(newer_store());
     }
     state.settings.validate()?;
+    if state
+        .last_update_check_at
+        .as_deref()
+        .is_some_and(|value| !valid_timestamp(value))
+    {
+        return Err(invalid_store());
+    }
     if state.accounts.len() > MAX_ACCOUNTS
         || state.alerts.len() > MAX_ACCOUNTS * MAX_WINDOWS
         || state.ignored_sources.len() > MAX_IGNORED_SOURCES
@@ -697,6 +711,34 @@ mod tests {
             vec!["codex:/tmp/.codex-old", "claude:keychain"]
         );
         assert!(loaded.recovered.is_empty());
+    }
+
+    #[test]
+    fn last_update_check_round_trips_and_garbage_is_dropped_quietly() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut state = sample_state();
+        assert!(!serde_json::to_value(&state)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("lastUpdateCheckAt"));
+        state.last_update_check_at = Some("2026-10-20T08:00:00+00:00".into());
+        save(&path, &state).unwrap();
+        assert_eq!(
+            load(&path).unwrap().last_update_check_at.as_deref(),
+            Some("2026-10-20T08:00:00+00:00")
+        );
+        for garbage in [serde_json::json!("yesterday"), serde_json::json!(5)] {
+            let mut value = serde_json::to_value(sample_state()).unwrap();
+            value["lastUpdateCheckAt"] = garbage;
+            fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            let loaded = load(&path).unwrap();
+            assert!(loaded.last_update_check_at.is_none());
+            assert!(loaded.recovered.is_empty());
+        }
+        state.last_update_check_at = Some("soon".into());
+        assert!(save(&path, &state).is_err());
     }
 
     #[test]

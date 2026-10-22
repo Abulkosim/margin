@@ -23,3 +23,11 @@ test('notification fields reject unknown values', () => {
   assert.equal(settingsSchema.parse({ ...defaultSettings, notificationPermission: 'denied' }).notificationPermission, 'denied')
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, thresholds: [50, 80, 90, 95, 100] }).success, true)
 })
+
+test('daily update checks default on and older settings parse with them on', () => {
+  assert.equal(defaultSettings.autoCheckUpdates, true)
+  const { autoCheckUpdates: _, ...legacy } = defaultSettings
+  assert.equal(settingsSchema.parse(legacy).autoCheckUpdates, true)
+  assert.equal(settingsSchema.parse({ ...defaultSettings, autoCheckUpdates: false }).autoCheckUpdates, false)
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, autoCheckUpdates: 'daily' }).success, false)
+})

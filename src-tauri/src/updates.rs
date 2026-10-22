@@ -1,9 +1,11 @@
+use crate::runtime::Runtime;
+use chrono::{DateTime, TimeDelta, Utc};
 use serde::Serialize;
 use std::{
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -103,11 +105,16 @@ pub async fn check_for_update(
     app: AppHandle,
     updates: State<'_, Updates>,
 ) -> Result<UpdateStatus, String> {
+    check(&app, &updates, false).await
+}
+
+async fn check(app: &AppHandle, updates: &Updates, quiet: bool) -> Result<UpdateStatus, String> {
     let Ok(mut pending) = updates.pending.try_lock() else {
         return updates.status();
     };
+    let previous = updates.status()?.state;
     *pending = None;
-    updates.publish(&app, UpdatePhase::Checking)?;
+    updates.publish(app, UpdatePhase::Checking)?;
     let result = match app
         .updater_builder()
         .timeout(Duration::from_secs(20))
@@ -116,17 +123,69 @@ pub async fn check_for_update(
         Ok(updater) => updater.check().await,
         Err(error) => Err(error),
     };
-    match result {
+    let message = match result {
         Ok(Some(mut update)) if trusted_download(&update.download_url, &update.version) => {
             update.timeout = Some(Duration::from_secs(300));
             let version = update.version.clone();
             *pending = Some(update);
-            updates.publish(&app, UpdatePhase::Available { version })
+            return updates.publish(app, UpdatePhase::Available { version });
         }
-        Ok(None) => updates.publish(&app, UpdatePhase::Current),
-        Ok(Some(_)) => updates.fail(&app, "This update has an unexpected download address. Try again after the release is corrected."),
-        Err(_) => updates.fail(&app, "Couldn’t check for updates. Check your connection and try again."),
+        Ok(None) => return updates.publish(app, UpdatePhase::Current),
+        Ok(Some(_)) => "This update has an unexpected download address. Try again after the release is corrected.",
+        Err(_) => "Couldn’t check for updates. Check your connection and try again.",
+    };
+    if quiet {
+        #[cfg(debug_assertions)]
+        eprintln!("Background update check failed: {message}");
+        return updates.publish(app, previous);
     }
+    updates.fail(app, message)
+}
+
+const FIRST_CHECK_DELAY: Duration = Duration::from_secs(120);
+const DUE_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
+
+pub fn due(last: Option<&str>, now: DateTime<Utc>) -> bool {
+    let Some(last) = last.and_then(|value| DateTime::parse_from_rfc3339(value).ok()) else {
+        return true;
+    };
+    let elapsed = now.signed_duration_since(last);
+    elapsed < TimeDelta::zero() || elapsed >= TimeDelta::hours(24)
+}
+
+pub fn start_background_checks(app: AppHandle, runtime: Arc<Runtime>) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(FIRST_CHECK_DELAY).await;
+        loop {
+            background_check(&app, &runtime).await;
+            tokio::select! {
+                _ = tokio::time::sleep(DUE_CHECK_INTERVAL) => {}
+                _ = runtime.update_wake.notified() => {}
+            }
+        }
+    });
+}
+
+async fn background_check(app: &AppHandle, runtime: &Runtime) {
+    let enabled = runtime.inner.lock().await.view.settings.auto_check_updates;
+    let now = Utc::now();
+    if !enabled || !due(runtime.last_update_check_at().as_deref(), now) {
+        return;
+    }
+    let updates = app.state::<Updates>();
+    if updates.status().is_ok_and(|status| {
+        matches!(
+            status.state,
+            UpdatePhase::Checking
+                | UpdatePhase::Available { .. }
+                | UpdatePhase::Downloading { .. }
+                | UpdatePhase::Installing { .. }
+        )
+    }) {
+        return;
+    }
+    let _ = runtime.record_update_check(now.to_rfc3339()).await;
+    let _ = check(app, &updates, true).await;
 }
 
 #[tauri::command]
@@ -237,6 +296,20 @@ mod tests {
             serde_json::to_value(status).unwrap(),
             serde_json::json!({"revision": 3, "state": {"kind": "downloading", "version": "0.2.0", "downloaded": 10, "total": null}})
         );
+    }
+
+    #[test]
+    fn background_checks_are_due_at_most_once_a_day() {
+        let now: DateTime<Utc> = "2026-10-22T12:00:00Z".parse().unwrap();
+        assert!(due(None, now));
+        assert!(due(Some("not a time"), now));
+        assert!(due(Some(""), now));
+        assert!(due(Some("2026-10-21T12:00:00Z"), now));
+        assert!(due(Some("2026-10-01T00:00:00+05:00"), now));
+        assert!(!due(Some("2026-10-21T12:00:01Z"), now));
+        assert!(!due(Some("2026-10-22T11:59:00Z"), now));
+        assert!(!due(Some("2026-10-22T16:00:00+05:00"), now));
+        assert!(due(Some("2026-10-23T12:00:00Z"), now));
     }
 
     #[tokio::test]

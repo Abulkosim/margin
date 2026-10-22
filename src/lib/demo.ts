@@ -1,4 +1,5 @@
 import { appStateSchema, defaultSettings, type AppState } from './model.ts'
+import type { UpdateState } from './updater.ts'
 
 export function createDemoState(scenario: string | null): AppState {
   const now = Date.now()
@@ -101,4 +102,8 @@ export function createDemoState(scenario: string | null): AppState {
   if (scenario === 'hidden') state.ignoredSources = ['claude:~/.claude-old', 'codex:~/.codex-old']
   if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']
   return state
+}
+
+export function createDemoUpdateState(scenario: string | null): UpdateState {
+  return scenario === 'update-available' ? { kind: 'available', version: '0.9.0' } : { kind: 'idle' }
 }

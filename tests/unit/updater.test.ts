@@ -228,3 +228,15 @@ test('retry reconciles a lost install response without starting a second downloa
   assert.equal(checks, 1)
   assert.equal(installs, 1)
 })
+
+test('only states with a newer version count as an available update', async () => {
+  const { updateAvailable } = await import('../../src/lib/updater.ts')
+  const { createDemoUpdateState } = await import('../../src/lib/demo.ts')
+  assert.equal(updateAvailable({ kind: 'available', version: '0.9.0' }), true)
+  assert.equal(updateAvailable({ kind: 'downloading', version: '0.9.0', downloaded: 1, total: null }), true)
+  assert.equal(updateAvailable({ kind: 'installing', version: '0.9.0' }), true)
+  for (const kind of ['idle', 'checking', 'current'] as const) assert.equal(updateAvailable({ kind }), false)
+  assert.equal(updateAvailable({ kind: 'error', message: 'Couldn’t check.' }), false)
+  assert.equal(updateAvailable(createDemoUpdateState('update-available')), true)
+  assert.equal(updateAvailable(createDemoUpdateState(null)), false)
+})

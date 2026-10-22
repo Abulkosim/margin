@@ -7,7 +7,7 @@ This page describes Margin's current release. It is derived from the source code
 ## Summary
 
 - No telemetry, analytics, crash reporting, or ads.
-- Network requests go only to the provider usage endpoints and, when you ask, to GitHub Releases.
+- Network requests go only to the provider usage endpoints and to GitHub Releases for update checks.
 - CLI credential files are read, never written.
 - Tokens stay in the Rust process. The interface never receives them.
 - Margin stores settings, last-known usage, and usage history on your computer only.
@@ -52,7 +52,7 @@ All requests use HTTPS. Provider requests do not follow redirects. Each request 
 | `api.anthropic.com` | `GET /api/oauth/profile` | After a successful Claude usage request | Access token |
 | `chatgpt.com` | `GET /backend-api/wham/usage` | Each refresh of a Codex account | Access token, ChatGPT account ID |
 | `chatgpt_base_url` host | Usage path on the host set in that folder's `config.toml` | Instead of `chatgpt.com`, when set | Access token, ChatGPT account ID |
-| `github.com` | `GET /Abulkosim/margin/releases/latest/download/latest.json` | Only when you choose **Check for updates** | Nothing about you or your accounts |
+| `github.com` | `GET /Abulkosim/margin/releases/latest/download/latest.json` | Once a day while **Check for updates daily** is on (default), and when you choose **Check for updates** | Nothing about you or your accounts |
 | `github.com` | Download of the matching release asset | Only when you choose to install an update | Nothing about you or your accounts |
 
 GitHub may redirect release files to its own download storage. Update requests send no CLI credentials, account identities, or usage readings.
@@ -102,7 +102,7 @@ Tokens are parsed in Rust into structures that cannot be serialized ([`claude.rs
 
 ## Updates
 
-Margin checks for updates only when you ask. It installs only after you confirm.
+Margin checks for updates once a day, starting two minutes after launch, unless you turn off **Check for updates daily** in Settings. You can also check at any time. A background check only reads the manifest; it never downloads or installs. Margin installs only after you confirm.
 
 - The manifest URL is fixed to the latest GitHub release of `Abulkosim/margin`.
 - Downloads must be HTTPS on `github.com`, from this repository's release for that exact version, with an expected file name ([`updates.rs`](src-tauri/src/updates.rs)).

@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { version } from '../../../package.json'
-import type { UpdateState } from '../../lib/updater'
+import { updateAvailable, type UpdateState } from '../../lib/updater'
 import AppIcon from '../AppIcon.vue'
+import AppSwitch from '../ui/AppSwitch.vue'
 
-const props = defineProps<{ state: UpdateState; busy: boolean; demo: boolean }>()
-const emit = defineEmits<{ check: []; install: [] }>()
+const props = defineProps<{ state: UpdateState; busy: boolean; demo: boolean; autoCheck: boolean; settingsBusy: boolean }>()
+const emit = defineEmits<{ check: []; install: []; autoCheck: [value: boolean] }>()
+const available = computed(() => updateAvailable(props.state))
 const progress = computed(() => props.state.kind === 'downloading' && props.state.total
   ? Math.min(100, Math.round(props.state.downloaded / props.state.total * 100)) : undefined)
 const copy = computed(() => {
-  if (props.demo) return 'Update checks require the desktop app.'
   const state = props.state
+  if (props.demo && state.kind === 'idle') return 'Update checks require the desktop app.'
   switch (state.kind) {
-    case 'idle': return 'Updates are checked manually.'
+    case 'idle': return props.autoCheck ? 'Margin checks once a day. It installs only when you choose.' : 'Updates are checked manually.'
     case 'checking': return 'Checking for updates…'
     case 'current': return 'Up to date.'
     case 'available': return `Version ${state.version} available.`
@@ -38,7 +40,8 @@ function activate(): void {
 
 <template>
   <section class="settings-section update-settings" aria-labelledby="updates-title">
-    <h2 id="updates-title">Updates</h2>
+    <h2 id="updates-title" class="updates-title">Updates<span v-if="available" class="update-dot" aria-hidden="true"/></h2>
+    <div class="setting-row update-auto"><span id="update-auto-label" class="setting-label">Check for updates daily</span><AppSwitch :model-value="autoCheck" aria-labelledby="update-auto-label" :disabled="settingsBusy" @update:model-value="emit('autoCheck', $event)"/></div>
     <div class="update-card">
       <div class="update-heading"><span class="update-mark"><AppIcon name="margin" :size="19"/></span><div><span class="setting-label">Margin</span><span class="update-version">Version {{ version }}</span></div><AppIcon v-if="state.kind === 'current' && !demo" class="update-current" name="check" :size="16"/></div>
       <p class="update-message" :class="{ 'update-error': state.kind === 'error' }" :role="state.kind === 'error' ? 'alert' : 'status'">{{ copy }}</p>
@@ -49,6 +52,9 @@ function activate(): void {
 </template>
 
 <style scoped>
+.updates-title { display: flex; align-items: center; gap: 7px; }
+.update-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.update-auto { margin: 0 0 10px; }
 .update-card { background: var(--card); padding: 14px; border-radius: 9px; }
 .update-heading { display: flex; align-items: center; gap: 9px; }
 .update-heading>div { display: flex; flex-direction: column; gap: 3px; }

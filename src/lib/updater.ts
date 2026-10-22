@@ -14,8 +14,12 @@ export const updateStateSchema = z.discriminatedUnion('kind', [
 export const updateStatusSchema = z.object({ revision: counterSchema, state: updateStateSchema })
 export type UpdateState = z.infer<typeof updateStateSchema>
 
-export function useUpdater({ demo, desktop }: { demo: boolean; desktop: boolean }) {
-  const status = ref<z.infer<typeof updateStatusSchema>>({ revision: 0, state: { kind: 'idle' } })
+export function updateAvailable(state: UpdateState): boolean {
+  return state.kind === 'available' || state.kind === 'downloading' || state.kind === 'installing'
+}
+
+export function useUpdater({ demo, desktop, initial = { kind: 'idle' } }: { demo: boolean; desktop: boolean; initial?: UpdateState }) {
+  const status = ref<z.infer<typeof updateStatusSchema>>({ revision: 0, state: initial })
   const problem = ref<string | null>(null)
   const pending = ref(false)
   const remoteBusy = computed(() => ['checking', 'downloading', 'installing'].includes(status.value.state.kind))
@@ -95,5 +99,6 @@ export function useUpdater({ demo, desktop }: { demo: boolean; desktop: boolean 
     destroyed = true
     stopListening?.()
   })
-  return { state, busy, check, install }
+  const available = computed(() => updateAvailable(state.value))
+  return { state, busy, available, check, install }
 }

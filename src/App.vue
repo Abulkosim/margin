@@ -9,10 +9,11 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import { accountIsStale, relativeAge } from './lib/format'
 import { useMargin } from './lib/margin'
 import { useUpdater } from './lib/updater'
+import { createDemoUpdateState } from './lib/demo'
 import type { Account, Provider } from './lib/model'
 
 const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow } = useMargin()
-const updater = useUpdater({ demo, desktop })
+const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
 const viewportWidth = ref(window.innerWidth)
@@ -150,7 +151,7 @@ onUnmounted(() => {
         <div v-if="state.recovery" class="notice-banner recovery-banner" role="alert"><AppIcon name="alert" :size="13"/><div><p>Settings file couldn’t be read. Reset keeps a backup next to it.</p><p v-if="state.notice" class="recovery-detail">{{ state.notice }}</p><button class="button button-small" :disabled="busy" @click="resetStore">Back up and reset settings</button></div></div>
         <div v-else-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
         <template v-if="page === 'overview'">
-          <header class="app-header"><div class="wordmark"><AppIcon name="margin" :size="20"/><span>margin</span></div><div class="header-actions"><AppTooltip :text="refreshing ? 'Checking usage' : `Refresh usage (${isWindows ? 'Ctrl+R' : '⌘R'})`"><button class="icon-button refresh-button" :class="{ pulsing: refreshing }" aria-label="Refresh usage" :disabled="busy || refreshing" @click="refresh"><AppIcon name="refresh" :size="16"/></button></AppTooltip><AppTooltip :text="`Settings (${isWindows ? 'Ctrl+,' : '⌘,'})`"><button class="icon-button" aria-label="Open settings" @click="openSettings()"><AppIcon name="settings" :size="18"/></button></AppTooltip></div></header>
+          <header class="app-header"><div class="wordmark"><AppIcon name="margin" :size="20"/><span>margin</span></div><div class="header-actions"><AppTooltip :text="refreshing ? 'Checking usage' : `Refresh usage (${isWindows ? 'Ctrl+R' : '⌘R'})`"><button class="icon-button refresh-button" :class="{ pulsing: refreshing }" aria-label="Refresh usage" :disabled="busy || refreshing" @click="refresh"><AppIcon name="refresh" :size="16"/></button></AppTooltip><AppTooltip :text="`Settings (${isWindows ? 'Ctrl+,' : '⌘,'})`"><button class="icon-button settings-button" :aria-label="updater.available.value ? 'Settings, update available' : 'Open settings'" @click="openSettings()"><AppIcon name="settings" :size="18"/><span v-if="updater.available.value" class="update-dot" aria-hidden="true"/></button></AppTooltip></div></header>
           <div class="overview-heading"><div><h1>Usage remaining</h1><p>{{ state.accounts.length ? `${state.accounts.length} ${state.accounts.length === 1 ? 'account' : 'accounts'}` : 'Claude and Codex' }}</p></div><span v-if="state.accounts.length" class="overview-symbol" aria-hidden="true"><span/><span/><span/></span></div>
           <div v-if="state.accounts.length > 1" class="account-filters" role="group" aria-label="Filter by provider"><button v-for="option in filterOptions" :key="option.id" :class="{ active: filter === option.id }" :aria-pressed="filter === option.id" @click="filter = option.id">{{ option.label }}<span>{{ counts[option.id] }}</span></button></div>
 
@@ -171,3 +172,8 @@ onUnmounted(() => {
   </div>
   </TooltipProvider>
 </template>
+
+<style scoped>
+.settings-button { position: relative; }
+.update-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1.5px var(--surface); }
+</style>

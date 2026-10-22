@@ -16,6 +16,7 @@ export const settingsSchema = z.object({
   trayShowPercent: z.boolean().default(false),
   pinnedAccountId: accountIdSchema.nullable(),
   autostart: z.boolean(),
+  autoCheckUpdates: z.boolean().default(true),
 }).refine(value => value.idlePollIntervalSeconds >= value.pollIntervalSeconds, 'Background refresh must be slower than active refresh')
 export const usageWindowSchema = z.object({
   id: z.string(),
@@ -93,4 +94,5 @@ export const defaultSettings: Settings = {
   trayShowPercent: false,
   pinnedAccountId: null,
   autostart: false,
+  autoCheckUpdates: true,
 }

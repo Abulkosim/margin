@@ -489,3 +489,16 @@ test('denied notifications explain where to turn them on without a dead button',
   await expect(note).toBeVisible()
   await expect(note.getByRole('button')).toHaveCount(0)
 })
+
+test('daily update checks are on by default and the switch saves the choice', async ({ page }) => {
+  await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const daily = page.getByRole('region', { name: 'Updates', exact: true }).getByRole('switch', { name: 'Check for updates daily', exact: true })
+  await expect(daily).toHaveAttribute('aria-checked', 'true')
+  await daily.click()
+  await expect(daily).toHaveAttribute('aria-checked', 'false')
+  const saved = await savedSettings(page)
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ autoCheckUpdates: false })
+})

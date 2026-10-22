@@ -73,6 +73,7 @@ pub fn run() {
                 runtime::publish(&handle, &view);
                 #[cfg(target_os = "macos")]
                 poller::watch_wake(runtime.clone());
+                updates::start_background_checks(handle.clone(), runtime.clone());
                 poller::start(handle.clone(), runtime);
                 if !std::env::args().any(|argument| argument == "--background") {
                     tray::show(&handle, false);

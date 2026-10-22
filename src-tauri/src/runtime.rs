@@ -48,10 +48,12 @@ pub struct Runtime {
     pub client: reqwest::Client,
     pub profiles: providers::claude::ProfileCache,
     pub wake: Notify,
+    pub update_wake: Notify,
     pub first_run: bool,
     store_path: PathBuf,
     recovery_error: std::sync::Mutex<Option<String>>,
     backup_pending: AtomicBool,
+    last_update_check_at: std::sync::Mutex<Option<String>>,
 }
 
 impl Runtime {
@@ -86,10 +88,12 @@ impl Runtime {
             client: providers::http_client().map_err(|error| error.message)?,
             profiles: Default::default(),
             wake: Notify::new(),
+            update_wake: Notify::new(),
             first_run: first_run && recovery_error.is_none(),
             store_path,
             recovery_error: std::sync::Mutex::new(recovery_error),
             backup_pending: AtomicBool::new(!saved.recovered.is_empty()),
+            last_update_check_at: std::sync::Mutex::new(saved.last_update_check_at),
         })
     }
 
@@ -155,9 +159,26 @@ impl Runtime {
                 settings: view.settings.clone(),
                 alerts: alerts.clone(),
                 ignored_sources: view.ignored_sources.clone(),
+                last_update_check_at: self.last_update_check_at(),
                 ..StoredState::default()
             },
         )
+    }
+
+    pub fn last_update_check_at(&self) -> Option<String> {
+        self.last_update_check_at
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())
+    }
+
+    pub async fn record_update_check(&self, at: String) -> Result<(), String> {
+        *self
+            .last_update_check_at
+            .lock()
+            .map_err(|_| "Update check time unavailable.")? = Some(at);
+        let inner = self.inner.lock().await;
+        self.persist(&inner.view, &inner.alerts)
     }
 
     pub async fn change<F>(&self, app: &AppHandle, change: F) -> Result<AppState, String>

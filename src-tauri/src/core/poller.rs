@@ -91,6 +91,7 @@ pub async fn refresh(runtime: &Runtime) {
 pub async fn refresh_after_wake(runtime: &Runtime) {
     bring_forward(&mut runtime.inner.lock().await.schedules, true);
     runtime.wake.notify_one();
+    runtime.update_wake.notify_one();
 }
 
 #[cfg(target_os = "macos")]
@@ -174,6 +175,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
             if resumed(last_tick, tick, interval) {
                 bring_forward(&mut inner.schedules, true);
+                runtime.update_wake.notify_one();
             }
             last_tick = tick;
             let ids: Vec<String> = inner
