@@ -2,7 +2,20 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.4.0
+## Current release: v0.5.0
+
+**[v0.5.0 is a verified draft](https://github.com/Abulkosim/margin/releases/tag/v0.5.0).** Verified on 2026-10-22 on macOS 26.6.2. Adds tray metric selection, a more legible tray ring, pace lines, model-limit chips, read-only reset grants, notifications on by default, absolute reset times, a native folder picker with an ignore list, daily update checks, and a compact overview with a popover that fits its content.
+
+- `pnpm typecheck`, 60 frontend unit tests, 160 Chromium/WebKit browser cases, 164 Rust tests, formatting, strict Clippy, and 14 release-script tests passed locally on `d34bf86`. `node scripts/check-release.mjs v0.5.0` passed. The tag `v0.5.0` points at `3cbb8dc`, which adds only a longer frontend job timeout.
+- Tray ring contrast is measured in a Rust test at 16/22/32 px on light and dark backgrounds; the minimum is 3.7:1 and the template image varies only in alpha. A contact sheet is in `docs/images/tray/`.
+- Pace, reset-grant, window-scope, compact-summary, and reset-clock formatting have unit tests. Provider fetch paths are covered with wiremock for 400/403 retry without `cedar_ember`, 401, 429 with `retry-after`, 5xx, and the Codex reset-credits request, which is only made when the usage response reports a nonzero count. A test scans `src-tauri/src` and fails on any non-GET HTTP call.
+- A local optimized build read both accounts within 5 seconds of launch, and the background update check contacted GitHub about two minutes after launch and recorded `lastUpdateCheckAt`. The installed app and its data were restored afterwards. Popover resizing, compact mode, chips, notifications, and the folder picker were checked in browser tests only; the native tray UI cannot be driven from this session.
+- [Main CI](https://github.com/Abulkosim/margin/actions/runs/39782117895) passed for `d34bf86` and the [release build](https://github.com/Abulkosim/margin/actions/runs/39801428623) passed for the tag, including Windows x64, which compiles the registry theme read, dialog plugin, notification click handler, and popover placement for the first time. The first two tag builds were cancelled when the Ubuntu runner's apt mirror stalled for 20 minutes during Playwright's dependency install; the frontend job timeout is now 45 minutes.
+- All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.5.0 installed for x86_64 and arm64. `latest.json` still points at the `Abulkosim/usagebar` slug so v0.3.0 clients can update; GitHub redirects it.
+- Attestation verification (`gh attestation verify` for the six listed assets and the SBOM predicate) is recorded below once the GitHub attestations API is reachable from this network.
+- Pending: in-app update of the owner's installed v0.3.0, a manual notification and sleep/wake check on the Mac, the real folder picker, Windows tray tiers and toast clicks, interactive Windows installation, and privileged macOS installation.
+
+## Previous release: v0.4.0
 
 **[v0.4.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.4.0).** Verified on 2026-10-22 on macOS 26.6.2. Adds Keychain-backed Claude accounts on macOS, a signed-out state, refresh after wake, calmer retry handling, settings recovery, and release provenance. The repository moved from `Abulkosim/usagebar` to `Abulkosim/margin` during this release.
 
