@@ -1,4 +1,3 @@
-import { mkdirSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { createDemoState } from '../../src/lib/demo.ts'
 import type { AppState } from '../../src/lib/model.ts'
@@ -7,7 +6,6 @@ declare global {
   interface Window { __FIT_TEST__?: number[] }
 }
 
-const screenshotDir = '/private/tmp/claude-501/-Users-abulkosim-Documents-usagebar/c28b0f92-1328-4d3d-9a8f-8fed15c4a664/scratchpad/compact'
 
 async function installBridge(page: Page, state: AppState): Promise<void> {
   await page.addInitScript(state => {
@@ -101,8 +99,7 @@ test('rows expand to the full card one at a time with mouse and keyboard', async
   await expect(card.getByRole('progressbar', { name: 'Session remaining', exact: true })).toBeVisible()
   await expect(card.getByRole('button', { name: 'History' })).toBeVisible()
   await expect(page.locator(`#${await personal.getAttribute('aria-controls')}`).getByRole('button', { name: 'Pin Personal to tray', exact: true })).toBeAttached()
-  mkdirSync(screenshotDir, { recursive: true })
-  await page.locator('.app-shell').screenshot({ path: `${screenshotDir}/compact-expanded-light-${info.project.name}.png` })
+  await page.locator('.app-shell').screenshot({ path: info.outputPath(`compact-expanded-light.png`) })
   await work.click()
   await expect(personal).toHaveAttribute('aria-expanded', 'false')
   await expect(work).toHaveAttribute('aria-expanded', 'true')
@@ -156,7 +153,6 @@ test.describe('popover height', () => {
 })
 
 test('preview popover is shorter in compact and screenshots in both themes', async ({ page }, info) => {
-  mkdirSync(screenshotDir, { recursive: true })
   const heights: Record<string, number> = {}
   for (const theme of ['light', 'dark'] as const) {
     for (const [key, query] of [['1-account', 'state=single&layout=compact'], ['5-accounts', 'state=compact']] as const) {
@@ -169,7 +165,7 @@ test('preview popover is shorter in compact and screenshots in both themes', asy
       heights[key] = Math.round(box?.height ?? 0)
       const bottom = await page.locator('.app-footer').evaluate(element => element.getBoundingClientRect().bottom)
       expect(bottom).toBeLessThanOrEqual(page.viewportSize()?.height ?? 0)
-      await shell.screenshot({ path: `${screenshotDir}/compact-${key}-${theme}-${info.project.name}.png` })
+      await shell.screenshot({ path: info.outputPath(`compact-${key}-${theme}.png`) })
     }
   }
   await page.goto('/?demo=1&state=single')
