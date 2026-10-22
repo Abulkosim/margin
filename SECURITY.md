@@ -24,6 +24,10 @@ Margin is an open-source project maintained by one person. Responses are best ef
 
 Confirmed issues are fixed in a new release. The advisory is published after the fix ships, with credit if you want it.
 
+## Automated checks
+
+Every push to `main`, every pull request, and a weekly schedule run `cargo audit`, `cargo deny` (advisories, licenses, bans, sources; see `src-tauri/deny.toml`), and `pnpm audit --prod --audit-level high`. OpenSSF Scorecard runs on `main` and weekly, with results in code scanning and on the README badge. Release builds carry signed build provenance and SBOM attestations; verify them with `gh attestation verify <file> --repo Abulkosim/margin`.
+
 ## Scope
 
 In scope:

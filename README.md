@@ -6,6 +6,7 @@ See remaining quota and reset times across multiple accounts, right from your me
 
 [![CI](https://github.com/Abulkosim/margin/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/margin/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-747a87)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Abulkosim/margin/badge)](https://scorecard.dev/viewer/?uri=github.com/Abulkosim/margin)
 
 [Download](https://github.com/Abulkosim/margin/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Changelog](CHANGELOG.md) · [Develop](#develop)
 
