@@ -8,7 +8,7 @@
   "author": "abulkosim <abulkasimkattaev@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Abulkosim/usagebar.git"
+    "url": "https://github.com/Abulkosim/margin.git"
   },
   "packageManager": "pnpm@11.25.0",
   "engines": {

@@ -25,7 +25,7 @@ async function releaseFixture(t) {
     directory,
     version,
     publicKey,
-    repository: 'Abulkosim/usagebar',
+    repository: 'Abulkosim/margin',
     date: new Date('2026-10-16T00:00:00Z'),
   }
 }

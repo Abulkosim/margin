@@ -18,7 +18,7 @@ Never put real credential files, token values, account IDs, or unredacted provid
 - Ubuntu: installs the pinned pnpm version, checks types, builds the interface, runs unit tests, updater release tests, and browser tests.
 - macOS: checks Rust formatting, builds frontend assets, runs Clippy and unit tests, builds universal Apple Silicon/Intel app and DMG bundles.
 - Windows: checks Rust formatting, builds frontend assets, runs Clippy and unit tests, builds x64 NSIS and MSI installers.
-- Release tag pushes in `Abulkosim/usagebar` only: signs updater artifacts, validates matching versions and lockfiles, waits for all jobs to pass, verifies each updater signature and its signed version, generates `latest.json` and SHA-256 checksums, and creates or updates a draft GitHub release.
+- Release tag pushes in `Abulkosim/margin` only: signs updater artifacts, validates matching versions and lockfiles, waits for all jobs to pass, verifies each updater signature and its signed version, generates `latest.json` and SHA-256 checksums, and creates or updates a draft GitHub release.
 
 Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rust dependency updates. Builds have read-only repository access; only the release job has write access. Pull requests, main builds, forks, and manual workflow runs disable updater artifact generation and receive no signing secrets. The release pipeline uses the existing standard GitHub runners and GitHub Releases; no additional hosted service is required.
 
@@ -55,4 +55,4 @@ v0.1.1 and earlier have no updater and need one manual upgrade to the first upda
 
 ## Roll back v0.3.0
 
-Quit Margin and reinstall [v0.2.2](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2). Both versions use the same settings format; keep the existing local settings. v0.2.2 ignores the separate usage-history files. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
+Quit Margin and reinstall [v0.2.2](https://github.com/Abulkosim/margin/releases/tag/v0.2.2). Both versions use the same settings format; keep the existing local settings. v0.2.2 ignores the separate usage-history files. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.

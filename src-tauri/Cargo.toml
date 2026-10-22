@@ -6,7 +6,7 @@ authors = ["abulkosim <abulkasimkattaev@gmail.com>"]
 edition = "2021"
 rust-version = "1.90"
 license = "MIT"
-repository = "https://github.com/Abulkosim/usagebar"
+repository = "https://github.com/Abulkosim/margin"
 
 [lib]
 name = "margin_lib"

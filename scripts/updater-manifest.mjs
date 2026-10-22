@@ -3,6 +3,10 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { verifyUpdaterSignature } from './updater-signature.mjs'
 
+// Clients up to v0.3.0 only trust download URLs under the old slug; GitHub redirects it to Abulkosim/margin.
+// Switch to 'Abulkosim/margin' once v0.4.0 (which trusts both) is the oldest supported version.
+export const DOWNLOAD_REPO = 'Abulkosim/usagebar'
+
 export function releaseAssetNames(version) {
   return {
     dmg: `Margin_${version}_universal.dmg`,
@@ -14,7 +18,7 @@ export function releaseAssetNames(version) {
 
 export async function createUpdaterManifest({ directory, version, publicKey, repository, notes = '', date = new Date() }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid release version.')
-  if (repository !== 'Abulkosim/usagebar') throw new Error('Unexpected release repository.')
+  if (repository !== 'Abulkosim/margin') throw new Error('Unexpected release repository.')
   const assets = releaseAssetNames(version)
   const required = [...Object.values(assets), ...[assets.mac, assets.nsis, assets.msi].map((name) => `${name}.sig`)]
   const allowed = new Set([...required, 'latest.json', 'SHA256SUMS.txt'])
@@ -36,7 +40,7 @@ export async function createUpdaterManifest({ directory, version, publicKey, rep
     await verifyUpdaterSignature(join(directory, name), signature, publicKey, version)
     const platform = {
       signature,
-      url: `https://github.com/${repository}/releases/download/v${version}/${encodeURIComponent(name)}`,
+      url: `https://github.com/${DOWNLOAD_REPO}/releases/download/v${version}/${encodeURIComponent(name)}`,
     }
     for (const target of targets) platforms[target] = platform
   }

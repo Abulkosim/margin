@@ -81,8 +81,11 @@ fn trusted_download(url: &reqwest::Url, version: &str) -> bool {
     {
         return false;
     }
-    let prefix = format!("/Abulkosim/usagebar/releases/download/v{version}/");
-    let Some(file) = url.path().strip_prefix(&prefix) else {
+    let path = url.path();
+    let Some(file) = ["/Abulkosim/margin/", "/Abulkosim/usagebar/"]
+        .iter()
+        .find_map(|repo| path.strip_prefix(&format!("{repo}releases/download/v{version}/")))
+    else {
         return false;
     };
     file == "Margin.app.tar.gz"
@@ -195,6 +198,12 @@ mod tests {
         ] {
             assert!(trusted_download(
                 &format!("{base}{file}").parse().unwrap(),
+                "0.2.0"
+            ));
+            assert!(trusted_download(
+                &format!("{}{file}", base.replace("usagebar", "margin"))
+                    .parse()
+                    .unwrap(),
                 "0.2.0"
             ));
         }

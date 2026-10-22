@@ -4,10 +4,10 @@
 
 See remaining quota and reset times across multiple accounts, right from your menu bar or system tray.
 
-[![CI](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/usagebar/actions/workflows/ci.yml)
+[![CI](https://github.com/Abulkosim/margin/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/margin/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-747a87)](LICENSE)
 
-[Download](https://github.com/Abulkosim/usagebar/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Changelog](CHANGELOG.md) · [Develop](#develop)
+[Download](https://github.com/Abulkosim/margin/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Changelog](CHANGELOG.md) · [Develop](#develop)
 
 <p>
   <img src="docs/images/overview-dark.png" alt="Margin dark browser preview showing sample Claude and Codex accounts" width="300" />
@@ -40,16 +40,16 @@ Usage history with sample data.
 - **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
 - **Settings:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-[v0.3.0](https://github.com/Abulkosim/usagebar/releases/tag/v0.3.0) adds local usage history, larger text, and clearer percentages in both themes. macOS and Windows [release checks](https://github.com/Abulkosim/usagebar/actions/runs/39058156374) passed. See the [changelog](CHANGELOG.md) and [verification record](docs/verification.md).
+[v0.3.0](https://github.com/Abulkosim/margin/releases/tag/v0.3.0) adds local usage history, larger text, and clearer percentages in both themes. macOS and Windows [release checks](https://github.com/Abulkosim/margin/actions/runs/39058156374) passed. See the [changelog](CHANGELOG.md) and [verification record](docs/verification.md).
 
 ## Install
 
-Download **v0.3.0** from [GitHub Releases](https://github.com/Abulkosim/usagebar/releases/latest).
+Download **v0.3.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/usagebar/releases/download/v0.3.0/Margin_0.3.0_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/usagebar/releases/download/v0.3.0/Margin_0.3.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/usagebar/releases/download/v0.3.0/Margin_0.3.0_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64_en-US.msi) |
 
 Already using v0.1.1 or earlier? Install the latest release once manually. Future releases can be installed from **Settings → General → Updates**. Checking and installing are explicit actions; Margin does not check or download in the background. Updater signatures are separate from OS publisher certificates, so the first-launch guidance below still applies.
 
@@ -130,7 +130,7 @@ Build an installer on the target OS with `pnpm tauri build`. The [release workfl
 
 ## Contribute
 
-[Report a bug](https://github.com/Abulkosim/usagebar/issues/new/choose) with the version, operating system, display scaling, and reproduction steps. Redact account details in screenshots; never attach tokens or credential files. Provider parsing changes should include a fixture and a regression test.
+[Report a bug](https://github.com/Abulkosim/margin/issues/new/choose) with the version, operating system, display scaling, and reproduction steps. Redact account details in screenshots; never attach tokens or credential files. Provider parsing changes should include a fixture and a regression test.
 
 The project stays focused on Claude and Codex. Planned: explicit account activation with confirmation and backup, and local cost history. Independent OAuth login remains deferred until the provider's current public client details are verified.
 

@@ -139,7 +139,7 @@ onUnmounted(() => {
       <span class="gate-logo"><AppIcon name="margin" :size="36"/></span>
       <p class="eyebrow">CLAUDE + CODEX</p><h1>Track your usage.</h1>
       <p class="gate-description">See account limits and reset times in the macOS menu bar or Windows system tray.</p>
-      <a class="button button-primary" href="https://github.com/Abulkosim/usagebar/releases" target="_blank" rel="noopener noreferrer">Download Margin<AppIcon name="external" :size="14"/></a>
+      <a class="button button-primary" href="https://github.com/Abulkosim/margin/releases" target="_blank" rel="noopener noreferrer">Download Margin<AppIcon name="external" :size="14"/></a>
       <a class="preview-link" href="?demo=1">Preview <span>with sample data</span><AppIcon name="chevron" :size="12"/></a>
       <p class="gate-footnote">Reads CLI credentials without changing them.</p>
     </div>

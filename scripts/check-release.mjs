@@ -34,7 +34,7 @@ const updater = tauriConfig.plugins?.updater
 if (tauriConfig.bundle?.createUpdaterArtifacts !== true
   || updater?.requireSignedVersion !== true
   || updater?.endpoints?.length !== 1
-  || updater.endpoints[0] !== 'https://github.com/Abulkosim/usagebar/releases/latest/download/latest.json'
+  || updater.endpoints[0] !== 'https://github.com/Abulkosim/margin/releases/latest/download/latest.json'
   || typeof updater.pubkey !== 'string' || !updater.pubkey.startsWith('dW50cnVzdGVkIGNvbW1lbnQ6')) {
   throw new Error('Configure signed, version-bound updater artifacts and the public release endpoint before tagging.')
 }

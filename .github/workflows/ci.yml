@@ -118,13 +118,13 @@ jobs:
       - name: Test providers and core
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build native installers
-        if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') || github.repository != 'Abulkosim/usagebar'
+        if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') || github.repository != 'Abulkosim/margin'
         env:
           BUILD_TARGET: ${{ matrix.target }}
           BUILD_BUNDLES: ${{ matrix.bundles }}
         run: pnpm tauri build --target "$BUILD_TARGET" --bundles "$BUILD_BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":false}}' --ci -- --locked
       - name: Build signed release artifacts
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar'
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/margin'
         env:
           BUILD_TARGET: ${{ matrix.target }}
           BUILD_BUNDLES: ${{ matrix.bundles }}
@@ -139,7 +139,7 @@ jobs:
       - name: Collect installers
         env:
           BUILD_TARGET: ${{ matrix.target }}
-          SIGNED_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar' }}
+          SIGNED_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/margin' }}
         run: |
           if [[ "$SIGNED_RELEASE" == "true" ]]; then
             node scripts/collect-artifacts.mjs "$BUILD_TARGET" --updater
@@ -169,7 +169,7 @@ jobs:
 
   release:
     name: Prepare draft release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/usagebar'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'Abulkosim/margin'
     needs: [frontend, native]
     runs-on: ubuntu-latest
     timeout-minutes: 10

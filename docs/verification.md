@@ -4,14 +4,14 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current release: v0.3.0
 
-**[v0.3.0 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.3.0).** Verified on 2026-10-17 on macOS 26.6.2. Adds local usage history and includes the readability patch below.
+**[v0.3.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.3.0).** Verified on 2026-10-17 on macOS 26.6.2. Adds local usage history and includes the readability patch below.
 
 - `pnpm build`, 32 frontend unit tests, 80 Chromium/WebKit browser cases, 93 Rust tests, strict Clippy, formatting, and 14 release-script tests passed. The final compact chart was rechecked in all 12 history browser cases; its section fits within 350 CSS pixels at the standard width.
 - History persistence tests cover atomic replacement, owner-only permissions, seven-day and 10,000-reading bounds, damaged files, write failures, restarts, missing windows, partial sampling, out-of-order readings, unknown identities, account removal, and workspace changes. Existing v1 settings remain readable; history uses separate files.
 - Independent review found and fixed false gaps from independently sampled windows and history loss during temporary profile failures. Stable account/workspace identifiers are hashed for local history matching; tokens are never stored in history. Unknown identity pauses recording without replacing previous history.
 - Chart tests cover honest period/gap boundaries, observed percentage-point changes, keyboard inspection, empty/error/loading states, validated IPC, and late responses. Light/dark previews were inspected at 1×/2× and 360 × 480. Seven public sample screenshots were refreshed and visually inspected.
 - An optimized, ad-hoc-signed local Mac build launched successfully. Both existing accounts recorded live readings in separate owner-only files. The native interface progressed from its first-reading state to a chart, and keyboard inspection selected an earlier reading. Restart preserved the readings and marked the next point as resumed recording. Light/dark native checks passed; the original light preference was restored.
-- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/39057547907) and [signed release CI](https://github.com/Abulkosim/usagebar/actions/runs/39058156374) passed for `9eff289`, including frontend/browser checks, strict Rust checks, macOS universal packaging, and Windows x64 packaging.
+- [Main CI](https://github.com/Abulkosim/margin/actions/runs/39057547907) and [signed release CI](https://github.com/Abulkosim/margin/actions/runs/39058156374) passed for `9eff289`, including frontend/browser checks, strict Rust checks, macOS universal packaging, and Windows x64 packaging.
 - All eight listed checksums and all nine uploaded asset digests matched. Three updater signatures, their signed versions, and all five manifest targets passed. GitHub release notes and updater notes match `changelogs/v0.3.0.md`; the public latest endpoint serves the checked manifest.
 - The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, while valid installation passed version, both architectures, and strict ad-hoc signature checks. The DMG passed integrity verification and contains the identical app. Windows installer formats and the MSI x64 template were checked.
 - The downloaded release launched with saved history intact. Native scrolling exposed the complete compact chart and legend. The installed v0.2.2 app then found and installed v0.3.0 through **Install and restart**. Both accounts, the pinned account, theme, polling intervals, disabled notification/autostart preferences, and recorded history were preserved. Settings reports version 0.3.0 and “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
@@ -29,14 +29,14 @@ Prepared on 2026-10-17 on macOS without a separate release or tag. The initial p
 
 ## Previous release: v0.2.2
 
-**[v0.2.2 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2).** Verified on 2026-10-16.
+**[v0.2.2 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.2).** Verified on 2026-10-16.
 
 This release simplifies interface copy and adds per-version changelogs based on Git tags and published release dates. GitHub release notes and updater notes now use the same Markdown file. The native sizing fix is unchanged.
 
 - Production frontend build, 26 frontend unit tests, 68 Chromium/WebKit browser cases, 75 Rust tests, and 14 release-script tests passed locally.
 - All four historical release dates and changelog links were checked against repository history. The new changelog is included in release preflight checks.
 - Five public WebKit screenshots were refreshed at 420 × 660 CSS pixels and 2× scale. Light/dark overviews and Settings menus were visually checked; all retain the sample-data label. The browser entry and empty state were also inspected.
-- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/38865976350) and [release CI](https://github.com/Abulkosim/usagebar/actions/runs/38866794042) passed, including strict Clippy and both native installer builds.
+- [Main CI](https://github.com/Abulkosim/margin/actions/runs/38865976350) and [release CI](https://github.com/Abulkosim/margin/actions/runs/38866794042) passed, including strict Clippy and both native installer builds.
 - All eight listed checksums and all nine remote asset digests matched. All three updater signatures, signed versions, and five manifest targets passed. The GitHub release body and manifest notes match `changelogs/v0.2.2.md`.
 - The exact signed universal Mac archive passed the real updater smoke test: altered files and mismatched versions were rejected, and valid installation passed version, both architectures, and strict ad-hoc signature checks. The DMG passed integrity checks and contains the same app.
 - The downloaded release launched with “Usage remaining” and the shorter Settings copy, without clipping. The installed v0.2.1 app then found and installed v0.2.2 through **Install and restart**. Accounts, the pinned account, theme, polling intervals, and disabled notification/autostart preferences were preserved. Settings shows version 0.2.2 and a new check reports “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
@@ -44,7 +44,7 @@ This release simplifies interface copy and adds per-version changelogs based on 
 
 ## Previous release: v0.2.1
 
-**[v0.2.1 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.1).** Verified on 2026-10-16.
+**[v0.2.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.1).** Verified on 2026-10-16.
 
 The owner reported clipping only on the external monitor; reopening restored the correct size. The previous macOS path sized in physical pixels using the target monitor scale, while Tao converted that size using the window’s current scale before an asynchronous move. A 1× destination with a 2× source could therefore produce a 210 × 330 point window. Its monitor lookup also mixed physical tray coordinates with a logical-point API.
 
@@ -54,7 +54,7 @@ The patch obtains the tray status item’s actual screen, calculates in Cocoa po
 - The opt-in native test used one hidden disposable AppKit window on this Mac’s real 2× built-in and 1× external screens. It reproduced 210 × 330 points under the old conversion, then verified 420 × 660 points and the expected backing scale on each screen. No visible window or display preference was changed.
 - The native debug build rendered the full overview and Settings at 420 × 660, with the tray arrow and no outer scrollbars. The optimized production build also rendered without clipping at 840 × 1320 physical pixels on Retina. The owner’s reported first-open interaction still needs confirmation after installation.
 - The installed v0.2.0 app’s explicit update check successfully reported “You’re up to date” against the published manifest.
-- [Main CI](https://github.com/Abulkosim/usagebar/actions/runs/38863357727) passed: frontend/browser checks, Rust checks, macOS universal packaging, and Windows x64 packaging. [Signed release CI](https://github.com/Abulkosim/usagebar/actions/runs/38864063245) also passed. All nine uploaded asset digests matched local files; all eight listed checksums, three updater signatures, signed versions, and manifest targets passed. The DMG passed integrity verification and matched the updater-installed app.
+- [Main CI](https://github.com/Abulkosim/margin/actions/runs/38863357727) passed: frontend/browser checks, Rust checks, macOS universal packaging, and Windows x64 packaging. [Signed release CI](https://github.com/Abulkosim/margin/actions/runs/38864063245) also passed. All nine uploaded asset digests matched local files; all eight listed checksums, three updater signatures, signed versions, and manifest targets passed. The DMG passed integrity verification and matched the updater-installed app.
 - The exact universal signed archive passed the real updater installation smoke test, including tamper/version rejection, both architectures, and strict ad-hoc signature validation. It launched without clipping.
 - The owner’s installed v0.2.0 app found v0.2.1 through Settings, installed it with **Install and restart**, and relaunched with both accounts and the pinned account preserved. The installed version is 0.2.1; its executable and plist match the verified universal release, and strict codesign verification passed. The previous installation is backed up locally. This verifies the user-level macOS UI update flow; Windows and privileged macOS updating remain unverified.
 
@@ -68,13 +68,13 @@ It uses AppKit on the process main thread, never orders the test window on scree
 
 ## Previous release: v0.2.0
 
-**[v0.2.0 is published](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.0).** Verified on 2026-10-16. This release adds explicit update checks and signed installation through GitHub Releases, and removes the clipped CSS shadow around native windows. The native OS shadow remains.
+**[v0.2.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.0).** Verified on 2026-10-16. This release adds explicit update checks and signed installation through GitHub Releases, and removes the clipped CSS shadow around native windows. The native OS shadow remains.
 
 | Check | Result |
 | --- | --- |
 | Release preflight and build | Matching package, Cargo, and Tauri versions; production frontend build passed. Public updater key, HTTPS endpoint, and signed-version enforcement configured. |
 | Automated checks | 26 frontend unit tests, 68 Chromium/WebKit cases, 73 Rust tests, 14 release-script tests, Rust formatting, and strict Clippy passed locally and in CI. Browser tests include both themes, native-frame transparency, updater progress/errors, retry, stale IPC, duplicate clicks, and navigation during a download. |
-| Cross-platform CI | [Main run 38859821037](https://github.com/Abulkosim/usagebar/actions/runs/38859821037) and [tag run 38860790512](https://github.com/Abulkosim/usagebar/actions/runs/38860790512) passed for release commit `e27c77e`. The tag build produced signed updater artifacts and a complete manifest. |
+| Cross-platform CI | [Main run 38859821037](https://github.com/Abulkosim/margin/actions/runs/38859821037) and [tag run 38860790512](https://github.com/Abulkosim/margin/actions/runs/38860790512) passed for release commit `e27c77e`. The tag build produced signed updater artifacts and a complete manifest. |
 | Signature and version checks | All three downloaded updater artifacts independently passed signature and signed-version verification. Release-script tests include a real Tauri CLI signature and rejection of altered bytes, wrong keys, mismatched versions, and unexpected files. |
 | Real macOS updater installation | The ignored `updater_install` integration test passed against the exact downloaded universal release archive with `MARGIN_REQUIRE_UNIVERSAL=1`. It used the real plugin and public key through a loopback fixture. Corrupt downloads/installations and inflated manifest versions were rejected while preserving the old test app. Valid installation replaced only a disposable app; the resulting bundle reported 0.2.0, contained `arm64` and `x86_64`, and passed strict ad-hoc signature verification. This exercises the plugin installation path, not the UI's install button or privileged installation. |
 | macOS release app | The DMG passed integrity verification. Every app file and symlink matched the updater-installed bundle. The verified universal app was installed in the owner's user Applications folder with the old app backed up. It launched with both existing accounts, the pinned account, and settings preserved; Settings displayed version 0.2.0 and the corrected window edge. The earlier native debug test verified both light/dark edges and recoverable updater errors before the manifest was published. Notifications and autostart remained off. |
@@ -96,13 +96,13 @@ v0.1.1 and earlier require one manual upgrade. Subsequent releases use Settings 
 | Rust regression checks | Passed locally and in CI | All 70 Rust unit tests, formatting, and strict Clippy with `-D warnings` passed. |
 | Windows owner testing | Passed, owner-reported | On 2026-10-16 the owner reported checking the Windows app and finding everything okay. Exact OS build and per-scenario results were not supplied. A subsequent macOS screenshot identified the dark perimeter addressed in v0.2.0. |
 | Native macOS controls | Passed in debug and release apps | Light/dark menus were visually inspected. Keyboard selection changed refresh from 1 to 2 minutes, saved, and restored trigger focus; the original interval was restored. Escape closed the select while keeping Settings open. The removal dialog focused Keep account; Escape preserved the account and Settings, then restored trigger focus. Light appearance was restored. The downloaded universal release app was installed and launched with both existing accounts and the pinned account preserved. Its version read 0.1.1; custom menus, keyboard saves, focus return, and Escape behavior passed again. The original one-minute refresh interval was restored. Native notifications and autostart remained off and were not tested. |
-| macOS universal and Windows x64 CI | Passed | [Main run 38847806220](https://github.com/Abulkosim/usagebar/actions/runs/38847806220) and [tag run 38848296438](https://github.com/Abulkosim/usagebar/actions/runs/38848296438) passed for the original release commit `ba4a557`. Both native jobs passed Rust checks and produced installers; the tag run prepared the release draft. |
+| macOS universal and Windows x64 CI | Passed | [Main run 38847806220](https://github.com/Abulkosim/margin/actions/runs/38847806220) and [tag run 38848296438](https://github.com/Abulkosim/margin/actions/runs/38848296438) passed for the original release commit `ba4a557`. Both native jobs passed Rust checks and produced installers; the tag run prepared the release draft. |
 | Screenshots | Verified locally | Five 840×1320 browser previews were generated and visually inspected: light/dark overview, light settings, and light/dark open settings menus. All show sample data; see [screenshot notes](screenshots.md). |
-| Release artifacts and publication | Published | [v0.1.1](https://github.com/Abulkosim/usagebar/releases/tag/v0.1.1) includes a universal DMG, x64 EXE/MSI, and checksums. All SHA-256 values match. The DMG passed integrity checks, strict ad-hoc signature verification, version validation, and Intel/Apple Silicon architecture checks; it matches the installed tag artifact byte-for-byte. Windows installer formats and the MSI x64 template were verified. |
+| Release artifacts and publication | Published | [v0.1.1](https://github.com/Abulkosim/margin/releases/tag/v0.1.1) includes a universal DMG, x64 EXE/MSI, and checksums. All SHA-256 values match. The DMG passed integrity checks, strict ad-hoc signature verification, version validation, and Intel/Apple Silicon architecture checks; it matches the installed tag artifact byte-for-byte. Windows installer formats and the MSI x64 template were verified. |
 
 ## Published baseline: v0.1.0
 
-Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and packaged macOS smoke tests passed. [CI run 38840596545](https://github.com/Abulkosim/usagebar/actions/runs/38840596545) passed all frontend, macOS universal, and Windows x64 jobs for release commit `a03e880`. The [v0.1.0 tag run](https://github.com/Abulkosim/usagebar/actions/runs/38841132411) passed all jobs and prepared the release assets.
+Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and packaged macOS smoke tests passed. [CI run 38840596545](https://github.com/Abulkosim/margin/actions/runs/38840596545) passed all frontend, macOS universal, and Windows x64 jobs for release commit `a03e880`. The [v0.1.0 tag run](https://github.com/Abulkosim/margin/actions/runs/38841132411) passed all jobs and prepared the release assets.
 
 | Area | Status | Evidence or remaining work |
 | --- | --- | --- |
@@ -172,6 +172,6 @@ Confirm CLI credential files are unchanged after normal use. Treat account email
 
 Commit identities were corrected on 2026-10-16. Every existing commit kept its original file tree, message, and date. Release tags now point to `862b8fd` for v0.1.0 (previously `a03e880`) and `7e16644` for v0.1.1 (previously `ba4a557`); published installers and checksums are unchanged. The linked CI runs retain the original commit IDs.
 
-Target: `Abulkosim/usagebar`. Commit identity: `abulkosim <abulkasimkattaev@gmail.com>`.
+Target: `Abulkosim/margin`. Commit identity: `abulkosim <abulkasimkattaev@gmail.com>`.
 
-Release commit `e13f59d` is pushed to `main` and tagged `v0.2.2`. Main and tag CI passed. [Margin v0.2.2](https://github.com/Abulkosim/usagebar/releases/tag/v0.2.2) is published as the latest release with installers, updater signatures, the changelog-backed update manifest, and checksums. The installed app was upgraded through its own UI. v0.2.1 remains available for rollback.
+Release commit `e13f59d` is pushed to `main` and tagged `v0.2.2`. Main and tag CI passed. [Margin v0.2.2](https://github.com/Abulkosim/margin/releases/tag/v0.2.2) is published as the latest release with installers, updater signatures, the changelog-backed update manifest, and checksums. The installed app was upgraded through its own UI. v0.2.1 remains available for rollback.
