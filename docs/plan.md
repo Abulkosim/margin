@@ -51,8 +51,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **2.3 Pace line.** From history: "At this rate, runs out ~Thu 14:00 (reset Fri 09:00)" or "On pace". Hide when <3 readings or <30 min of data. Weekly and session.
   Verify: unit tests on regression math incl. gaps and resets; e2e renders both states.
   Done 2026-10-22: `src/lib/pace.ts` OLS over the latest segment (gap/reset/window boundaries), hidden <3 points or <30 min; history now loads once per card.
-- [ ] **2.4 Per-model windows first-class.** Fable/Opus/Sonnet weekly shown as compact chips on the card, not buried. Add fixture with `limits[]` `weekly_scoped` + `scope.model.display_name: "Fable"`. Clamp >100% instead of failing the snapshot.
+- [x] **2.4 Per-model windows first-class.** Fable/Opus/Sonnet weekly shown as compact chips on the card, not buried. Add fixture with `limits[]` `weekly_scoped` + `scope.model.display_name: "Fable"`. Clamp >100% instead of failing the snapshot.
   Verify: fixture test; e2e.
+  Done 2026-10-22: `scope` core|model|other derived from window id, chips under Weekly, shared `percent()` caps >100 for both providers; fixture `claude-weekly-scoped.json`. Overview screenshots to recapture at 2.11.
 - [ ] **2.5 Limit-reset grants, read-only.** Parse count/type/expiry from Claude usage response (confirm shape from a live sanitized capture). Show "1 reset available · expires in 3d". Never redeem.
   Verify: fixture test; e2e; grep proves no POST to reset endpoints.
 - [ ] **2.6 Notifications v2.** One-time permission prompt; on by default; thresholds editable; "window reset" alert optional; click opens popover; tolerate ±60s reset jitter; alert when a period is first seen already past a threshold.
