@@ -70,7 +70,8 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **3.4 Artifact attestations + SBOM** in the release job (`actions/attest-build-provenance`, `anchore/sbom-action`; perms `id-token: write`, `attestations: write`). README: `gh attestation verify <file> --repo Abulkosim/margin`.
   Verify: next release assets verify. Added 2026-10-22; first real check at the v0.4.0 tag build.
 - [x] **3.5 PRIVACY.md + SECURITY.md.** Exact files/Keychain items read, exact hosts contacted (api.anthropic.com, chatgpt.com, github.com for updates), no telemetry, never writes. Private vulnerability reporting and Discussions enabled 2026-10-22. Keychain section to update after 1.1.
-- [ ] **3.6 CI hardening.** `cargo audit`/`cargo deny`, `pnpm audit`, OpenSSF Scorecard action + badge, CodeQL default 👤 (settings), wiremock tests for provider `fetch` (400 fallback, 401, 429, swap), poller tests.
+- [x] **3.6 CI hardening.** `cargo audit`/`cargo deny`, `pnpm audit`, OpenSSF Scorecard action + badge, CodeQL default 👤 (settings), wiremock tests for provider `fetch` (400 fallback, 401, 429, swap), poller tests.
+  Done 2026-10-22: `security.yml` (cargo audit, cargo deny with `src-tauri/deny.toml`, pnpm audit high), `scorecard.yml` (publishes results; needs code scanning on 👤), wiremock fetch tests for both providers. Fixed 3 RustSEC advisories (webpki) and vue 3.5.43 (GHSA-g2v6-rqmx-r4w6). CodeQL default setup still 👤.
 - [ ] **3.7 Own Homebrew tap** `Abulkosim/homebrew-tap` with cask `margin`, `auto_updates true`, updated from release job (needs PAT 👤).
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged.
 - [ ] **3.9 Repo hygiene.** Discussions on 👤, feature-request template, `config.yml`, CONTRIBUTING.md.
