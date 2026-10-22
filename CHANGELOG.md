@@ -2,6 +2,7 @@
 
 | Version | Date (UTC) | Changes |
 | --- | --- | --- |
+| [v0.4.0](changelogs/v0.4.0.md) | 2026-10-22 | Keychain accounts on Mac, signed-out state, wake refresh, settings recovery. |
 | [v0.3.0](changelogs/v0.3.0.md) | 2026-10-17 | Local usage history and larger, clearer text. |
 | [v0.2.2](changelogs/v0.2.2.md) | 2026-10-16 | Simpler wording and release history. |
 | [v0.2.1](changelogs/v0.2.1.md) | 2026-10-16 | Fix Mac window sizing across displays. |
