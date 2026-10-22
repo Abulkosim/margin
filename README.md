@@ -92,6 +92,8 @@ History starts with new successful readings; it cannot recover usage from before
 
 Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required. Explicit update checks contact GitHub Releases without sending CLI credentials, account identities, or usage readings.
 
+See [PRIVACY.md](PRIVACY.md) for exact files, Keychain items, and hosts. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
 ## Preview the interface
 
 Requires Node.js 24 and pnpm 11.25.0.
