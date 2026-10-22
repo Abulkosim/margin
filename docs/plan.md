@@ -48,8 +48,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **2.2 Tray legibility.** Mac: thicker ring, filled-dot low state (≤20%). Windows: follow taskbar theme, stronger track, warn tier at 20%, critical at 5%. Optional "42%" text beside the icon.
   Verify: render icons at 16/22/32px light+dark into `docs/images/tray-*.png`; eyeball; contrast ≥ 3:1 measured in test.
   Done 2026-10-22: `core/ring.rs`, contact sheet in `docs/images/tray/`, min contrast 3.7:1 measured in test; Windows theme from registry; Mac-only "Show percentage next to icon". Windows compile only via CI; real taskbar check 👤.
-- [ ] **2.3 Pace line.** From history: "At this rate, runs out ~Thu 14:00 (reset Fri 09:00)" or "On pace". Hide when <3 readings or <30 min of data. Weekly and session.
+- [x] **2.3 Pace line.** From history: "At this rate, runs out ~Thu 14:00 (reset Fri 09:00)" or "On pace". Hide when <3 readings or <30 min of data. Weekly and session.
   Verify: unit tests on regression math incl. gaps and resets; e2e renders both states.
+  Done 2026-10-22: `src/lib/pace.ts` OLS over the latest segment (gap/reset/window boundaries), hidden <3 points or <30 min; history now loads once per card.
 - [ ] **2.4 Per-model windows first-class.** Fable/Opus/Sonnet weekly shown as compact chips on the card, not buried. Add fixture with `limits[]` `weekly_scoped` + `scope.model.display_name: "Fable"`. Clamp >100% instead of failing the snapshot.
   Verify: fixture test; e2e.
 - [ ] **2.5 Limit-reset grants, read-only.** Parse count/type/expiry from Claude usage response (confirm shape from a live sanitized capture). Show "1 reset available · expires in 3d". Never redeem.
@@ -59,7 +60,8 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [ ] **2.7 Compact overview mode.** Settings toggle: one row per account (name · session % · weekly % · next reset), history/extra behind expand. Popover height adapts to content.
   Verify: e2e screenshots 1 and 5 accounts, light+dark.
 - [ ] **2.8 Absolute reset time shown** next to countdown on hover/expand ("in 2h 14m · 16:30").
-- [ ] **2.9 Native folder picker** for Add account (tauri dialog plugin). Ignore list so removed accounts don't return on "Find accounts".
+- [x] **2.9 Native folder picker** for Add account (tauri dialog plugin). Ignore list so removed accounts don't return on "Find accounts".
+  Done 2026-10-22: tauri-plugin-dialog 2.8.1 (`dialog:allow-open` only, invoked via the global bridge, no npm package), `ignoredSources` in the store, "Show them" restores. Real native picker not clicked yet; check at 2.11 smoke.
 - [ ] **2.10 Background update check daily**, small dot on Settings, opt-out.
 - [ ] **2.11 Release v0.5.0.**
 
