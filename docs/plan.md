@@ -74,7 +74,7 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged.
 - [ ] **3.9 Repo hygiene.** Discussions on 👤, feature-request template, `config.yml`, CONTRIBUTING.md.
 - [ ] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath.
-- [ ] **3.11 Decide repo name** 👤: `usagebar` collides with a paid "Usagebar" product; `margin` or `margin-app` recommended (GitHub redirects).
+- [x] **3.11 Decide repo name** — renamed to `Abulkosim/margin` 2026-10-22; GitHub redirects the old slug. Updater manifest still uses the old slug until v0.4.0 is the oldest supported version.
 - [ ] **3.12 Listings.** PRs: awesome-mac, open-source-mac-os-apps (drafts prepared by loop, submitted 👤). awesome-claude-code via web form 👤 on/after **2026-10-30**.
 - [ ] **3.13 Launch posts 👤** — drafts prepared by loop, posted by owner in own words, spaced over days: r/ClaudeAI (showcase flair), r/ClaudeCode, r/codex, r/macapps, r/windowsapps, X clip. Show HN last, after 3.1–3.4, owner-written.
 - [ ] **3.14 SignPath Foundation application 👤** once there are some stars/releases (free Windows Authenticode).
