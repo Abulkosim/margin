@@ -39,6 +39,11 @@ pub fn get_popover_placement(
 }
 
 #[tauri::command]
+pub fn fit_popover(app: AppHandle, height: f64) -> Result<(), String> {
+    crate::core::tray::fit(&app, height)
+}
+
+#[tauri::command]
 pub async fn refresh_accounts(runtime: State<'_, Arc<Runtime>>) -> Result<(), String> {
     poller::refresh(&runtime).await;
     Ok(())

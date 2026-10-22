@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, formatRemaining, groupWindows, modelWindowSummary, remainingPercent, relativeAge, resetCountdown, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, coreSummary, formatRemaining, groupWindows, modelWindowSummary, remainingPercent, relativeAge, resetCountdown, resetIn, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -96,6 +96,9 @@ test('settings use the same limits as Rust', () => {
   const { trayShowPercent: __, ...withoutPercent } = defaultSettings
   assert.equal(settingsSchema.parse(withoutPercent).trayShowPercent, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, trayShowPercent: 'yes' }).success, false)
+  const { overviewLayout: ___, ...withoutLayout } = defaultSettings
+  assert.equal(settingsSchema.parse(withoutLayout).overviewLayout, 'cards')
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, overviewLayout: 'grid' }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 15 }).success, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, pollIntervalSeconds: 600, idlePollIntervalSeconds: 300 }).success, false)
   for (const thresholds of [[], [80, 80], [95, 80], [80.5], [101]]) {
@@ -157,4 +160,23 @@ test('model limits are grouped apart from core rows and other windows', () => {
   assert.equal(modelWindowSummary(windows[2]!, now), 'Fable weekly · resets in 4d 6h')
   assert.equal(windowScope(window('extra_0123456789abcdef_primary_window', 'Spark · session')), 'other')
   assert.throws(() => usageWindowSchema.parse({ id: 'x', label: 'X', usedPercent: 1, resetsAt: null, windowSeconds: null, scope: 'weekly' }))
+})
+
+test('compact rows pick session, weekly, and the more constrained reset', () => {
+  const window = (id: string, usedPercent: number, resetsAt: string | null) => usageWindowSchema.parse({ id, label: id, usedPercent, resetsAt, windowSeconds: null })
+  const session = window('five_hour', 82, '2026-10-16T10:45:00Z')
+  const weekly = window('seven_day', 14, '2026-10-18T18:00:00Z')
+  const summary = coreSummary([weekly, window('seven_day_opus', 99, null), session])
+  assert.equal(summary.session, session)
+  assert.equal(summary.weekly, weekly)
+  assert.equal(summary.limiting, session)
+  assert.equal(coreSummary([window('primary_window', 9, null), window('secondary_window', 32, null)]).limiting?.id, 'secondary_window')
+  assert.equal(coreSummary([window('primary_window', 40, '2026-10-17T10:00:00Z'), window('secondary_window', 40, '2026-10-16T11:00:00Z')]).limiting?.id, 'secondary_window')
+  const weeklyOnly = coreSummary([weekly])
+  assert.equal(weeklyOnly.session, null)
+  assert.equal(weeklyOnly.limiting, weekly)
+  assert.deepEqual(coreSummary([window('seven_day_cowork', 50, null)]), { session: null, weekly: null, limiting: null })
+  assert.equal(resetIn('2026-10-16T12:14:00Z', now), '2h 14m')
+  assert.equal(resetIn('2026-10-16T09:00:00Z', now), 'Pending')
+  assert.equal(resetIn(null, now), null)
 })

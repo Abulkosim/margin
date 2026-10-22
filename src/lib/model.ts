@@ -4,6 +4,7 @@ export const providerSchema = z.enum(['claude', 'codex'])
 export const accountIdSchema = z.string().min(1).brand<'AccountId'>()
 export const settingsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']),
+  overviewLayout: z.enum(['cards', 'compact']).default('cards'),
   pollIntervalSeconds: z.number().int().min(30).max(3600),
   idlePollIntervalSeconds: z.number().int().min(30).max(86400),
   notifications: z.boolean(),
@@ -83,6 +84,7 @@ export type AppState = z.infer<typeof appStateSchema>
 
 export const defaultSettings: Settings = {
   theme: 'system',
+  overviewLayout: 'cards',
   pollIntervalSeconds: 60,
   idlePollIntervalSeconds: 300,
   notifications: true,

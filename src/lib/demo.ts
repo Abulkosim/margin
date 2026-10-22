@@ -1,4 +1,4 @@
-import { appStateSchema, defaultSettings, type AppState } from './model.ts'
+import { accountIdSchema, accountSchema, appStateSchema, defaultSettings, type AppState } from './model.ts'
 import type { UpdateState } from './updater.ts'
 
 export function createDemoState(scenario: string | null): AppState {
@@ -98,6 +98,25 @@ export function createDemoState(scenario: string | null): AppState {
     state.accounts = []
     state.recovery = true
     state.notice = 'Margin’s settings file is damaged or unsupported. Settings file: ~/Library/Application Support/com.abulkosim.margin/state.json.'
+  }
+  if (scenario === 'single') state.accounts = state.accounts.slice(0, 1)
+  if (scenario === 'compact') {
+    state.settings = { ...state.settings, overviewLayout: 'compact', trayMode: 'pinned', pinnedAccountId: accountIdSchema.parse('demo-claude-personal') }
+    state.accounts = [...state.accounts, accountSchema.parse({
+      id: 'demo-codex-side', provider: 'codex', label: 'Side project', color: '#b8d1bf',
+      source: { kind: 'configDir', path: '~/.codex-side' },
+      identity: { email: 'alex@side.example', plan: 'Plus' }, refreshing: false,
+      error: { kind: 'network', message: 'Could not reach Codex. Check your connection.', retryAfterSeconds: null },
+      snapshot: { fetchedAt: new Date(now - 47 * 60_000).toISOString(), extraUsage: null, windows: [
+        { id: 'primary_window', label: 'Session', usedPercent: 64, resetsAt: future(1.4), windowSeconds: 18_000 },
+        { id: 'secondary_window', label: 'Weekly', usedPercent: 91, resetsAt: future(30), windowSeconds: 604_800 },
+      ] },
+    }), accountSchema.parse({
+      id: 'demo-claude-client', provider: 'claude', label: 'Client work for Northwind Studio', color: '#b8d1bf',
+      source: { kind: 'configDir', path: '~/.claude-client' },
+      identity: { email: 'alex@northwind.example', plan: 'Max 20×' }, refreshing: false, snapshot: null,
+      error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signedOutSince: new Date(now - 26 * 3_600_000).toISOString(), signInCommand: 'CLAUDE_CONFIG_DIR=~/.claude-client claude' },
+    })]
   }
   if (scenario === 'hidden') state.ignoredSources = ['claude:~/.claude-old', 'codex:~/.codex-old']
   if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']

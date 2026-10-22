@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { z } from 'zod'
 import { TooltipProvider } from 'reka-ui'
 import AppTooltip from './components/ui/AppTooltip.vue'
 import AccountCard from './components/AccountCard.vue'
+import AccountRow from './components/AccountRow.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import { accountIsStale, relativeAge } from './lib/format'
 import { useMargin } from './lib/margin'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
-import type { Account, Provider } from './lib/model'
+import type { Account, AccountId, Provider } from './lib/model'
 
 const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow } = useMargin()
 const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
@@ -36,6 +37,18 @@ const visibleAccounts = computed(() => state.value.accounts.filter(account => fi
 const staleCount = computed(() => state.value.accounts.filter(account => accountIsStale(account, state.value.settings, now.value, Boolean(connectionError.value))).length)
 const counts = computed(() => ({ all: state.value.accounts.length, claude: state.value.accounts.filter(account => account.provider === 'claude').length, codex: state.value.accounts.filter(account => account.provider === 'codex').length }))
 const filterOptions: { id: 'all' | Provider; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'claude', label: 'Claude' }, { id: 'codex', label: 'Codex' }]
+const compact = computed(() => state.value.settings.overviewLayout === 'compact')
+const expandedId = ref<AccountId | null>(null)
+const isPinned = (account: Account): boolean => state.value.settings.trayMode === 'pinned' && state.value.settings.pinnedAccountId === account.id
+const fitsContent = computed(() => page.value === 'overview' && !loading.value && state.value.accounts.length > 0)
+const shell = ref<HTMLElement | null>(null)
+const popover = ref<HTMLElement | null>(null)
+const scroller = ref<HTMLElement | null>(null)
+const accountList = ref<HTMLElement | null>(null)
+const fullHeight = 660
+const fitHeight = ref(0)
+let fitFrame = 0
+let fitObserver: ResizeObserver | undefined
 let stopSettingsListener: (() => void) | undefined
 let stopPlacementListener: (() => void) | undefined
 let destroyed = false
@@ -60,6 +73,36 @@ watchEffect(() => {
   document.documentElement.dataset.platform = isWindows ? 'windows' : 'mac'
   document.documentElement.style.colorScheme = dark.value ? 'dark' : 'light'
 })
+
+function toggleExpanded(id: AccountId): void {
+  expandedId.value = expandedId.value === id ? null : id
+}
+
+function measureFit(): void {
+  fitFrame = 0
+  let height = fullHeight
+  if (fitsContent.value && shell.value && popover.value && scroller.value) {
+    const style = getComputedStyle(shell.value)
+    height = Math.ceil(parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + popover.value.offsetHeight - scroller.value.clientHeight + scroller.value.scrollHeight)
+  }
+  height = Math.min(height, fullHeight)
+  if (height === fitHeight.value) return
+  fitHeight.value = height
+  if (desktop && !demo) window.__TAURI__?.core.invoke('fit_popover', { height }).catch(() => {})
+}
+
+function scheduleFit(): void {
+  if (!fitFrame) fitFrame = requestAnimationFrame(measureFit)
+}
+
+function observeFit(): void {
+  fitObserver?.disconnect()
+  for (const element of [popover.value, accountList.value]) if (element) fitObserver?.observe(element)
+  scheduleFit()
+}
+
+watch([fitsContent, compact, () => state.value.accounts.length], () => { void nextTick(observeFit) })
+watch(compact, () => { expandedId.value = null })
 
 function openSettings(tab: 'general' | 'accounts' = 'general'): void {
   settingsTab.value = tab
@@ -115,6 +158,8 @@ onMounted(async () => {
   media.addEventListener('change', syncSystemTheme)
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('resize', syncViewportWidth)
+  if (typeof ResizeObserver === 'function') fitObserver = new ResizeObserver(scheduleFit)
+  observeFit()
   if (!desktop || demo) return
   void connectPopoverPlacement()
   try {
@@ -125,6 +170,8 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   destroyed = true
+  fitObserver?.disconnect()
+  cancelAnimationFrame(fitFrame)
   stopSettingsListener?.()
   stopPlacementListener?.()
   media.removeEventListener('change', syncSystemTheme)
@@ -145,9 +192,9 @@ onUnmounted(() => {
       <p class="gate-footnote">Reads CLI credentials without changing them.</p>
     </div>
 
-    <div v-else class="app-shell" :class="{ 'is-preview': demo }">
+    <div v-else ref="shell" class="app-shell" :class="{ 'is-preview': demo, 'fit-content': fitsContent }" :data-fit-height="fitHeight">
       <div v-if="demo || nativeArrowX !== null" class="popover-arrow" :style="demo ? undefined : nativeArrowStyle" aria-hidden="true"/>
-      <div class="popover">
+      <div ref="popover" class="popover">
         <div v-if="state.recovery" class="notice-banner recovery-banner" role="alert"><AppIcon name="alert" :size="13"/><div><p>Settings file couldn’t be read. Reset keeps a backup next to it.</p><p v-if="state.notice" class="recovery-detail">{{ state.notice }}</p><button class="button button-small" :disabled="busy" @click="resetStore">Back up and reset settings</button></div></div>
         <div v-else-if="state.notice" class="notice-banner" role="alert"><AppIcon name="alert" :size="13"/><span>{{ state.notice }}</span></div>
         <template v-if="page === 'overview'">
@@ -155,11 +202,23 @@ onUnmounted(() => {
           <div class="overview-heading"><div><h1>Usage remaining</h1><p>{{ state.accounts.length ? `${state.accounts.length} ${state.accounts.length === 1 ? 'account' : 'accounts'}` : 'Claude and Codex' }}</p></div><span v-if="state.accounts.length" class="overview-symbol" aria-hidden="true"><span/><span/><span/></span></div>
           <div v-if="state.accounts.length > 1" class="account-filters" role="group" aria-label="Filter by provider"><button v-for="option in filterOptions" :key="option.id" :class="{ active: filter === option.id }" :aria-pressed="filter === option.id" @click="filter = option.id">{{ option.label }}<span>{{ counts[option.id] }}</span></button></div>
 
-          <main class="accounts-scroll" :class="{ 'empty-scroll': !state.accounts.length }" aria-label="Account usage">
+          <main ref="scroller" class="accounts-scroll" :class="{ 'empty-scroll': !state.accounts.length }" aria-label="Account usage">
             <div v-if="loading" class="initial-loading" role="status" aria-label="Loading accounts"><div v-for="index in 2" :key="index" class="skeleton-card"><div class="skeleton skeleton-heading"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/></div><p>Reading your accounts…</p></div>
             <div v-else-if="connectionError && !state.accounts.length" class="empty-state"><span class="load-error-symbol"><AppIcon name="alert" :size="28"/></span><h2>Couldn’t load your accounts.</h2><p>{{ connectionError }}</p><button class="button button-primary" :disabled="busy" @click="refresh"><AppIcon name="refresh" :size="14"/>Try again</button></div>
             <div v-else-if="!state.accounts.length" class="empty-state"><div class="empty-illustration" aria-hidden="true"><div class="empty-orbit orbit-one"/><div class="empty-orbit orbit-two"/><span class="empty-provider empty-claude"><AppIcon name="claude" :size="24"/></span><span class="empty-provider empty-codex"><AppIcon name="codex" :size="23"/></span><span class="empty-center"><AppIcon name="margin" :size="27"/></span></div><h2>Add your accounts</h2><p>Connect Claude or Codex accounts already signed in on this device.</p><button class="button button-primary" :disabled="busy" @click="discover"><AppIcon name="refresh" :size="14"/>Find accounts</button><button class="text-button" @click="openSettings('accounts')">Add a config folder<AppIcon name="plus" :size="13"/></button><span class="empty-privacy">Reads CLI credentials without changing them.</span></div>
-            <template v-else><AccountCard v-for="account in visibleAccounts" :key="account.id" :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="state.settings.trayMode === 'pinned' && state.settings.pinnedAccountId === account.id" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/><div v-if="!visibleAccounts.length" class="filter-empty"><AppIcon :name="filter === 'claude' ? 'claude' : 'codex'" :size="25"/><p>No {{ filter === 'claude' ? 'Claude' : 'Codex' }} accounts yet.</p><button class="text-button" @click="openSettings('accounts')">Add an account<AppIcon name="plus" :size="13"/></button></div></template>
+            <div v-else ref="accountList" class="account-list">
+              <template v-if="compact && visibleAccounts.length">
+                <div class="compact-columns" aria-hidden="true"><span>Session</span><span>Weekly</span><span>Resets</span></div>
+                <ul class="compact-list">
+                  <li v-for="account in visibleAccounts" :key="account.id" class="compact-item" :class="{ expanded: expandedId === account.id }">
+                    <AccountRow :account="account" :settings="state.settings" :now="now" :pinned="isPinned(account)" :expanded="expandedId === account.id" :connection-error="connectionError" :controls="`account-${account.id}`" @toggle="toggleExpanded(account.id)"/>
+                    <div v-if="expandedId === account.id" :id="`account-${account.id}`" class="compact-detail"><AccountCard :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></div>
+                  </li>
+                </ul>
+              </template>
+              <template v-else-if="!compact"><AccountCard v-for="account in visibleAccounts" :key="account.id" :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></template>
+              <div v-if="!visibleAccounts.length" class="filter-empty"><AppIcon :name="filter === 'claude' ? 'claude' : 'codex'" :size="25"/><p>No {{ filter === 'claude' ? 'Claude' : 'Codex' }} accounts yet.</p><button class="text-button" @click="openSettings('accounts')">Add an account<AppIcon name="plus" :size="13"/></button></div>
+            </div>
           </main>
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/>{{ status }}</span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>

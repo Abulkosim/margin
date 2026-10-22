@@ -23,7 +23,7 @@ async function installDesktopBridge(page: Page, options: { state: AppState; fail
     window.__TAURI__ = {
       core: {
         async invoke(command, args) {
-          if (command !== 'get_state' && command !== 'get_popover_placement') commands.push({ command, args })
+          if (!['get_state', 'get_popover_placement', 'fit_popover'].includes(command)) commands.push({ command, args })
           if (command === 'get_state') return { ...state, revision, settings, accounts, ignoredSources }
           if (command === 'plugin:dialog|open') return '/Users/alex/.claude-work'
           if (command === 'restore_ignored_accounts') {
@@ -501,4 +501,23 @@ test('daily update checks are on by default and the switch saves the choice', as
   const saved = await savedSettings(page)
   expect(saved).toHaveLength(1)
   expect(saved[0]).toMatchObject({ autoCheckUpdates: false })
+})
+
+test('overview layout defaults to cards and Compact saves the choice', async ({ page }) => {
+  await installDesktopBridge(page, { state: createDemoState(null), failure: 'none' })
+  await page.goto('/')
+  await expect(page.locator('.account-card')).toHaveCount(3)
+  await openSettings(page)
+  const layout = page.getByRole('combobox', { name: 'Overview', exact: true })
+  await expect(layout).toContainText('Cards')
+  await layout.click()
+  await expect(page.getByRole('option')).toHaveText(['Cards', 'Compact'])
+  await page.getByRole('option', { name: 'Compact', exact: true }).click()
+  await expect(layout).toContainText('Compact')
+  const saved = await savedSettings(page)
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ overviewLayout: 'compact', theme: 'system' })
+  await page.getByRole('button', { name: 'Back to overview', exact: true }).click()
+  await expect(page.locator('.compact-row')).toHaveCount(3)
+  await expect(page.locator('.account-card')).toHaveCount(0)
 })

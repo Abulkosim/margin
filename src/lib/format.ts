@@ -19,7 +19,8 @@ function shortDuration(milliseconds: number): string {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`
 }
 
-const coreWindowIds = new Set(['five_hour', 'seven_day', 'primary_window', 'secondary_window'])
+const sessionWindowIds = new Set(['five_hour', 'primary_window'])
+const coreWindowIds = new Set([...sessionWindowIds, 'seven_day', 'secondary_window'])
 const modelWindowIds = new Set(['seven_day_sonnet', 'seven_day_opus'])
 
 export function windowScope(window: UsageWindow): WindowScope {
@@ -32,6 +33,25 @@ export function groupWindows(windows: UsageWindow[]): { rows: UsageWindow[]; mod
   const rows = windows.filter(window => windowScope(window) === 'core')
   if (!rows.length) return { rows: windows.slice(0, 2), models: [], more: windows.slice(2) }
   return { rows, models: windows.filter(window => windowScope(window) === 'model'), more: windows.filter(window => windowScope(window) === 'other') }
+}
+
+export function coreSummary(windows: UsageWindow[]): { session: UsageWindow | null; weekly: UsageWindow | null; limiting: UsageWindow | null } {
+  const core = windows.filter(window => windowScope(window) === 'core')
+  const session = core.find(window => sessionWindowIds.has(window.id)) ?? null
+  const weekly = core.find(window => window !== session) ?? null
+  const limiting = [session, weekly].reduce<UsageWindow | null>((worst, window) => {
+    if (!window || !worst) return worst ?? window
+    if (window.usedPercent !== worst.usedPercent) return window.usedPercent > worst.usedPercent ? window : worst
+    return Date.parse(window.resetsAt ?? '') < Date.parse(worst.resetsAt ?? '') ? window : worst
+  }, null)
+  return { session, weekly, limiting }
+}
+
+export function resetIn(resetsAt: string | null, now: number): string | null {
+  if (!resetsAt) return null
+  const milliseconds = Date.parse(resetsAt) - now
+  if (!Number.isFinite(milliseconds)) return null
+  return milliseconds <= 0 ? 'Pending' : shortDuration(milliseconds)
 }
 
 export function modelWindowSummary(window: UsageWindow, now: number): string {

@@ -34,6 +34,19 @@ pub struct Visibility {
     pub last_blur: Mutex<Option<Instant>>,
     presentation: Mutex<Presentation>,
     pub placement: Mutex<PopoverPlacement>,
+    content_height: Mutex<Option<f64>>,
+}
+
+const POPOVER_WIDTH: f64 = 420.0;
+const POPOVER_HEIGHT: f64 = 660.0;
+const POPOVER_MIN_HEIGHT: f64 = 200.0;
+
+fn popover_height(requested: Option<f64>) -> f64 {
+    requested
+        .filter(|height| height.is_finite())
+        .map_or(POPOVER_HEIGHT, |height| {
+            height.ceil().clamp(POPOVER_MIN_HEIGHT, POPOVER_HEIGHT)
+        })
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -56,10 +69,10 @@ struct Layout {
     arrow_x: Option<f64>,
 }
 
-fn layout(work: Bounds, anchor: Option<Bounds>, scale: f64, macos: bool) -> Layout {
+fn layout(work: Bounds, anchor: Option<Bounds>, scale: f64, macos: bool, height: f64) -> Layout {
     let anchor = anchor.filter(|rect| rect.width > 0.0 && rect.height > 0.0);
-    let width = (420.0 * scale).round().min(work.width);
-    let height = (660.0 * scale).round().min(work.height);
+    let width = (POPOVER_WIDTH * scale).round().min(work.width);
+    let height = (height * scale).round().min(work.height);
     let (x, y) = match anchor {
         Some(tray) => {
             let above = tray.y - height;
@@ -93,12 +106,12 @@ fn layout(work: Bounds, anchor: Option<Bounds>, scale: f64, macos: bool) -> Layo
 }
 
 #[cfg(any(target_os = "macos", test))]
-fn cocoa_layout(work: Bounds, anchor: Option<Bounds>) -> Layout {
+fn cocoa_layout(work: Bounds, anchor: Option<Bounds>, height: f64) -> Layout {
     let flip = |rect: Bounds| Bounds {
         y: -rect.y - rect.height,
         ..rect
     };
-    let placed = layout(flip(work), anchor.map(flip), 1.0, true);
+    let placed = layout(flip(work), anchor.map(flip), 1.0, true, height);
     Layout {
         frame: flip(placed.frame),
         arrow_x: placed.arrow_x,
@@ -106,7 +119,7 @@ fn cocoa_layout(work: Bounds, anchor: Option<Bounds>) -> Layout {
 }
 
 #[cfg(target_os = "macos")]
-fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow) -> Option<f64> {
+fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow, height: f64) -> Option<f64> {
     use objc2::MainThreadMarker;
     use objc2_app_kit::{NSScreen, NSWindow};
     use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -138,7 +151,7 @@ fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow) -> Option<
             (bounds(screen.visibleFrame()), None)
         }
     };
-    let placed = cocoa_layout(work, anchor);
+    let placed = cocoa_layout(work, anchor, height);
     let content_rect = NSRect::new(
         NSPoint::new(placed.frame.x, placed.frame.y),
         NSSize::new(placed.frame.width, placed.frame.height),
@@ -410,74 +423,110 @@ pub fn show(app: &AppHandle, settings: bool) {
     let _ = app.run_on_main_thread(move || show_on_main_thread(&handle, settings));
 }
 
+pub fn fit(app: &AppHandle, height: f64) -> Result<(), String> {
+    let height = popover_height(Some(height));
+    {
+        let visibility = app.state::<Visibility>();
+        let mut current = visibility
+            .content_height
+            .lock()
+            .map_err(|_| "Popover size is unavailable.")?;
+        if *current == Some(height) {
+            return Ok(());
+        }
+        *current = Some(height);
+    }
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window("main") {
+            if window.is_visible().unwrap_or(false) {
+                place(&handle, &window);
+            }
+        }
+    })
+    .map_err(|_| "Popover size is unavailable.".into())
+}
+
+fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let height = popover_height(
+        app.state::<Visibility>()
+            .content_height
+            .lock()
+            .ok()
+            .and_then(|value| *value),
+    );
+    #[cfg(target_os = "macos")]
+    let arrow_x = place_macos_window(app, window, height);
+    #[cfg(not(target_os = "macos"))]
+    let arrow_x = {
+        let position = Position::TrayCenter;
+        if window.move_window_constrained(position).is_err() {
+            let _ = window.center();
+        }
+        let anchor = app
+            .tray_by_id("margin")
+            .and_then(|tray| tray.rect().ok().flatten())
+            .map(|rect| {
+                (
+                    rect.position.to_physical::<f64>(1.0),
+                    rect.size.to_physical::<f64>(1.0),
+                )
+            })
+            .filter(|(_, size)| size.width > 0.0 && size.height > 0.0);
+        let monitor = anchor
+            .and_then(|(position, _)| {
+                window
+                    .monitor_from_point(position.x, position.y)
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| window.current_monitor().ok().flatten());
+        let mut arrow_x = None;
+        if let Some(monitor) = monitor {
+            let work = monitor.work_area();
+            let placed = layout(
+                Bounds {
+                    x: f64::from(work.position.x),
+                    y: f64::from(work.position.y),
+                    width: f64::from(work.size.width),
+                    height: f64::from(work.size.height),
+                },
+                anchor.map(|(position, size)| Bounds {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width,
+                    height: size.height,
+                }),
+                monitor.scale_factor(),
+                cfg!(target_os = "macos"),
+                height,
+            );
+            let resized = window.set_size(tauri::PhysicalSize::new(
+                placed.frame.width as u32,
+                placed.frame.height as u32,
+            ));
+            let positioned = window.set_position(tauri::PhysicalPosition::new(
+                placed.frame.x as i32,
+                placed.frame.y as i32,
+            ));
+            if resized.is_ok() && positioned.is_ok() {
+                arrow_x = placed.arrow_x;
+            }
+        }
+        arrow_x
+    };
+    if let Ok(mut placement) = app.state::<Visibility>().placement.lock() {
+        placement.revision = placement.revision.saturating_add(1);
+        placement.arrow_x = arrow_x;
+        let _ = window.emit("popover_placement_changed", placement.clone());
+    }
+    #[cfg(target_os = "macos")]
+    fit_backdrop(window);
+}
+
 fn show_on_main_thread(app: &AppHandle, settings: bool) {
     if let Some(window) = app.get_webview_window("main") {
-        #[cfg(target_os = "macos")]
-        let arrow_x = place_macos_window(app, &window);
-        #[cfg(not(target_os = "macos"))]
-        let arrow_x = {
-            let position = Position::TrayCenter;
-            if window.move_window_constrained(position).is_err() {
-                let _ = window.center();
-            }
-            let anchor = app
-                .tray_by_id("margin")
-                .and_then(|tray| tray.rect().ok().flatten())
-                .map(|rect| {
-                    (
-                        rect.position.to_physical::<f64>(1.0),
-                        rect.size.to_physical::<f64>(1.0),
-                    )
-                })
-                .filter(|(_, size)| size.width > 0.0 && size.height > 0.0);
-            let monitor = anchor
-                .and_then(|(position, _)| {
-                    window
-                        .monitor_from_point(position.x, position.y)
-                        .ok()
-                        .flatten()
-                })
-                .or_else(|| window.current_monitor().ok().flatten());
-            let mut arrow_x = None;
-            if let Some(monitor) = monitor {
-                let work = monitor.work_area();
-                let placed = layout(
-                    Bounds {
-                        x: f64::from(work.position.x),
-                        y: f64::from(work.position.y),
-                        width: f64::from(work.size.width),
-                        height: f64::from(work.size.height),
-                    },
-                    anchor.map(|(position, size)| Bounds {
-                        x: position.x,
-                        y: position.y,
-                        width: size.width,
-                        height: size.height,
-                    }),
-                    monitor.scale_factor(),
-                    cfg!(target_os = "macos"),
-                );
-                let resized = window.set_size(tauri::PhysicalSize::new(
-                    placed.frame.width as u32,
-                    placed.frame.height as u32,
-                ));
-                let positioned = window.set_position(tauri::PhysicalPosition::new(
-                    placed.frame.x as i32,
-                    placed.frame.y as i32,
-                ));
-                if resized.is_ok() && positioned.is_ok() {
-                    arrow_x = placed.arrow_x;
-                }
-            }
-            arrow_x
-        };
-        if let Ok(mut placement) = app.state::<Visibility>().placement.lock() {
-            placement.revision = placement.revision.saturating_add(1);
-            placement.arrow_x = arrow_x;
-            let _ = window.emit("popover_placement_changed", placement.clone());
-        }
-        #[cfg(target_os = "macos")]
-        fit_backdrop(&window);
+        place(app, &window);
         let _ = window.show();
         let _ = window.set_focus();
         if settings {
@@ -856,7 +905,7 @@ mod tests {
                 1295.0,
             ),
         ] {
-            let placed = cocoa_layout(work, Some(tray));
+            let placed = cocoa_layout(work, Some(tray), POPOVER_HEIGHT);
             assert_eq!(placed.frame.width, 420.0);
             assert_eq!(placed.frame.height, 660.0);
             assert_eq!(placed.frame.x, expected_x);
@@ -877,7 +926,7 @@ mod tests {
             width: 360.0,
             height: 440.0,
         };
-        let placed = cocoa_layout(work, None);
+        let placed = cocoa_layout(work, None, POPOVER_HEIGHT);
         assert_eq!(placed.frame.x, work.x);
         assert_eq!(placed.frame.y, work.y);
         assert_eq!(placed.frame.width, work.width);
@@ -899,7 +948,7 @@ mod tests {
             width: 48.0,
             height: 50.0,
         };
-        let placed = layout(work, Some(tray), 2.0, true);
+        let placed = layout(work, Some(tray), 2.0, true, POPOVER_HEIGHT);
         assert_eq!(placed.frame.x, 2040.0);
         assert_eq!(placed.frame.y, 50.0);
         assert_eq!(placed.arrow_x, Some(360.0));
@@ -920,7 +969,7 @@ mod tests {
             width: 24.0,
             height: 25.0,
         };
-        let placed = layout(work, Some(tray), 1.0, true);
+        let placed = layout(work, Some(tray), 1.0, true, POPOVER_HEIGHT);
         assert_eq!(placed.frame.x, -1920.0);
         assert_eq!(placed.arrow_x, Some(60.0));
     }
@@ -933,7 +982,7 @@ mod tests {
             width: 1280.0,
             height: 775.0,
         };
-        let centered = layout(work, None, 1.0, true);
+        let centered = layout(work, None, 1.0, true, POPOVER_HEIGHT);
         assert_eq!(centered.frame.x, 430.0);
         assert_eq!(centered.arrow_x, None);
         let hidden = Bounds {
@@ -942,7 +991,7 @@ mod tests {
             width: 34.0,
             height: 0.0,
         };
-        let fallback = layout(work, Some(hidden), 1.0, true);
+        let fallback = layout(work, Some(hidden), 1.0, true, POPOVER_HEIGHT);
         assert_eq!(fallback.frame.x, centered.frame.x);
         assert_eq!(fallback.frame.y, centered.frame.y);
         assert_eq!(fallback.arrow_x, None);
@@ -952,7 +1001,53 @@ mod tests {
             width: 20.0,
             height: 25.0,
         };
-        assert_eq!(layout(work, Some(edge), 1.0, true).arrow_x, None);
+        assert_eq!(
+            layout(work, Some(edge), 1.0, true, POPOVER_HEIGHT).arrow_x,
+            None
+        );
+    }
+
+    #[test]
+    fn popover_height_follows_content_within_bounds() {
+        assert_eq!(popover_height(None), POPOVER_HEIGHT);
+        assert_eq!(popover_height(Some(f64::NAN)), POPOVER_HEIGHT);
+        assert_eq!(popover_height(Some(311.2)), 312.0);
+        assert_eq!(popover_height(Some(40.0)), POPOVER_MIN_HEIGHT);
+        assert_eq!(popover_height(Some(2000.0)), POPOVER_HEIGHT);
+    }
+
+    #[test]
+    fn short_popover_stays_attached_to_the_tray() {
+        let work = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1440.0,
+            height: 875.0,
+        };
+        let tray = Bounds {
+            x: 1368.0,
+            y: 875.0,
+            width: 24.0,
+            height: 25.0,
+        };
+        let placed = cocoa_layout(work, Some(tray), 300.0);
+        assert_eq!(placed.frame.height, 300.0);
+        assert_eq!(placed.frame.y + placed.frame.height, tray.y);
+        let work = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0 * 1.5,
+            height: 1040.0 * 1.5,
+        };
+        let tray = Bounds {
+            x: 1800.0 * 1.5,
+            y: 1040.0 * 1.5,
+            width: 24.0 * 1.5,
+            height: 40.0 * 1.5,
+        };
+        let placed = layout(work, Some(tray), 1.5, false, 300.0);
+        assert_eq!(placed.frame.height, 450.0);
+        assert_eq!(placed.frame.y + placed.frame.height, tray.y);
     }
 
     #[test]
@@ -970,7 +1065,7 @@ mod tests {
                 width: 24.0 * scale,
                 height: 40.0 * scale,
             };
-            let placed = layout(work, Some(tray), scale, false);
+            let placed = layout(work, Some(tray), scale, false, POPOVER_HEIGHT);
             assert_eq!(placed.frame.width, 420.0 * scale);
             assert_eq!(placed.frame.height, 660.0 * scale);
             assert_eq!(placed.frame.x + placed.frame.width, 0.0);
@@ -993,7 +1088,7 @@ mod tests {
             width: 24.0,
             height: 40.0,
         };
-        let placed = layout(work, Some(tray), 1.5, false);
+        let placed = layout(work, Some(tray), 1.5, false, POPOVER_HEIGHT);
         assert_eq!(placed.frame.x, 0.0);
         assert_eq!(placed.frame.y, 40.0);
         assert_eq!(placed.frame.width, 360.0);

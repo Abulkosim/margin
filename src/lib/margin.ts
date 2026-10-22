@@ -31,6 +31,8 @@ export function useMargin() {
 
   const theme = query.get('theme')
   if (demo && (theme === 'light' || theme === 'dark')) state.value.settings.theme = theme
+  const layout = query.get('layout')
+  if (demo && (layout === 'cards' || layout === 'compact')) state.value.settings.overviewLayout = layout
 
   function notify(text: string, kind: 'error' | 'success' = 'success'): void {
     clearTimeout(toastTimer)

@@ -30,6 +30,14 @@ pub enum TrayMetric {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub enum OverviewLayout {
+    #[default]
+    Cards,
+    Compact,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub enum NotificationPermission {
     #[default]
     Unasked,
@@ -41,6 +49,7 @@ pub enum NotificationPermission {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub theme: Theme,
+    pub overview_layout: OverviewLayout,
     pub poll_interval_seconds: u64,
     pub idle_poll_interval_seconds: u64,
     pub notifications: bool,
@@ -59,6 +68,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: Theme::System,
+            overview_layout: OverviewLayout::Cards,
             poll_interval_seconds: 60,
             idle_poll_interval_seconds: 300,
             notifications: true,
@@ -110,6 +120,13 @@ impl Settings {
         };
         let mut settings = Self {
             theme: field(&map, "theme", defaults.theme, "Theme", notes),
+            overview_layout: field(
+                &map,
+                "overviewLayout",
+                defaults.overview_layout,
+                "Overview layout",
+                notes,
+            ),
             poll_interval_seconds: field(
                 &map,
                 "pollIntervalSeconds",
@@ -388,6 +405,36 @@ mod tests {
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["notifyOnReset"], false);
         assert_eq!(saved["notificationPermission"], "unasked");
+    }
+
+    #[test]
+    fn overview_layout_defaults_to_cards_and_recovers_unknown_values() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert_eq!(
+                Settings::recover(value, &mut notes).overview_layout,
+                OverviewLayout::Cards
+            );
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "overviewLayout": "compact" })),
+            &mut notes,
+        );
+        assert_eq!(settings.overview_layout, OverviewLayout::Compact);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "overviewLayout": "grid", "theme": "dark" })),
+            &mut notes,
+        );
+        assert_eq!(settings.overview_layout, OverviewLayout::Cards);
+        assert_eq!(settings.theme, Theme::Dark);
+        assert_eq!(notes, vec!["Overview layout was reset to its default."]);
+        let saved = serde_json::to_value(Settings {
+            overview_layout: OverviewLayout::Compact,
+            ..Settings::default()
+        })
+        .unwrap();
+        assert_eq!(saved["overviewLayout"], "compact");
     }
 
     #[test]

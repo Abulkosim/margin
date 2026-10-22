@@ -29,6 +29,7 @@ pub fn run() {
             commands::get_state,
             commands::get_account_history,
             commands::get_popover_placement,
+            commands::fit_popover,
             commands::refresh_accounts,
             commands::discover_accounts,
             commands::add_account,

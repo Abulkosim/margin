@@ -49,6 +49,10 @@ const metricOptions: { value: Settings['trayMetric']; label: string }[] = [
   { value: 'weekly', label: 'Weekly only' },
   { value: 'all', label: 'Any window' },
 ]
+const layoutOptions: { value: Settings['overviewLayout']; label: string }[] = [
+  { value: 'cards', label: 'Cards' },
+  { value: 'compact', label: 'Compact' },
+]
 const isMac = navigator.userAgent.includes('Mac')
 const refreshOptions = computed(() => intervalOptions([30, 60, 120, 300], props.settings.pollIntervalSeconds))
 const idleOptions = computed(() => intervalOptions([300, 600, 900], props.settings.idlePollIntervalSeconds))
@@ -118,6 +122,11 @@ async function setTray(value: string): Promise<void> {
 async function setMetric(value: string): Promise<void> {
   const metric = metricOptions.find(option => option.value === value)
   if (metric) await patchSettings({ trayMetric: metric.value })
+}
+
+async function setLayout(value: string): Promise<void> {
+  const layout = layoutOptions.find(option => option.value === value)
+  if (layout) await patchSettings({ overviewLayout: layout.value })
 }
 
 async function openAdd(): Promise<void> {
@@ -192,6 +201,10 @@ async function confirmRemove(): Promise<void> {
         <section class="settings-section">
           <h2>Appearance</h2>
           <div class="theme-options"><button v-for="theme in themes" :key="theme.id" class="theme-option" :class="{ selected: settings.theme === theme.id }" :aria-pressed="settings.theme === theme.id" :disabled="busy" @click="patchSettings({ theme: theme.id })"><span class="theme-thumbnail" :class="`thumbnail-${theme.id}`"><span/><span/><span/></span><span><AppIcon :name="theme.icon" :size="13"/>{{ theme.label }}</span><span v-if="settings.theme === theme.id" class="theme-check"><AppIcon name="check" :size="10"/></span></button></div>
+          <div class="setting-row">
+            <div><label for="overview-layout">Overview</label><p>Compact shows one row per account.</p></div>
+            <AppSelect id="overview-layout" :model-value="settings.overviewLayout" :options="layoutOptions" :disabled="busy" @update:model-value="setLayout"/>
+          </div>
         </section>
         <section class="settings-section">
           <h2>Tray &amp; refresh</h2>
