@@ -38,19 +38,19 @@ Usage history with sample data.
 - **Tray indicator:** follow a pinned account or the account with the least remaining quota.
 - **Last known usage:** keep the last successful reading with its age when a request fails. Missing data stays unknown.
 - **Usage history:** open History on an account to see remaining quota over time. Readings stay on this device for up to seven days; gaps and new quota periods stay visible.
-- **Updates on request:** check for new releases in Settings, then install and restart when you choose. Downloads and versions are verified before installation.
+- **Updates:** Margin checks for new releases daily (switch it off in Settings) and installs only when you choose. Downloads and versions are verified before installation.
 - **Settings:** light, dark, or system theme; configurable polling; optional threshold notifications and launch at login.
 
-[v0.3.0](https://github.com/Abulkosim/margin/releases/tag/v0.3.0) adds local usage history, larger text, and clearer percentages in both themes. macOS and Windows [release checks](https://github.com/Abulkosim/margin/actions/runs/39058156374) passed. See the [changelog](CHANGELOG.md) and [verification record](docs/verification.md).
+[v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0) finds Claude accounts signed in with `CLAUDE_CONFIG_DIR` on macOS, shows a signed-out state with the command to run, refreshes after sleep, and recovers damaged settings. macOS and Windows [release checks](https://github.com/Abulkosim/margin/actions/runs/39762408473) passed. See the [changelog](CHANGELOG.md) and [verification record](docs/verification.md).
 
 ## Install
 
-Download **v0.3.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
+Download **v0.4.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.4.0/Margin_0.4.0_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.4.0/Margin_0.4.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.4.0/Margin_0.4.0_x64_en-US.msi) |
 
 Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning. Updates are signed and verified in the app.
 
@@ -66,7 +66,7 @@ Run the `-setup.exe` (or `.msi`). On **Windows protected your PC**, click **More
 
 ### Verify a download
 
-Compare checksums with `SHA256SUMS.txt`, and on releases after v0.3.0 check the build attestation:
+Compare checksums with `SHA256SUMS.txt`, and from v0.4.0 on check the build attestation:
 
 ```sh
 gh attestation verify Margin_<version>_universal.dmg --repo Abulkosim/margin
@@ -107,7 +107,7 @@ Credentials and provider requests remain in Rust. The interface receives account
 
 History starts with new successful readings; it cannot recover usage from before Margin was running. It records at most once a minute within a continuous quota period, with up to seven days or 10,000 window readings per account, whichever fits first. Offline periods and failed readings appear as gaps. Removing an account also removes its local history. History uses the existing refresh schedule and makes no additional provider requests.
 
-Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required. Explicit update checks contact GitHub Releases without sending CLI credentials, account identities, or usage readings.
+Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend is required. Update checks contact GitHub Releases without sending CLI credentials, account identities, or usage readings.
 
 See [PRIVACY.md](PRIVACY.md) for exact files, Keychain items, and hosts. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
