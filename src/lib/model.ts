@@ -25,6 +25,11 @@ export const usageWindowSchema = z.object({
   windowSeconds: z.number().int().nonnegative().nullable(),
   scope: z.enum(['core', 'model', 'other']).optional(),
 })
+export const resetGrantsSchema = z.object({
+  available: z.number().int().nonnegative(),
+  kind: z.string().nullable(),
+  expiresAt: z.string().datetime({ offset: true }).nullable(),
+})
 export const accountSchema = z.object({
   id: accountIdSchema,
   provider: providerSchema,
@@ -43,6 +48,7 @@ export const accountSchema = z.object({
       limit: z.number().nonnegative().nullable(),
       currency: z.string(),
     }).nullable(),
+    resetGrants: resetGrantsSchema.nullable().default(null),
   }).nullable(),
   error: z.object({
     kind: z.string(),
@@ -70,6 +76,7 @@ export type AccountId = z.infer<typeof accountIdSchema>
 export type Account = z.infer<typeof accountSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type UsageWindow = z.infer<typeof usageWindowSchema>
+export type ResetGrants = z.infer<typeof resetGrantsSchema>
 export type WindowScope = NonNullable<UsageWindow['scope']>
 export type AppState = z.infer<typeof appStateSchema>
 

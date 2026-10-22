@@ -17,6 +17,7 @@ Schema references:
 - [Codex backend client](https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client.rs): usage windows, additional limits, account header, endpoint path rules.
 - [CodexBar Claude OAuth decoder](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift): OAuth payloads and profile fields.
 - [Claude scoped-limit change](https://github.com/steipete/CodexBar/pull/1851): flat `limits` entries, including enforceable rows marked inactive.
+- [Claude limit resets](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeRateLimitResetCredits.swift) and [Codex reset credits](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Codex/CodexOAuth/CodexOAuthUsageFetcher.swift): `cedar_ember.grants[]` and `GET /wham/rate-limit-reset-credits`. `claude-reset-grants*.json` and `codex-reset-credits.json` are constructed from those decoders; the live captures only show an empty `grants` list and an inline `rate_limit_reset_credits.available_count`.
 - [Claude usage mapper](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeUsageFetcher.swift): OAuth spend values are cents.
 
 Parser tests also cover missing/null measurements, malformed values, bounds, absent reset times, weekly-only responses, spend-only responses, scoped limits, token shapes, partial credential writes, HTTP status handling, and custom endpoint validation.

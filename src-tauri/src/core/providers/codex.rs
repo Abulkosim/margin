@@ -4,10 +4,11 @@ use super::{
     timestamp, token,
 };
 use crate::core::model::{
-    Account, AccountSource, Identity, Provider, Snapshot, UsageError, UsageWindow,
+    Account, AccountSource, Identity, Provider, ResetGrants, Snapshot, UsageError, UsageWindow,
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
+use chrono::{DateTime, SecondsFormat, Utc};
 use reqwest::Url;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -45,18 +46,10 @@ async fn fetch_from(
     let directory = Path::new(path);
     let credentials = read_credentials(&directory.join("auth.json"), parse_credentials, 2).await?;
     let url = resolve_url(directory)?;
-    let mut request = client
-        .get(url.clone())
-        .bearer_auth(&credentials.access_token)
-        .header("Accept", "application/json")
-        .header("Cache-Control", "no-store");
-    if let Some(account_id) = &credentials.account_id {
-        let mut header = reqwest::header::HeaderValue::from_str(account_id)
-            .map_err(|_| malformed_credentials())?;
-        header.set_sensitive(true);
-        request = request.header("ChatGPT-Account-Id", header);
-    }
-    let response = request.send().await.map_err(request_error)?;
+    let response = authorized_get(client, url.clone(), &credentials)?
+        .send()
+        .await
+        .map_err(request_error)?;
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(signed_out(Provider::Codex, Some(directory), None));
     }
@@ -68,7 +61,16 @@ async fn fetch_from(
         ));
     }
     let value = response_json(response).await?;
-    let snapshot = parse_usage(&value)?;
+    let mut snapshot = parse_usage(&value)?;
+    if snapshot
+        .reset_grants
+        .as_ref()
+        .is_some_and(|grants| grants.available > 0)
+    {
+        if let Some(grants) = fetch_reset_credits(client, &url, &credentials).await {
+            snapshot.reset_grants = Some(grants);
+        }
+    }
     let current = read_credentials(&directory.join("auth.json"), parse_credentials, 2).await?;
     ensure_same_credentials(&credentials, &current)?;
     if resolve_url(directory)? != url {
@@ -76,6 +78,106 @@ async fn fetch_from(
     }
     let identity = identity_from_usage(&value, credentials.identity);
     Ok((snapshot, identity))
+}
+
+fn authorized_get(
+    client: &reqwest::Client,
+    url: Url,
+    credentials: &Credentials,
+) -> Result<reqwest::RequestBuilder, UsageError> {
+    let mut request = client
+        .get(url)
+        .bearer_auth(&credentials.access_token)
+        .header("Accept", "application/json")
+        .header("Cache-Control", "no-store");
+    if let Some(account_id) = &credentials.account_id {
+        let mut header = reqwest::header::HeaderValue::from_str(account_id)
+            .map_err(|_| malformed_credentials())?;
+        header.set_sensitive(true);
+        request = request.header("ChatGPT-Account-Id", header);
+    }
+    Ok(request)
+}
+
+fn reset_credits_url(usage: &Url) -> Option<Url> {
+    let base = usage.path().strip_suffix("/wham/usage")?;
+    let mut url = usage.clone();
+    url.set_path(&format!("{base}/wham/rate-limit-reset-credits"));
+    Some(url)
+}
+
+async fn fetch_reset_credits(
+    client: &reqwest::Client,
+    usage: &Url,
+    credentials: &Credentials,
+) -> Option<ResetGrants> {
+    let response = authorized_get(client, reset_credits_url(usage)?, credentials)
+        .ok()?
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let value = response_json(response).await.ok()?;
+    parse_reset_credits(&value, Utc::now())
+}
+
+const MAX_RESETS: u64 = 50;
+
+fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
+    let available = value
+        .get("available_count")?
+        .as_u64()
+        .filter(|count| *count <= MAX_RESETS)?;
+    let mut kinds = HashSet::new();
+    let mut soonest: Option<DateTime<Utc>> = None;
+    for credit in value.get("credits")?.as_array()? {
+        if credit.get("status")?.as_str()? != "available" {
+            continue;
+        }
+        let expires = match credit.get("expires_at").filter(|value| !value.is_null()) {
+            None => None,
+            Some(value) => Some(
+                DateTime::parse_from_rfc3339(value.as_str()?)
+                    .ok()?
+                    .with_timezone(&Utc),
+            ),
+        };
+        if expires.is_some_and(|expires| expires <= at) {
+            continue;
+        }
+        if let Some(kind) = nonempty_string(credit.get("reset_type")) {
+            kinds.insert(kind);
+        }
+        if let Some(expires) = expires {
+            soonest = Some(soonest.map_or(expires, |soonest| soonest.min(expires)));
+        }
+    }
+    if available == 0 {
+        return None;
+    }
+    let kind = (kinds.len() == 1)
+        .then(|| kinds.into_iter().next())
+        .flatten()
+        .filter(|kind| kind.len() <= 64);
+    Some(ResetGrants {
+        available: available as u32,
+        kind,
+        expires_at: soonest.map(|date| date.to_rfc3339_opts(SecondsFormat::Secs, true)),
+    })
+}
+
+fn inline_reset_credits(value: &Value) -> Option<ResetGrants> {
+    let available = value
+        .pointer("/rate_limit_reset_credits/available_count")?
+        .as_u64()
+        .filter(|count| (1..=MAX_RESETS).contains(count))?;
+    Some(ResetGrants {
+        available: available as u32,
+        kind: None,
+        expires_at: None,
+    })
 }
 
 fn identity_from_usage(value: &Value, fallback: Identity) -> Identity {
@@ -312,6 +414,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         windows,
         fetched_at: now(),
         extra_usage: None,
+        reset_grants: inline_reset_credits(value),
     })
 }
 
@@ -726,6 +829,181 @@ mod tests {
             assert_eq!(error.kind, "provider");
             assert!(error.retry_after_seconds.is_none());
             assert!(error.sign_in_command.is_none());
+        }
+    }
+
+    #[test]
+    fn reset_credits_report_available_count_kind_and_soonest_expiry() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-reset-credits.json"))
+                .unwrap();
+        let at = DateTime::parse_from_rfc3339("2026-10-16T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let grants = parse_reset_credits(&value, at).unwrap();
+        assert_eq!(grants.available, 2);
+        assert_eq!(grants.kind.as_deref(), Some("weekly"));
+        assert_eq!(grants.expires_at.as_deref(), Some("2026-10-19T10:00:00Z"));
+        for malformed in [
+            json!({}),
+            json!({"available_count": -1, "credits": []}),
+            json!({"available_count": 1, "credits": {}}),
+            json!({"available_count": 1, "credits": [{"status": "available", "expires_at": "soon"}]}),
+            json!({"available_count": 0, "credits": []}),
+        ] {
+            assert!(parse_reset_credits(&malformed, at).is_none());
+        }
+    }
+
+    #[test]
+    fn usage_inline_reset_count_is_read_without_expiry() {
+        let value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-live-schema.json")).unwrap();
+        let grants = parse_usage(&value).unwrap().reset_grants.unwrap();
+        assert_eq!(grants.available, 1);
+        assert_eq!(grants.expires_at, None);
+        let value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-all-windows.json")).unwrap();
+        assert!(parse_usage(&value).unwrap().reset_grants.is_none());
+    }
+
+    #[test]
+    fn reset_credits_url_follows_the_usage_url() {
+        let url = Url::parse("https://chatgpt.com/backend-api/wham/usage").unwrap();
+        assert_eq!(
+            reset_credits_url(&url).unwrap().as_str(),
+            "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+        );
+        let url = Url::parse("https://proxy.example.test/api/codex/usage").unwrap();
+        assert!(reset_credits_url(&url).is_none());
+    }
+
+    async fn fetch_with_reset_credits(
+        response: wiremock::ResponseTemplate,
+    ) -> Result<(Snapshot, Identity), UsageError> {
+        let server = wiremock::MockServer::start().await;
+        let mut usage: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-all-windows.json")).unwrap();
+        usage["rate_limit_reset_credits"] = serde_json::json!({ "available_count": 1 });
+        wiremock::Mock::given(wiremock::matchers::path("/backend-api/wham/usage"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(usage))
+            .expect(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path(
+                "/backend-api/wham/rate-limit-reset-credits",
+            ))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer synthetic",
+            ))
+            .and(wiremock::matchers::header(
+                "chatgpt-account-id",
+                "example-account",
+            ))
+            .respond_with(response)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        let account = config_account(directory.path());
+        let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
+        fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone())).await
+    }
+
+    #[tokio::test]
+    async fn reset_credits_are_not_requested_without_an_inline_count() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::path("/backend-api/wham/usage"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(include_str!("../../../fixtures/codex-all-windows.json")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::path(
+            "/backend-api/wham/rate-limit-reset-credits",
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+        let directory = tempfile::tempdir().unwrap();
+        let account = config_account(directory.path());
+        let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
+        let (snapshot, _) = fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone()))
+            .await
+            .unwrap();
+        assert!(snapshot.reset_grants.is_none());
+    }
+
+    #[tokio::test]
+    async fn reset_credits_are_fetched_with_get_and_the_account_header() {
+        let mut body: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-reset-credits.json"))
+                .unwrap();
+        body["credits"][0]["expires_at"] = json!("2099-01-02T00:00:00Z");
+        body["credits"][1]["expires_at"] = json!("2099-01-01T00:00:00Z");
+        let (snapshot, _) =
+            fetch_with_reset_credits(wiremock::ResponseTemplate::new(200).set_body_json(body))
+                .await
+                .unwrap();
+        let grants = snapshot.reset_grants.unwrap();
+        assert_eq!(grants.available, 2);
+        assert_eq!(grants.expires_at.as_deref(), Some("2099-01-01T00:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn reset_credit_failures_leave_the_usage_snapshot_intact() {
+        for response in [
+            wiremock::ResponseTemplate::new(404),
+            wiremock::ResponseTemplate::new(500),
+            wiremock::ResponseTemplate::new(200).set_body_string("not json"),
+        ] {
+            let (snapshot, _) = fetch_with_reset_credits(response).await.unwrap();
+            assert_eq!(snapshot.windows.len(), 4);
+            let inline = snapshot.reset_grants.unwrap();
+            assert_eq!((inline.available, inline.expires_at), (1, None));
+        }
+    }
+
+    #[test]
+    fn providers_only_issue_get_requests() {
+        fn sources(directory: &Path, found: &mut Vec<(std::path::PathBuf, String)>) {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    sources(&path, found);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    found.push((path.clone(), std::fs::read_to_string(&path).unwrap()));
+                }
+            }
+        }
+        let mut found = Vec::new();
+        sources(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut found,
+        );
+        assert!(found.len() > 5);
+        let forbidden: Vec<String> = ["post", "put", "patch", "delete", "request"]
+            .iter()
+            .flat_map(|verb| {
+                [
+                    format!(".{verb}("),
+                    format!("Method::{}", verb.to_uppercase()),
+                ]
+            })
+            .collect();
+        for (path, source) in found {
+            for pattern in &forbidden {
+                assert!(
+                    !source.contains(pattern.as_str()),
+                    "{} uses {pattern}",
+                    path.display()
+                );
+            }
         }
     }
 }

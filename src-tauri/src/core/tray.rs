@@ -589,6 +589,7 @@ mod tests {
                     .collect(),
                 fetched_at: Utc::now().to_rfc3339(),
                 extra_usage: None,
+                reset_grants: None,
             }),
             error: None,
             refreshing: false,

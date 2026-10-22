@@ -1,4 +1,4 @@
-import type { Account, Settings, UsageWindow, WindowScope } from './model'
+import type { Account, ResetGrants, Settings, UsageWindow, WindowScope } from './model'
 import type { Pace } from './pace'
 
 export function remainingPercent(used: number): number {
@@ -121,4 +121,15 @@ export function resetClock(resetsAt: string | null, now: number): string | null 
   const time = Date.parse(resetsAt)
   if (!Number.isFinite(time) || time <= now) return null
   return clockTime(new Date(time), now)
+}
+
+export function resetGrantsText(grants: ResetGrants | null | undefined, now: number): string | null {
+  if (!grants || grants.available <= 0) return null
+  const count = `${grants.available} ${grants.available === 1 ? 'reset' : 'resets'} available`
+  const milliseconds = grants.expiresAt ? Date.parse(grants.expiresAt) - now : Number.NaN
+  if (!(milliseconds > 0)) return count
+  const minutes = Math.max(1, Math.floor(milliseconds / 60_000))
+  const hours = Math.floor(minutes / 60)
+  const expiry = hours >= 24 ? `${Math.floor(hours / 24)}d` : hours ? `${hours}h` : `${minutes}m`
+  return `${count} · expires in ${expiry}`
 }

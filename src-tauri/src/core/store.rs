@@ -394,6 +394,20 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
             return Err(invalid_store());
         }
     }
+    if let Some(grants) = &snapshot.reset_grants {
+        if grants.available > 1000
+            || grants
+                .kind
+                .as_deref()
+                .is_some_and(|kind| !valid_text(kind, 256))
+            || grants
+                .expires_at
+                .as_deref()
+                .is_some_and(|value| !valid_timestamp(value))
+        {
+            return Err(invalid_store());
+        }
+    }
     Ok(())
 }
 
@@ -446,6 +460,7 @@ mod tests {
                 }],
                 fetched_at: "2026-10-16T10:00:00Z".into(),
                 extra_usage: None,
+                reset_grants: None,
             }),
             error: None,
             refreshing: true,

@@ -197,6 +197,7 @@ mod tests {
             }],
             fetched_at: "2026-10-15T12:00:00Z".into(),
             extra_usage: None,
+            reset_grants: None,
         }
     }
 

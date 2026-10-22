@@ -173,6 +173,16 @@ pub struct Snapshot {
     pub windows: Vec<UsageWindow>,
     pub fetched_at: String,
     pub extra_usage: Option<ExtraUsage>,
+    #[serde(default)]
+    pub reset_grants: Option<ResetGrants>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetGrants {
+    pub available: u32,
+    pub kind: Option<String>,
+    pub expires_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -242,6 +252,7 @@ mod tests {
                 }],
                 fetched_at: "2026-10-16T10:00:00Z".into(),
                 extra_usage: None,
+                reset_grants: None,
             }),
             error: None,
             refreshing: false,
@@ -254,6 +265,24 @@ mod tests {
         assert_eq!(value["snapshot"]["windows"][0]["scope"], "core");
         assert!(value.get("accessToken").is_none());
         assert!(value.get("refreshToken").is_none());
+        assert!(value["snapshot"]["resetGrants"].is_null());
+    }
+
+    #[test]
+    fn stored_snapshots_without_reset_grants_still_parse() {
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "windows": [], "fetchedAt": "2026-10-16T10:00:00Z", "extraUsage": null
+        }))
+        .unwrap();
+        assert!(snapshot.reset_grants.is_none());
+        let grants = ResetGrants {
+            available: 2,
+            kind: None,
+            expires_at: Some("2026-10-19T10:00:00Z".into()),
+        };
+        let value = serde_json::to_value(&grants).unwrap();
+        assert_eq!(value["expiresAt"], "2026-10-19T10:00:00Z");
+        assert_eq!(value["available"], 2);
     }
 
     #[test]

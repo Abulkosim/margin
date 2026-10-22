@@ -5,9 +5,10 @@ use super::{
 #[cfg(test)]
 use crate::core::model::WindowScope;
 use crate::core::model::{
-    valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, Snapshot,
-    UsageError, UsageWindow,
+    valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, ResetGrants,
+    Snapshot, UsageError, UsageWindow,
 };
+use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -492,6 +493,56 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         windows,
         fetched_at: now(),
         extra_usage,
+        reset_grants: parse_reset_grants(value.get("cedar_ember"), Utc::now()),
+    })
+}
+
+const MAX_RESETS: u64 = 50;
+
+fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
+    let block = value?.as_object()?;
+    if !block.get("eligible")?.as_bool()? {
+        return None;
+    }
+    let mut available = 0;
+    let mut soonest: Option<DateTime<Utc>> = None;
+    for grant in block.get("grants")?.as_array()? {
+        let left = grant.get("resets_left")?.as_u64()?;
+        let paused = grant.get("paused")?.as_bool()?;
+        let bound = |key| match grant.get(key).filter(|value| !value.is_null()) {
+            None => Some(None),
+            Some(value) => DateTime::parse_from_rfc3339(value.as_str()?)
+                .ok()
+                .map(|date| Some(date.with_timezone(&Utc))),
+        };
+        let starts = bound("starts_at")?;
+        let ends = bound("ends_at")?;
+        if grant
+            .get("resets_total")
+            .filter(|value| !value.is_null())
+            .is_some_and(|total| total.as_u64().is_none_or(|total| total < left))
+        {
+            return None;
+        }
+        if paused
+            || left == 0
+            || starts.is_some_and(|starts| starts > at)
+            || ends.is_some_and(|ends| ends <= at)
+        {
+            continue;
+        }
+        available += left;
+        if available > MAX_RESETS {
+            return None;
+        }
+        if let Some(ends) = ends {
+            soonest = Some(soonest.map_or(ends, |soonest| soonest.min(ends)));
+        }
+    }
+    (available > 0).then(|| ResetGrants {
+        available: available as u32,
+        kind: None,
+        expires_at: soonest.map(|date| date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
     })
 }
 
@@ -612,6 +663,62 @@ mod tests {
         assert!(parse_profile(&serde_json::json!({})).history_key.is_none());
     }
     use serde_json::json;
+
+    fn grants_at(fixture: &str, at: &str) -> Option<ResetGrants> {
+        let value: Value = serde_json::from_str(fixture).unwrap();
+        let at = DateTime::parse_from_rfc3339(at)
+            .unwrap()
+            .with_timezone(&Utc);
+        parse_reset_grants(value.get("cedar_ember"), at)
+    }
+
+    #[test]
+    fn reset_grants_count_only_usable_resets_and_report_soonest_expiry() {
+        let fixture = include_str!("../../../fixtures/claude-reset-grants.json");
+        let grants = grants_at(fixture, "2026-10-16T10:00:00Z").unwrap();
+        assert_eq!(grants.available, 2);
+        assert_eq!(grants.kind, None);
+        assert_eq!(grants.expires_at.as_deref(), Some("2026-10-19T10:00:00Z"));
+        let later = grants_at(fixture, "2026-11-02T00:00:00Z").unwrap();
+        assert_eq!(later.available, 1);
+        assert_eq!(later.expires_at, None);
+        let snapshot = parse_usage(&serde_json::from_str(fixture).unwrap()).unwrap();
+        assert_eq!(snapshot.windows.len(), 2);
+    }
+
+    #[test]
+    fn absent_or_empty_reset_grants_are_none() {
+        for fixture in [
+            include_str!("../../../fixtures/claude-live-schema.json"),
+            include_str!("../../../fixtures/claude-all-windows.json"),
+        ] {
+            assert!(grants_at(fixture, "2026-10-16T10:00:00Z").is_none());
+            assert!(parse_usage(&serde_json::from_str(fixture).unwrap())
+                .unwrap()
+                .reset_grants
+                .is_none());
+        }
+        let ineligible = json!({"cedar_ember": {"eligible": false, "grants": [{"resets_left": 1, "paused": false}]}});
+        assert!(parse_reset_grants(ineligible.get("cedar_ember"), Utc::now()).is_none());
+    }
+
+    #[test]
+    fn malformed_reset_grants_are_none_without_failing_the_snapshot() {
+        let fixture = include_str!("../../../fixtures/claude-reset-grants-malformed.json");
+        let snapshot = parse_usage(&serde_json::from_str(fixture).unwrap()).unwrap();
+        assert_eq!(snapshot.windows.len(), 1);
+        assert!(snapshot.reset_grants.is_none());
+        for block in [
+            json!("yes"),
+            json!({"eligible": "true", "grants": []}),
+            json!({"eligible": true, "grants": {}}),
+            json!({"eligible": true, "grants": [{"resets_left": 1}]}),
+            json!({"eligible": true, "grants": [{"resets_left": 2, "resets_total": 1, "paused": false}]}),
+            json!({"eligible": true, "grants": [{"resets_left": 51, "paused": false}]}),
+        ] {
+            assert!(parse_reset_grants(Some(&block), Utc::now()).is_none());
+        }
+    }
 
     #[test]
     fn live_usage_shape_preserves_scoped_window_with_missing_model_id() {

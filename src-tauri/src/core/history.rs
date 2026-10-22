@@ -401,6 +401,7 @@ mod tests {
             snapshot: Some(Snapshot {
                 fetched_at: at(seconds).to_rfc3339(),
                 extra_usage: None,
+                reset_grants: None,
                 windows: vec![UsageWindow {
                     id: "session".into(),
                     label: "Session".into(),

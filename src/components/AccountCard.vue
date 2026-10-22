@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, formatMoney, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, retryingMessage, signedOutMessage } from '../lib/format'
+import { accountIsStale, formatMoney, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, retryingMessage, signedOutMessage } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { fitPace, paceWindowIds, projectPace } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
@@ -51,6 +51,7 @@ async function copyCommand() {
 const groups = computed(() => groupWindows(props.account.snapshot?.windows ?? []))
 const extraWindows = computed(() => groups.value.more)
 const spokenReset = (window: UsageWindow): string => resetCountdown(window.resetsAt, props.now).toLowerCase()
+const resetGrants = computed(() => resetGrantsText(props.account.snapshot?.resetGrants, props.now))
 const hasDetails = computed(() => extraWindows.value.length > 0 || props.account.snapshot?.extraUsage)
 const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 </script>
@@ -84,6 +85,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
         <template v-if="expanded"><QuotaWindow v-for="window in extraWindows" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" /></template>
       </div>
       <p v-else class="inline-empty">No usage windows reported by {{ providerName(account.provider) }}.</p>
+      <p v-if="resetGrants" class="reset-grants">{{ resetGrants }}</p>
       <div v-if="expanded && account.snapshot.extraUsage" class="extra-usage">
         <span>Extra usage <span class="muted">this month</span></span>
         <span>{{ formatMoney(account.snapshot.extraUsage.spent, account.snapshot.extraUsage.currency) }}<span v-if="account.snapshot.extraUsage.limit !== null" class="muted"> / {{ formatMoney(account.snapshot.extraUsage.limit, account.snapshot.extraUsage.currency) }}</span></span>

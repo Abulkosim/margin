@@ -34,7 +34,7 @@ export function createDemoState(scenario: string | null): AppState {
         id: 'demo-claude-studio', provider: 'claude', label: 'Studio', color: '#b8d1bf',
         source: { kind: 'configDir', path: '~/.claude-studio' },
         identity: { email: 'hello@studio.example', plan: 'Pro' }, error: null, refreshing: false,
-        snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: { spent: 4.28, limit: 20, currency: 'USD' }, windows: [
+        snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: { spent: 4.28, limit: 20, currency: 'USD' }, resetGrants: { available: 1, kind: null, expiresAt: future(74) }, windows: [
           { id: 'five_hour', label: 'Session', usedPercent: 82, resetsAt: future(0.75), windowSeconds: 18_000 },
           { id: 'seven_day', label: 'Weekly', usedPercent: 14, resetsAt: future(56), windowSeconds: 604_800 },
           { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 21, resetsAt: future(56), windowSeconds: 604_800, scope: 'model' },

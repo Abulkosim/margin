@@ -63,6 +63,22 @@ test('model limits show as chips under the weekly row', async ({ page }) => {
   await expect(page.getByRole('article', { name: 'Work, Codex' }).locator('.model-chips')).toHaveCount(0)
 })
 
+test('limit resets are listed read-only before history', async ({ page }) => {
+  await page.goto('/?demo=1')
+  const studio = page.getByRole('article', { name: 'Studio, Claude' })
+  const line = studio.locator('.reset-grants')
+  await expect(line).toHaveText('1 reset available · expires in 3d')
+  const chips = await studio.locator('.quota-list').boundingBox()
+  const position = await line.boundingBox()
+  const history = await studio.getByRole('button', { name: 'History' }).boundingBox()
+  expect(chips && position && history && position.y >= chips.y + chips.height && history.y >= position.y + position.height).toBe(true)
+  await expect(page.locator('.reset-grants')).toHaveCount(1)
+  for (const card of await page.getByRole('article').all()) {
+    await expect(card.getByRole('button', { name: /reset/i })).toHaveCount(0)
+    await expect(card.getByRole('link', { name: /reset/i })).toHaveCount(0)
+  }
+})
+
 test('model chips wrap at 360px without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 })
   await page.goto('/?demo=1')

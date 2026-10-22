@@ -1,0 +1,20 @@
+{
+  "five_hour": { "utilization": 100, "resets_at": "2026-10-16T12:00:00+00:00" },
+  "seven_day": { "utilization": 64, "resets_at": "2026-10-20T10:00:00+00:00" },
+  "cedar_ember": {
+    "eligible": true,
+    "at_limit": true,
+    "exhausted": [],
+    "grants": [
+      { "resets_left": 1, "resets_total": 1, "starts_at": "2026-10-01T00:00:00Z", "ends_at": "2026-10-19T10:00:00Z", "paused": false },
+      { "resets_left": 1, "resets_total": 2, "starts_at": null, "ends_at": "2026-10-30T10:00:00Z", "paused": false },
+      { "resets_left": 1, "resets_total": 1, "starts_at": null, "ends_at": "2026-10-15T10:00:00Z", "paused": false },
+      { "resets_left": 2, "resets_total": 2, "starts_at": null, "ends_at": null, "paused": true },
+      { "resets_left": 0, "resets_total": 1, "starts_at": null, "ends_at": null, "paused": false },
+      { "resets_left": 1, "resets_total": 1, "starts_at": "2026-11-01T00:00:00Z", "ends_at": null, "paused": false }
+    ],
+    "next_grant_id": null,
+    "weekly_resets_at": null,
+    "cooldown_until": null
+  }
+}
