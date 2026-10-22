@@ -45,39 +45,38 @@ Usage history with sample data.
 
 ## Install
 
-Download **v0.3.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest).
+Download **v0.3.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
 
 | Platform | Download |
 | --- | --- |
 | macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_universal.dmg) |
 | Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.3.0/Margin_0.3.0_x64_en-US.msi) |
 
-Already using v0.1.1 or earlier? Install the latest release once manually. Future releases can be installed from **Settings → General → Updates**. Checking and installing are explicit actions; Margin does not check or download in the background. Updater signatures are separate from OS publisher certificates, so the first-launch guidance below still applies.
+Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning. Updates are signed and verified in the app.
 
 To run from source, see [Develop](#develop).
 
 ### macOS
 
-Use the universal `.dmg` on Apple Silicon or Intel with macOS 12 or later. Open it, move Margin to Applications, then launch Margin.
-
-Early releases are ad-hoc signed, without an Apple developer signature or notarization. On older macOS versions, right-click Margin → **Open**. If macOS blocks it, open **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Follow [Apple's guidance](https://support.apple.com/en-us/102445); managed Macs may prohibit exceptions.
+Drag Margin to Applications and open it. On macOS 15 and later, when **“Margin” Not Opened** appears, click **Done**, then open **System Settings → Privacy & Security → Open Anyway** and confirm with **Open**. Control-click → Open no longer works there. Margin has no Dock icon; it lives in the menu bar. [Details and fallback](docs/install.md#macos).
 
 ### Windows
 
-Use the x64 `-setup.exe` installer, or `.msi` for Windows Installer. WebView2 is required; the [installer downloads its setup program](https://v2.tauri.app/distribute/windows-installer/#downloaded-bootstrapper) when needed, so first installation may need internet access.
-
-Early releases have no verified publisher signature. If SmartScreen shows its reputation warning, choose **More info → Run anyway** after checking the download source. A managed device may disable this option. See [Microsoft's SmartScreen overview](https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/).
-
-Each release includes `SHA256SUMS.txt`. Compare the downloaded installer's checksum with that file using `shasum -a 256 <file>` on macOS or `Get-FileHash <file> -Algorithm SHA256` in PowerShell.
+Run the `-setup.exe` (or `.msi`). On **Windows protected your PC**, click **More info → Run anyway**. Smart App Control blocks unsigned apps with no per-app exception. [Details, Smart App Control, and antivirus warnings](docs/install.md#windows).
 
 ### Verify a download
 
-Releases after v0.3.0 carry GitHub build attestations and an SPDX SBOM (`margin-<version>.sbom.spdx.json`). With the [GitHub CLI](https://cli.github.com), check that a file was built by this repository's release workflow:
+Compare checksums with `SHA256SUMS.txt`, and on releases after v0.3.0 check the build attestation:
 
 ```sh
 gh attestation verify Margin_<version>_universal.dmg --repo Abulkosim/margin
-gh attestation verify Margin_<version>_x64-setup.exe --repo Abulkosim/margin
 ```
+
+See [docs/install.md](docs/install.md#verify-a-download) for both platforms.
+
+### Updates
+
+Margin checks for updates daily; turn this off or check by hand in **Settings → General → Updates**. Installing is always your choice. v0.1.1 and earlier: install the latest release once by hand. [Details](docs/install.md#updates).
 
 ## Connect accounts
 
