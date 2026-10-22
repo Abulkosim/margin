@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import type { Account, Settings } from '../lib/model'
-import { accountIsStale, formatMoney, providerName, relativeAge, retryingMessage, signedOutMessage } from '../lib/format'
+import type { Account, Settings, UsageWindow } from '../lib/model'
+import { accountIsStale, formatMoney, paceText, providerName, relativeAge, retryingMessage, signedOutMessage } from '../lib/format'
+import { useAccountHistory } from '../lib/accountHistory'
+import { fitPace, paceWindowIds, projectPace } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -11,6 +13,12 @@ const props = defineProps<{ account: Account; demo: boolean; settings: Settings;
 defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
+const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo)
+const paceFits = computed(() => {
+  const points = historyState.value.kind === 'ready' ? historyState.value.history.points : []
+  return new Map((props.account.snapshot?.windows ?? []).filter(window => paceWindowIds.has(window.id)).map(window => [window.id, fitPace(points.filter(point => point.windowId === window.id))]))
+})
+const pace = (window: UsageWindow): string | null => stale.value || !paceFits.value.has(window.id) ? null : paceText(projectPace(paceFits.value.get(window.id) ?? null, window, props.now), props.now)
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)
@@ -59,8 +67,8 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
 
     <template v-if="account.snapshot">
       <div v-if="account.snapshot.windows.length" class="quota-list">
-        <QuotaWindow v-for="window in account.snapshot.windows.slice(0, 2)" :key="window.id" :window="window" :now="now" :stale="stale" />
-        <template v-if="expanded"><QuotaWindow v-for="window in extraWindows" :key="window.id" :window="window" :now="now" :stale="stale" /></template>
+        <QuotaWindow v-for="window in account.snapshot.windows.slice(0, 2)" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" />
+        <template v-if="expanded"><QuotaWindow v-for="window in extraWindows" :key="window.id" :window="window" :now="now" :stale="stale" :pace="pace(window)" /></template>
       </div>
       <p v-else class="inline-empty">No usage windows reported by {{ providerName(account.provider) }}.</p>
       <div v-if="expanded && account.snapshot.extraUsage" class="extra-usage">
@@ -85,6 +93,6 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
       </div>
     </div>
     <button class="details-toggle history-toggle" :aria-expanded="historyOpen" :aria-controls="`history-${account.id}`" @click="historyOpen = !historyOpen"><span>{{ historyOpen ? 'Hide history' : 'History' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: historyOpen }" /></button>
-    <UsageHistory v-if="historyOpen" :id="`history-${account.id}`" :account="account" :demo="demo" :now="now" />
+    <UsageHistory v-if="historyOpen" :id="`history-${account.id}`" :account="account" :state="historyState" :now="now" @retry="loadHistory" />
   </article>
 </template>

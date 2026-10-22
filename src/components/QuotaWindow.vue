@@ -3,7 +3,7 @@ import { formatRemaining, remainingPercent, resetCountdown } from '../lib/format
 import type { UsageWindow } from '../lib/model'
 import AppTooltip from './ui/AppTooltip.vue'
 
-defineProps<{ window: UsageWindow; now: number; stale: boolean }>()
+defineProps<{ window: UsageWindow; now: number; stale: boolean; pace?: string | null }>()
 </script>
 
 <template>
@@ -16,5 +16,6 @@ defineProps<{ window: UsageWindow; now: number; stale: boolean }>()
     <div class="quota-track" role="progressbar" :aria-label="`${window.label} remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining${stale ? ', last known' : ''}`">
       <div class="quota-fill" :style="{ width: `${remainingPercent(window.usedPercent)}%` }" />
     </div>
+    <p v-if="pace" class="quota-pace">{{ pace }}</p>
   </div>
 </template>

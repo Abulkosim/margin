@@ -74,7 +74,7 @@ export function createDemoHistory(account: Account): AccountHistory {
       points.push({
         windowId: window.id,
         at: new Date(end - (steps - index) * spacing).toISOString(),
-        usedPercent: olderPeriod ? 60 + index * 3 : Math.max(0, window.usedPercent * (index - (short ? 9 : 0)) / (steps - (short ? 9 : 0))),
+        usedPercent: olderPeriod ? 60 + index * 3 : short ? window.usedPercent * Math.max(0, index - 9) / (steps - 9) : Math.max(0, window.usedPercent - 1.5 * (steps - index) / steps),
         resetsAt: olderPeriod ? new Date(end - 27 * spacing).toISOString() : window.resetsAt,
         windowSeconds: window.windowSeconds,
         gapBefore: index === 19,

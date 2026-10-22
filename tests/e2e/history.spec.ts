@@ -149,8 +149,48 @@ test('open history follows snapshots and ignores late replies after refresh or c
   await expect(history.getByText('No history yet.')).toBeVisible()
   await page.getByRole('button', { name: 'Hide history', exact: true }).click()
   await page.getByRole('button', { name: 'History', exact: true }).click()
-  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '3')
+  await expect(history.getByText('No history yet.')).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '2')
   await page.getByRole('button', { name: 'Hide history', exact: true }).click()
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('history-reply', { detail: { index: 2, payload: null } })))
   await expect(history).toHaveCount(0)
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`${theme} pace line shows on pace and runs out for session and weekly only`, async ({ page }, info) => {
+    await page.goto(`/?demo=1&theme=${theme}`)
+    const pace = (account: string, label: string) => page.getByRole('article', { name: account }).locator('.quota-window').filter({ has: page.locator('.quota-label', { hasText: new RegExp(`^${label}$`) }) }).locator('.quota-pace')
+    await expect(pace('Personal, Claude', 'Session')).toHaveText('On pace')
+    await expect(pace('Personal, Claude', 'Weekly')).toHaveText(/^Runs out ~\w{3} .+ · resets \w{3} .+$/)
+    await expect(pace('Studio, Claude', 'Session')).toHaveText(/^Runs out ~\d{1,2}:\d{2}(\s?[AP]M)? · resets \d{1,2}:\d{2}(\s?[AP]M)?$/)
+    await expect(pace('Studio, Claude', 'Weekly')).toHaveText('On pace')
+    await expect(pace('Work, Codex', 'Session')).toHaveText('On pace')
+    await expect(pace('Work, Codex', 'Weekly')).toHaveText('On pace')
+    const personal = page.getByRole('article', { name: 'Personal, Claude' })
+    await personal.getByRole('button', { name: '1 more window' }).click()
+    await expect(pace('Personal, Claude', 'Sonnet')).toHaveCount(0)
+    await expect(personal.locator('.quota-window')).toHaveCount(3)
+    const numerals = await pace('Personal, Claude', 'Session').evaluate(element => getComputedStyle(element).fontVariantNumeric)
+    expect(numerals).toContain('tabular-nums')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: info.outputPath(`pace-${theme}.png`) })
+    await page.getByRole('article', { name: 'Studio, Claude' }).screenshot({ path: info.outputPath(`pace-studio-${theme}.png`) })
+  })
+}
+
+test('pace line stays hidden with under 30 minutes of history', async ({ page }) => {
+  const state = createDemoState(null)
+  state.accounts = state.accounts.slice(0, 1)
+  const account = state.accounts[0]
+  if (!account?.snapshot) throw new Error('Missing fixture')
+  const now = Date.parse(account.snapshot.fetchedAt)
+  const points = account.snapshot.windows.flatMap(window => [0, 10, 20].map(minutes => ({ windowId: window.id, at: new Date(now - (20 - minutes) * 60_000).toISOString(), usedPercent: Math.max(0, window.usedPercent - 20 + minutes), resetsAt: window.resetsAt, windowSeconds: window.windowSeconds, gapBefore: false })))
+  await page.addInitScript(({ state, points }) => {
+    Object.defineProperty(globalThis, '__TAURI__', { value: {
+      core: { invoke: async (command: string) => command === 'get_state' ? state : command === 'get_account_history' ? { accountId: state.accounts[0]?.id, points, error: null } : null },
+      event: { listen: async () => () => {} },
+    } })
+  }, { state, points })
+  await page.goto('/')
+  await expect(page.locator('.quota-window')).toHaveCount(2)
+  await expect(page.locator('.quota-pace')).toHaveCount(0)
 })

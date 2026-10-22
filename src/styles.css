@@ -449,6 +449,14 @@ button:disabled:hover {
   border-radius: 5px;
   overflow: hidden;
 }
+.quota-pace {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--tertiary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .quota-fill {
   height: 100%;
   background: var(--accent);

@@ -1,18 +1,16 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import type { Account } from '../lib/model'
 import { relativeAge } from '../lib/format'
-import { accountHistorySchema, createDemoHistory, historyReadings, historySegments, historyWindows, observedHourChange, type AccountHistory } from '../lib/history'
+import type { HistoryState } from '../lib/accountHistory'
+import { historyReadings, historySegments, historyWindows, observedHourChange } from '../lib/history'
 
-const props = defineProps<{ account: Account; demo: boolean; now: number }>()
-type HistoryState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; history: AccountHistory }
-const state = ref<HistoryState>({ kind: 'loading' })
+const props = defineProps<{ account: Account; state: HistoryState; now: number }>()
+defineEmits<{ retry: [] }>()
 const selectedWindow = ref('')
 const selectedIndex = ref(0)
-let request = 0
-let destroyed = false
-const points = computed(() => state.value.kind === 'ready' ? state.value.history.points : [])
+const points = computed(() => props.state.kind === 'ready' ? props.state.history.points : [])
 const windows = computed(() => historyWindows(props.account.snapshot?.windows ?? [], points.value))
 const readings = computed(() => historyReadings(points.value, selectedWindow.value))
 const segments = computed(() => historySegments(readings.value))
@@ -31,25 +29,10 @@ const path = (segment: typeof readings.value): string => segment.map((point, ind
 const segmentPaths = computed(() => segments.value.map(segment => ({ path: path(segment), isolated: segment.length === 1 ? segment[0] : undefined })))
 const markers = computed(() => readings.value.filter(point => point.boundary === 'reset' || point.boundary === 'reading').map(point => ({ at: point.at, path: `M${x(point.timestamp)} 8V104` })))
 
-async function load(): Promise<void> {
-  const current = ++request
-  const id = props.account.id
-  try {
-    const payload: unknown = props.demo ? createDemoHistory(props.account) : await window.__TAURI__?.core.invoke('get_account_history', { id })
-    const history = accountHistorySchema.parse(payload)
-    if (history.accountId !== id) throw new Error('Account mismatch')
-    if (destroyed || current !== request) return
-    state.value = { kind: 'ready', history }
-  } catch {
-    if (!destroyed && current === request) state.value = { kind: 'error', message: 'Could not load history.' }
-  }
-}
-watch([() => props.account.id, () => props.account.snapshot?.fetchedAt], () => { void load() }, { immediate: true })
 watch(windows, value => {
   if (!value.some(window => window.id === selectedWindow.value)) selectedWindow.value = value[0]?.id ?? ''
 }, { immediate: true })
 watch(readings, value => { selectedIndex.value = Math.max(0, value.length - 1) }, { immediate: true })
-onUnmounted(() => { destroyed = true; request++ })
 
 function inspect(event: KeyboardEvent): void {
   const deltas: Record<string, number> = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10 }
@@ -76,7 +59,7 @@ function pointAt(event: PointerEvent): void {
   <section class="usage-history" aria-label="Usage history">
     <div class="history-heading"><h3>{{ account.label }} history</h3><span>On this device · 7 days</span></div>
     <p v-if="state.kind === 'loading'" class="history-note" role="status">Loading history…</p>
-    <div v-else-if="state.kind === 'error'" class="history-note" role="status"><p>{{ state.message }}</p><button class="text-button" @click="load">Try again</button></div>
+    <div v-else-if="state.kind === 'error'" class="history-note" role="status"><p>{{ state.message }}</p><button class="text-button" @click="$emit('retry')">Try again</button></div>
     <template v-else>
       <p v-if="state.history.error" class="history-note" role="status">{{ state.history.error }}</p>
       <TabsRoot v-model="selectedWindow" class="history-tabs">

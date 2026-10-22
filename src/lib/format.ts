@@ -1,4 +1,5 @@
 import type { Account, Settings } from './model'
+import type { Pace } from './pace'
 
 export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, 100 - used))
@@ -23,6 +24,21 @@ export function resetCountdown(resetsAt: string | null, now: number): string {
   const milliseconds = Date.parse(resetsAt) - now
   if (milliseconds <= 0) return 'Reset pending'
   return `Resets in ${shortDuration(milliseconds)}`
+}
+
+export function clockTime(time: Date, now: number): string {
+  const today = new Date(now)
+  const sameDay = time.getFullYear() === today.getFullYear() && time.getMonth() === today.getMonth() && time.getDate() === today.getDate()
+  if (sameDay) return time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const withinWeek = time.getTime() - now < 6 * 86_400_000
+  return time.toLocaleString(undefined, withinWeek ? { weekday: 'short', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+export function paceText(pace: Pace, now: number): string | null {
+  if (pace.kind === 'hidden') return null
+  if (pace.kind === 'on-pace') return 'On pace'
+  const step = 5 * 60_000
+  return `Runs out ~${clockTime(new Date(Math.round(pace.at.getTime() / step) * step), now)} · resets ${clockTime(pace.resetsAt, now)}`
 }
 
 export function relativeAge(timestamp: string, now: number): string {
