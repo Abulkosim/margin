@@ -45,8 +45,9 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **2.1 Tray metric selection.** Default "most constrained of session + weekly" (exclude model-scoped, routines/cowork, and expired windows). Options: pinned account, lowest across all, specific window. Expose in Settings.
   Verify: unit tests on selection; tray shows expected account in demo mode.
   Done 2026-10-22: `trayMetric` core|all|session|weekly, core = five_hour/primary + seven_day/secondary, expired windows skipped; Settings → Tray shows. Settings screenshots to recapture at 2.11.
-- [ ] **2.2 Tray legibility.** Mac: thicker ring, filled-dot low state (≤20%). Windows: follow taskbar theme, stronger track, warn tier at 20%, critical at 5%. Optional "42%" text beside the icon.
+- [x] **2.2 Tray legibility.** Mac: thicker ring, filled-dot low state (≤20%). Windows: follow taskbar theme, stronger track, warn tier at 20%, critical at 5%. Optional "42%" text beside the icon.
   Verify: render icons at 16/22/32px light+dark into `docs/images/tray-*.png`; eyeball; contrast ≥ 3:1 measured in test.
+  Done 2026-10-22: `core/ring.rs`, contact sheet in `docs/images/tray/`, min contrast 3.7:1 measured in test; Windows theme from registry; Mac-only "Show percentage next to icon". Windows compile only via CI; real taskbar check 👤.
 - [ ] **2.3 Pace line.** From history: "At this rate, runs out ~Thu 14:00 (reset Fri 09:00)" or "On pace". Hide when <3 readings or <30 min of data. Weekly and session.
   Verify: unit tests on regression math incl. gaps and resets; e2e renders both states.
 - [ ] **2.4 Per-model windows first-class.** Fable/Opus/Sonnet weekly shown as compact chips on the card, not buried. Add fixture with `limits[]` `weekly_scoped` + `scope.model.display_name: "Fable"`. Clamp >100% instead of failing the snapshot.
