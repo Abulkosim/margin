@@ -223,6 +223,27 @@ pub async fn save_settings(
 }
 
 #[tauri::command]
+pub async fn reset_store(
+    app: AppHandle,
+    runtime: State<'_, Arc<Runtime>>,
+) -> Result<AppState, String> {
+    let reset = runtime.reset_store().await?;
+    publish(&app, &reset);
+    match discover(&app, &runtime).await {
+        Ok(next) => Ok(next),
+        Err(error) => {
+            let mut inner = runtime.inner.lock().await;
+            inner.view.notice = Some(error);
+            inner.view.changed();
+            let next = inner.view.clone();
+            drop(inner);
+            publish(&app, &next);
+            Ok(next)
+        }
+    }
+}
+
+#[tauri::command]
 pub fn hide_window(app: AppHandle) -> Result<(), String> {
     app.get_webview_window("main")
         .ok_or("Window is unavailable.")?

@@ -33,6 +33,7 @@ pub fn run() {
             commands::remove_account,
             commands::rename_account,
             commands::save_settings,
+            commands::reset_store,
             commands::hide_window,
             updates::get_update_status,
             updates::check_for_update,

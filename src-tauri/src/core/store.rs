@@ -5,11 +5,12 @@ use super::{
 };
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::HashSet,
     fs,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
@@ -24,6 +25,8 @@ pub struct StoredState {
     pub settings: Settings,
     #[serde(default)]
     pub alerts: AlertMemory,
+    #[serde(skip)]
+    pub recovered: Vec<String>,
 }
 
 pub fn load(path: &Path) -> Result<StoredState, String> {
@@ -54,8 +57,8 @@ pub fn load(path: &Path) -> Result<StoredState, String> {
     if bytes.len() as u64 > MAX_STORE_BYTES {
         return Err(invalid_store());
     }
-    let mut state: StoredState = serde_json::from_slice(&bytes).map_err(|_| invalid_store())?;
-    validate(&state)?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| invalid_store())?;
+    let mut state = decode(value)?;
     for account in &mut state.accounts {
         account.refreshing = false;
         if account.snapshot.is_some() {
@@ -101,6 +104,134 @@ pub fn save(path: &Path, state: &StoredState) -> Result<(), String> {
     Ok(())
 }
 
+pub fn backup(path: &Path) -> Result<PathBuf, String> {
+    let target = backup_path(path)?;
+    fs::copy(path, &target).map_err(|_| "Margin could not back up its settings file.")?;
+    Ok(target)
+}
+
+pub fn reset(path: &Path, state: &StoredState) -> Result<Option<PathBuf>, String> {
+    let target = match fs::symlink_metadata(path) {
+        Ok(_) => {
+            let target = backup_path(path)?;
+            fs::rename(path, &target).map_err(|_| "Margin could not back up its settings file.")?;
+            Some(target)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Err("Margin could not read its settings file.".into()),
+    };
+    save(path, state)?;
+    Ok(target)
+}
+
+fn backup_path(path: &Path) -> Result<PathBuf, String> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid settings location.")?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    (0..100)
+        .map(|attempt| match attempt {
+            0 => path.with_file_name(format!("{name}.bak-{stamp}")),
+            _ => path.with_file_name(format!("{name}.bak-{stamp}-{attempt}")),
+        })
+        .find(|candidate| fs::symlink_metadata(candidate).is_err())
+        .ok_or_else(|| "Margin could not choose a backup file name.".into())
+}
+
+fn decode(value: Value) -> Result<StoredState, String> {
+    let Value::Object(mut root) = value else {
+        return Err(invalid_store());
+    };
+    match root.get("version").and_then(Value::as_u64) {
+        Some(1) => {}
+        Some(version) if version > 1 => return Err(newer_store()),
+        _ => return Err(invalid_store()),
+    }
+    let mut recovered = Vec::new();
+    let mut accounts: Vec<Account> = Vec::new();
+    match root.remove("accounts") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(items)) => {
+            for (index, item) in items.into_iter().enumerate() {
+                let name = item
+                    .get("label")
+                    .and_then(Value::as_str)
+                    .filter(|label| valid_text(label, 192) && label.chars().count() <= 48)
+                    .map(|label| format!("“{label}”"))
+                    .unwrap_or_else(|| (index + 1).to_string());
+                if accounts.len() >= MAX_ACCOUNTS {
+                    recovered.push(format!(
+                        "Skipped account {name}. Margin supports up to {MAX_ACCOUNTS} accounts."
+                    ));
+                    continue;
+                }
+                match serde_json::from_value::<Account>(item) {
+                    Ok(account)
+                        if validate_account(&account).is_ok()
+                            && !accounts.iter().any(|existing| existing.id == account.id) =>
+                    {
+                        accounts.push(account);
+                    }
+                    _ => recovered.push(format!(
+                        "Skipped account {name} because its saved data couldn’t be read."
+                    )),
+                }
+            }
+        }
+        Some(_) => recovered.push("Saved accounts couldn’t be read and were skipped.".into()),
+    }
+    let mut settings = Settings::recover(root.remove("settings"), &mut recovered);
+    if settings
+        .pinned_account_id
+        .as_ref()
+        .is_some_and(|id| !accounts.iter().any(|account| &account.id == id))
+    {
+        settings.pinned_account_id = None;
+    }
+    let mut alerts = AlertMemory::new();
+    let mut dropped_alerts = false;
+    match root.remove("alerts") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(entries)) => {
+            for (key, value) in entries {
+                let Some((id, window)) = key.split_once('/') else {
+                    dropped_alerts = true;
+                    continue;
+                };
+                if !accounts.iter().any(|account| account.id == id) {
+                    continue;
+                }
+                match serde_json::from_value::<super::notifications::WindowAlerts>(value) {
+                    Ok(alert)
+                        if valid_id(window)
+                            && alert.validate().is_ok()
+                            && alerts.len() < MAX_ACCOUNTS * MAX_WINDOWS =>
+                    {
+                        alerts.insert(key, alert);
+                    }
+                    _ => dropped_alerts = true,
+                }
+            }
+        }
+        Some(_) => dropped_alerts = true,
+    }
+    if dropped_alerts {
+        recovered.push("Some alert history couldn’t be read and was cleared.".into());
+    }
+    Ok(StoredState {
+        version: 1,
+        accounts,
+        settings,
+        alerts,
+        recovered,
+    })
+}
+
+fn newer_store() -> String {
+    "This settings file needs a newer version of Margin.".into()
+}
+
 fn invalid_store() -> String {
     "Margin's settings file is damaged or unsupported. Preserve it before restoring a backup."
         .into()
@@ -108,7 +239,7 @@ fn invalid_store() -> String {
 
 fn validate(state: &StoredState) -> Result<(), String> {
     if state.version != 1 {
-        return Err("This settings file needs a newer version of Margin.".into());
+        return Err(newer_store());
     }
     state.settings.validate()?;
     if state.accounts.len() > MAX_ACCOUNTS || state.alerts.len() > MAX_ACCOUNTS * MAX_WINDOWS {
@@ -116,54 +247,9 @@ fn validate(state: &StoredState) -> Result<(), String> {
     }
     let mut ids = HashSet::new();
     for account in &state.accounts {
-        if !valid_id(&account.id)
-            || !ids.insert(account.id.as_str())
-            || !valid_text(&account.label, 192)
-            || account.label.chars().count() > 48
-            || account.color.len() != 7
-            || !account.color.starts_with('#')
-            || !account.color[1..]
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit())
-        {
+        validate_account(account)?;
+        if !ids.insert(account.id.as_str()) {
             return Err(invalid_store());
-        }
-        if !account.source.is_valid_for(account.provider) {
-            return Err(invalid_store());
-        }
-        for text in [&account.identity.email, &account.identity.plan]
-            .into_iter()
-            .flatten()
-        {
-            if !valid_text(text, 4096) {
-                return Err(invalid_store());
-            }
-        }
-        if account
-            .identity
-            .history_key
-            .as_ref()
-            .is_some_and(|key| key.len() != 64 || !key.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        {
-            return Err(invalid_store());
-        }
-        if let Some(snapshot) = &account.snapshot {
-            validate_snapshot(snapshot)?;
-        }
-        if let Some(error) = &account.error {
-            if !valid_text(&error.kind, 128)
-                || !valid_text(&error.message, 4096)
-                || error
-                    .signed_out_since
-                    .as_deref()
-                    .is_some_and(|since| !valid_timestamp(since))
-                || error
-                    .sign_in_command
-                    .as_deref()
-                    .is_some_and(|command| !valid_text(command, 8192))
-            {
-                return Err(invalid_store());
-            }
         }
     }
     if state
@@ -182,6 +268,58 @@ fn validate(state: &StoredState) -> Result<(), String> {
     }
     for alert in state.alerts.values() {
         alert.validate().map_err(|_| invalid_store())?;
+    }
+    Ok(())
+}
+
+fn validate_account(account: &Account) -> Result<(), String> {
+    if !valid_id(&account.id)
+        || !valid_text(&account.label, 192)
+        || account.label.chars().count() > 48
+        || account.color.len() != 7
+        || !account.color.starts_with('#')
+        || !account.color[1..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(invalid_store());
+    }
+    if !account.source.is_valid_for(account.provider) {
+        return Err(invalid_store());
+    }
+    for text in [&account.identity.email, &account.identity.plan]
+        .into_iter()
+        .flatten()
+    {
+        if !valid_text(text, 4096) {
+            return Err(invalid_store());
+        }
+    }
+    if account
+        .identity
+        .history_key
+        .as_ref()
+        .is_some_and(|key| key.len() != 64 || !key.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(invalid_store());
+    }
+    if let Some(snapshot) = &account.snapshot {
+        validate_snapshot(snapshot)?;
+    }
+    if let Some(error) = &account.error {
+        if !valid_text(&error.kind, 128)
+            || !valid_text(&error.message, 4096)
+            || error
+                .signed_out_since
+                .as_deref()
+                .is_some_and(|since| !valid_timestamp(since))
+            || error
+                .sign_in_command
+                .as_deref()
+                .is_some_and(|command| !valid_text(command, 8192))
+        {
+            return Err(invalid_store());
+        }
     }
     Ok(())
 }
@@ -412,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_persisted_alerts_are_rejected_without_replacing_the_store() {
+    fn corrupt_persisted_alerts_are_dropped_without_replacing_the_store() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.json");
         for alert in [
@@ -423,9 +561,114 @@ mod tests {
             value["alerts"] = serde_json::json!({"codex-example/primary_window": alert});
             let bytes = serde_json::to_vec(&value).unwrap();
             fs::write(&path, &bytes).unwrap();
-            assert!(load(&path).is_err());
+            let state = load(&path).unwrap();
+            assert!(state.alerts.is_empty());
+            assert_eq!(state.accounts.len(), 1);
+            assert_eq!(state.recovered.len(), 1);
             assert_eq!(fs::read(&path).unwrap(), bytes);
         }
+    }
+
+    #[test]
+    fn one_corrupt_account_keeps_the_others() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut state = sample_state();
+        let mut second = sample_account();
+        second.id = "codex-second".into();
+        second.label = "Second".into();
+        state.accounts.push(second);
+        state.settings.pinned_account_id = Some("codex-example".into());
+        let mut value = serde_json::to_value(&state).unwrap();
+        value["accounts"][0]["color"] = serde_json::json!("red");
+        value["accounts"][1]["futureField"] = serde_json::json!(true);
+        value["accounts"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(42));
+        value["futureSection"] = serde_json::json!({});
+        let bytes = serde_json::to_vec(&value).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.accounts.len(), 1);
+        assert_eq!(loaded.accounts[0].id, "codex-second");
+        assert_eq!(loaded.settings.pinned_account_id, None);
+        assert_eq!(
+            loaded.recovered,
+            vec![
+                "Skipped account “Example” because its saved data couldn’t be read.",
+                "Skipped account 3 because its saved data couldn’t be read.",
+            ]
+        );
+        assert!(validate(&loaded).is_ok());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn invalid_setting_falls_back_without_dropping_accounts() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut value = serde_json::to_value(sample_state()).unwrap();
+        value["settings"]["pollIntervalSeconds"] = serde_json::json!(1);
+        value["settings"]["theme"] = serde_json::json!("dark");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.accounts.len(), 1);
+        assert_eq!(loaded.settings.poll_interval_seconds, 60);
+        assert_eq!(loaded.settings.theme, crate::core::settings::Theme::Dark);
+        assert_eq!(
+            loaded.recovered,
+            vec!["Refresh interval was reset to its default."]
+        );
+    }
+
+    #[test]
+    fn newer_or_missing_version_needs_recovery() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut value = serde_json::to_value(sample_state()).unwrap();
+        value["version"] = serde_json::json!(2);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(load(&path).err().unwrap(), newer_store());
+        value.as_object_mut().unwrap().remove("version");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(load(&path).err().unwrap(), invalid_store());
+    }
+
+    #[test]
+    fn reset_moves_the_file_to_a_backup_and_writes_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        fs::write(&path, "{broken").unwrap();
+        let defaults = StoredState {
+            version: 1,
+            ..StoredState::default()
+        };
+        let backup = reset(&path, &defaults).unwrap().unwrap();
+        assert!(backup
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("state.json.bak-"));
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{broken");
+        let loaded = load(&path).unwrap();
+        assert!(loaded.accounts.is_empty());
+        assert_eq!(loaded.settings.poll_interval_seconds, 60);
+        let second = reset(&path, &defaults).unwrap().unwrap();
+        assert_ne!(second, backup);
+        assert!(reset(&directory.path().join("missing.json"), &defaults)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn backup_copies_without_touching_the_original() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        fs::write(&path, "original").unwrap();
+        let copy = backup(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert_eq!(fs::read_to_string(copy).unwrap(), "original");
     }
 
     #[test]

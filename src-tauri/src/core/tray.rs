@@ -536,6 +536,8 @@ mod tests {
             },
             refreshing: false,
             notice: None,
+            recovery: false,
+            recovered: Vec::new(),
         };
         assert_eq!(selected(&state).unwrap().id, "a");
         state.accounts[0].error = Some(UsageError::new("network", "Offline"));

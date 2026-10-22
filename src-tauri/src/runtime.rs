@@ -9,7 +9,11 @@ use crate::core::{
     tray,
 };
 use serde::Serialize;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, Notify};
 
@@ -21,6 +25,8 @@ pub struct AppState {
     pub settings: Settings,
     pub refreshing: bool,
     pub notice: Option<String>,
+    pub recovery: bool,
+    pub recovered: Vec<String>,
 }
 
 impl AppState {
@@ -43,7 +49,8 @@ pub struct Runtime {
     pub wake: Notify,
     pub first_run: bool,
     store_path: PathBuf,
-    recovery_error: Option<String>,
+    recovery_error: std::sync::Mutex<Option<String>>,
+    backup_pending: AtomicBool,
 }
 
 impl Runtime {
@@ -56,10 +63,7 @@ impl Runtime {
                     version: 1,
                     ..StoredState::default()
                 },
-                Some(format!(
-                    "{error} Settings file: {}. Restore it and reopen Margin.",
-                    store_path.display()
-                )),
+                Some(format!("{error} Settings file: {}.", store_path.display())),
             ),
         };
         Ok(Self {
@@ -70,6 +74,8 @@ impl Runtime {
                     settings: saved.settings,
                     refreshing: false,
                     notice: recovery_error.clone(),
+                    recovery: recovery_error.is_some(),
+                    recovered: saved.recovered.clone(),
                 },
                 alerts: saved.alerts,
                 schedules: HashMap::new(),
@@ -80,19 +86,64 @@ impl Runtime {
             wake: Notify::new(),
             first_run: first_run && recovery_error.is_none(),
             store_path,
-            recovery_error,
+            recovery_error: std::sync::Mutex::new(recovery_error),
+            backup_pending: AtomicBool::new(!saved.recovered.is_empty()),
         })
     }
 
     pub fn ensure_store_available(&self) -> Result<(), String> {
-        match &self.recovery_error {
+        match &*self
+            .recovery_error
+            .lock()
+            .map_err(|_| "Settings are unavailable.")?
+        {
             Some(error) => Err(error.clone()),
             None => Ok(()),
         }
     }
 
+    pub async fn reset_store(&self) -> Result<AppState, String> {
+        let mut inner = self.inner.lock().await;
+        let mut next = AppState {
+            revision: inner.view.revision,
+            accounts: Vec::new(),
+            settings: Settings {
+                autostart: inner.view.settings.autostart,
+                ..Settings::default()
+            },
+            refreshing: false,
+            notice: None,
+            recovery: false,
+            recovered: Vec::new(),
+        };
+        next.changed();
+        store::reset(
+            &self.store_path,
+            &StoredState {
+                version: 1,
+                settings: next.settings.clone(),
+                ..StoredState::default()
+            },
+        )?;
+        *self
+            .recovery_error
+            .lock()
+            .map_err(|_| "Settings are unavailable.")? = None;
+        self.backup_pending.store(false, Ordering::SeqCst);
+        inner.view = next.clone();
+        inner.alerts.clear();
+        inner.schedules.clear();
+        Ok(next)
+    }
+
     pub fn persist(&self, view: &AppState, alerts: &AlertMemory) -> Result<(), String> {
         self.ensure_store_available()?;
+        if self.backup_pending.swap(false, Ordering::SeqCst) {
+            if let Err(error) = store::backup(&self.store_path) {
+                self.backup_pending.store(true, Ordering::SeqCst);
+                return Err(error);
+            }
+        }
         store::save(
             &self.store_path,
             &StoredState {
@@ -100,6 +151,7 @@ impl Runtime {
                 accounts: view.accounts.clone(),
                 settings: view.settings.clone(),
                 alerts: alerts.clone(),
+                ..StoredState::default()
             },
         )
     }
@@ -209,7 +261,45 @@ mod tests {
         assert!(!runtime.first_run);
         assert!(inner.view.accounts.is_empty());
         assert!(inner.view.notice.as_ref().unwrap().contains("state.json"));
+        assert!(inner.view.recovery);
         assert!(runtime.persist(&inner.view, &inner.alerts).is_err());
-        assert_eq!(std::fs::read_to_string(path).unwrap(), "{damaged");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{damaged");
+        drop(inner);
+        let view = runtime.reset_store().await.unwrap();
+        assert!(!view.recovery && view.notice.is_none());
+        assert!(runtime.ensure_store_available().is_ok());
+        assert!(store::load(&path).unwrap().accounts.is_empty());
+        assert_eq!(backups(directory.path()), vec!["{damaged".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn dropping_a_corrupt_account_backs_up_once_before_writing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let original = serde_json::json!({
+            "version": 1,
+            "accounts": [{"id": "broken"}],
+            "settings": {}
+        })
+        .to_string();
+        std::fs::write(&path, &original).unwrap();
+        let runtime = Runtime::new(path.clone()).unwrap();
+        let inner = runtime.inner.lock().await;
+        assert!(!inner.view.recovery);
+        assert_eq!(inner.view.recovered.len(), 1);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        runtime.persist(&inner.view, &inner.alerts).unwrap();
+        runtime.persist(&inner.view, &inner.alerts).unwrap();
+        assert_eq!(backups(directory.path()), vec![original]);
+        assert!(store::load(&path).unwrap().recovered.is_empty());
+    }
+
+    fn backups(directory: &std::path::Path) -> Vec<String> {
+        std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.to_string_lossy().contains("state.json.bak-"))
+            .map(|path| std::fs::read_to_string(path).unwrap())
+            .collect()
     }
 }

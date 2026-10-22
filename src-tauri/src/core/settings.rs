@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +68,103 @@ impl Settings {
         }
         Ok(())
     }
+
+    pub fn recover(value: Option<Value>, notes: &mut Vec<String>) -> Self {
+        let defaults = Self::default();
+        let map = match value {
+            None | Some(Value::Null) => return defaults,
+            Some(Value::Object(map)) => map,
+            Some(_) => {
+                notes.push("Settings were reset to defaults.".into());
+                return defaults;
+            }
+        };
+        let mut settings = Self {
+            theme: field(&map, "theme", defaults.theme, "Theme", notes),
+            poll_interval_seconds: field(
+                &map,
+                "pollIntervalSeconds",
+                defaults.poll_interval_seconds,
+                "Refresh interval",
+                notes,
+            ),
+            idle_poll_interval_seconds: field(
+                &map,
+                "idlePollIntervalSeconds",
+                defaults.idle_poll_interval_seconds,
+                "Background refresh",
+                notes,
+            ),
+            notifications: field(
+                &map,
+                "notifications",
+                defaults.notifications,
+                "Usage alerts",
+                notes,
+            ),
+            thresholds: field(
+                &map,
+                "thresholds",
+                defaults.thresholds.clone(),
+                "Alert thresholds",
+                notes,
+            ),
+            tray_mode: field(&map, "trayMode", defaults.tray_mode, "Tray account", notes),
+            pinned_account_id: field(
+                &map,
+                "pinnedAccountId",
+                None::<String>,
+                "Tray account",
+                notes,
+            ),
+            autostart: field(
+                &map,
+                "autostart",
+                defaults.autostart,
+                "Launch at login",
+                notes,
+            ),
+        };
+        if !(30..=3600).contains(&settings.poll_interval_seconds) {
+            settings.poll_interval_seconds = defaults.poll_interval_seconds;
+            reset_note("Refresh interval", notes);
+        }
+        if !(settings.poll_interval_seconds..=86400).contains(&settings.idle_poll_interval_seconds)
+        {
+            settings.idle_poll_interval_seconds = defaults
+                .idle_poll_interval_seconds
+                .max(settings.poll_interval_seconds);
+            reset_note("Background refresh", notes);
+        }
+        if settings.validate().is_err() {
+            settings.thresholds = defaults.thresholds;
+            reset_note("Alert thresholds", notes);
+        }
+        settings
+    }
+}
+
+fn field<T: DeserializeOwned>(
+    map: &Map<String, Value>,
+    key: &str,
+    fallback: T,
+    label: &str,
+    notes: &mut Vec<String>,
+) -> T {
+    match map.get(key) {
+        None => fallback,
+        Some(value) => serde_json::from_value(value.clone()).unwrap_or_else(|_| {
+            reset_note(label, notes);
+            fallback
+        }),
+    }
+}
+
+fn reset_note(label: &str, notes: &mut Vec<String>) {
+    let note = format!("{label} was reset to its default.");
+    if !notes.contains(&note) {
+        notes.push(note);
+    }
 }
 
 #[cfg(test)]
@@ -89,5 +187,28 @@ mod tests {
             ..Settings::default()
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn invalid_settings_fall_back_individually() {
+        let mut notes = Vec::new();
+        let settings = Settings::recover(
+            Some(serde_json::json!({
+                "theme": "dark",
+                "pollIntervalSeconds": 5,
+                "notifications": "yes",
+                "thresholds": [95, 80],
+                "autostart": true,
+                "futureOption": 1
+            })),
+            &mut notes,
+        );
+        assert_eq!(settings.theme, Theme::Dark);
+        assert!(settings.autostart);
+        assert_eq!(settings.poll_interval_seconds, 60);
+        assert!(!settings.notifications);
+        assert_eq!(settings.thresholds, vec![80, 95, 100]);
+        assert!(settings.validate().is_ok());
+        assert_eq!(notes.len(), 3);
     }
 }
