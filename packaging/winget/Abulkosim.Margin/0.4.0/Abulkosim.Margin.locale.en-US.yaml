@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
+PackageIdentifier: Abulkosim.Margin
+PackageVersion: 0.4.0
+PackageLocale: en-US
+Publisher: Abulkosim
+PublisherUrl: https://github.com/Abulkosim
+PublisherSupportUrl: https://github.com/Abulkosim/margin/issues
+PackageName: Margin
+PackageUrl: https://abulkosim.github.io/margin/
+License: MIT
+LicenseUrl: https://github.com/Abulkosim/margin/blob/main/LICENSE
+ShortDescription: Claude and Codex usage at a glance
+Description: Track Claude and Codex usage across multiple accounts. See remaining quota and reset times in the Windows system tray.
+Moniker: margin
+Tags:
+  - claude
+  - codex
+  - usage
+  - menu-bar
+  - tray
+ReleaseNotesUrl: https://github.com/Abulkosim/margin/releases/tag/v0.4.0
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

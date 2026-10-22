@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+
+PackageIdentifier: Abulkosim.Margin
+PackageVersion: 0.4.0
+InstallerType: nullsoft
+Scope: user
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /S
+UpgradeBehavior: install
+ReleaseDate: 2026-10-22
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Abulkosim/margin/releases/download/v0.4.0/Margin_0.4.0_x64-setup.exe
+    InstallerSha256: 532A7CEAE33A20717B86873BD59191FBD5A372FBFB91E0F19E35EA861D9D2814
+ManifestType: installer
+ManifestVersion: 1.12.0
