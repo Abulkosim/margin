@@ -931,6 +931,88 @@ attributes:
         assert!(error.sign_in_command.is_some());
     }
 
+    async fn mount_usage(
+        server: &wiremock::MockServer,
+        with_query: bool,
+        response: wiremock::ResponseTemplate,
+        calls: u64,
+    ) {
+        let mock = wiremock::Mock::given(wiremock::matchers::path("/api/oauth/usage"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer synthetic",
+            ))
+            .and(wiremock::matchers::header(
+                "anthropic-beta",
+                "oauth-2025-04-20",
+            ));
+        let mock = if with_query {
+            mock.and(wiremock::matchers::query_param("cedar_ember", "1"))
+        } else {
+            mock.and(wiremock::matchers::query_param_is_missing("cedar_ember"))
+        };
+        mock.respond_with(response)
+            .expect(calls)
+            .mount(server)
+            .await;
+    }
+
+    async fn fetch_once(server: &wiremock::MockServer) -> Result<(Snapshot, Identity), UsageError> {
+        wiremock::Mock::given(wiremock::matchers::path("/api/oauth/profile"))
+            .respond_with(wiremock::ResponseTemplate::new(503))
+            .mount(server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        write_token(directory.path(), "synthetic");
+        fetch_from(
+            &reqwest::Client::new(),
+            &config_account(directory.path()),
+            &ProfileCache::default(),
+            &server.uri(),
+        )
+        .await
+    }
+
+    fn usage_ok() -> wiremock::ResponseTemplate {
+        wiremock::ResponseTemplate::new(200)
+            .set_body_string(include_str!("../../../fixtures/claude-all-windows.json"))
+    }
+
+    #[tokio::test]
+    async fn rejected_query_retries_once_without_it() {
+        for status in [400, 403] {
+            let server = wiremock::MockServer::start().await;
+            mount_usage(&server, true, wiremock::ResponseTemplate::new(status), 1).await;
+            mount_usage(&server, false, usage_ok(), 1).await;
+            let (snapshot, _) = fetch_once(&server).await.unwrap();
+            assert!(!snapshot.windows.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn query_fallback_is_not_repeated() {
+        let server = wiremock::MockServer::start().await;
+        mount_usage(&server, true, wiremock::ResponseTemplate::new(403), 1).await;
+        mount_usage(&server, false, wiremock::ResponseTemplate::new(403), 1).await;
+        assert_eq!(fetch_once(&server).await.unwrap_err().kind, "auth");
+    }
+
+    #[tokio::test]
+    async fn rate_limit_honours_retry_after_without_query_fallback() {
+        let server = wiremock::MockServer::start().await;
+        mount_usage(
+            &server,
+            true,
+            wiremock::ResponseTemplate::new(429).insert_header("retry-after", "90"),
+            1,
+        )
+        .await;
+        mount_usage(&server, false, usage_ok(), 0).await;
+        let error = fetch_once(&server).await.unwrap_err();
+        assert_eq!(error.kind, "rateLimited");
+        assert_eq!(error.retry_after_seconds, Some(90));
+    }
+
     #[test]
     fn unknown_plan_names_are_not_guessed() {
         assert_eq!(normalize_plan("maximum_trial".into()), "maximum_trial");

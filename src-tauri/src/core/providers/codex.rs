@@ -28,6 +28,14 @@ pub(super) async fn fetch(
     client: &reqwest::Client,
     account: &Account,
 ) -> Result<(Snapshot, Identity), UsageError> {
+    fetch_from(client, account, configured_usage_url).await
+}
+
+async fn fetch_from(
+    client: &reqwest::Client,
+    account: &Account,
+    resolve_url: impl Fn(&Path) -> Result<Url, UsageError>,
+) -> Result<(Snapshot, Identity), UsageError> {
     let AccountSource::ConfigDir { path, .. } = &account.source else {
         return Err(UsageError::new(
             "credentials",
@@ -36,7 +44,7 @@ pub(super) async fn fetch(
     };
     let directory = Path::new(path);
     let credentials = read_credentials(&directory.join("auth.json"), parse_credentials, 2).await?;
-    let url = configured_usage_url(directory)?;
+    let url = resolve_url(directory)?;
     let mut request = client
         .get(url.clone())
         .bearer_auth(&credentials.access_token)
@@ -63,7 +71,7 @@ pub(super) async fn fetch(
     let snapshot = parse_usage(&value)?;
     let current = read_credentials(&directory.join("auth.json"), parse_credentials, 2).await?;
     ensure_same_credentials(&credentials, &current)?;
-    if configured_usage_url(directory)? != url {
+    if resolve_url(directory)? != url {
         return Err(credentials_changed());
     }
     let identity = identity_from_usage(&value, credentials.identity);
@@ -621,5 +629,92 @@ mod tests {
             credentials.identity.email.as_deref(),
             Some("current@example.test")
         );
+    }
+
+    fn config_account(directory: &Path) -> Account {
+        std::fs::write(
+            directory.join("auth.json"),
+            serde_json::to_vec(&json!({"auth_mode": "chatgpt", "tokens": {"access_token": "synthetic", "account_id": "example-account"}})).unwrap(),
+        )
+        .unwrap();
+        Account {
+            id: "fixture-codex".into(),
+            provider: Provider::Codex,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: directory.to_string_lossy().into_owned(),
+                keychain_suffix: None,
+            },
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        }
+    }
+
+    async fn fetch_status(
+        response: wiremock::ResponseTemplate,
+    ) -> Result<(Snapshot, Identity), UsageError> {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::path("/backend-api/wham/usage"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer synthetic",
+            ))
+            .and(wiremock::matchers::header(
+                "chatgpt-account-id",
+                "example-account",
+            ))
+            .respond_with(response)
+            .expect(1)
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        let account = config_account(directory.path());
+        let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
+        fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone())).await
+    }
+
+    #[tokio::test]
+    async fn fetch_reads_usage_with_account_header() {
+        let (snapshot, _) = fetch_status(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(include_str!("../../../fixtures/codex-all-windows.json")),
+        )
+        .await
+        .unwrap();
+        assert!(!snapshot.windows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_rejected_token_reads_as_signed_out() {
+        let error = fetch_status(wiremock::ResponseTemplate::new(401))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, "signedOut");
+        assert!(error.sign_in_command.unwrap().contains("codex login"));
+    }
+
+    #[tokio::test]
+    async fn fetch_rate_limit_honours_retry_after() {
+        let error =
+            fetch_status(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "120"))
+                .await
+                .unwrap_err();
+        assert_eq!(error.kind, "rateLimited");
+        assert_eq!(error.retry_after_seconds, Some(120));
+    }
+
+    #[tokio::test]
+    async fn fetch_server_errors_are_transient() {
+        for status in [500, 502, 503] {
+            let error = fetch_status(wiremock::ResponseTemplate::new(status))
+                .await
+                .unwrap_err();
+            assert_eq!(error.kind, "provider");
+            assert!(error.retry_after_seconds.is_none());
+            assert!(error.sign_in_command.is_none());
+        }
     }
 }
