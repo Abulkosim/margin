@@ -28,6 +28,15 @@ pub enum TrayMetric {
     Weekly,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NotificationPermission {
+    #[default]
+    Unasked,
+    Granted,
+    Denied,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -36,6 +45,8 @@ pub struct Settings {
     pub idle_poll_interval_seconds: u64,
     pub notifications: bool,
     pub thresholds: Vec<u8>,
+    pub notify_on_reset: bool,
+    pub notification_permission: NotificationPermission,
     pub tray_mode: TrayMode,
     pub tray_metric: TrayMetric,
     pub tray_show_percent: bool,
@@ -49,8 +60,10 @@ impl Default for Settings {
             theme: Theme::System,
             poll_interval_seconds: 60,
             idle_poll_interval_seconds: 300,
-            notifications: false,
+            notifications: true,
             thresholds: vec![80, 95, 100],
+            notify_on_reset: false,
+            notification_permission: NotificationPermission::Unasked,
             tray_mode: TrayMode::Pinned,
             tray_metric: TrayMetric::Core,
             tray_show_percent: false,
@@ -121,6 +134,20 @@ impl Settings {
                 "thresholds",
                 defaults.thresholds.clone(),
                 "Alert thresholds",
+                notes,
+            ),
+            notify_on_reset: field(
+                &map,
+                "notifyOnReset",
+                defaults.notify_on_reset,
+                "Reset alerts",
+                notes,
+            ),
+            notification_permission: field(
+                &map,
+                "notificationPermission",
+                defaults.notification_permission,
+                "Notification permission",
                 notes,
             ),
             tray_mode: field(&map, "trayMode", defaults.tray_mode, "Tray account", notes),
@@ -234,7 +261,7 @@ mod tests {
         assert_eq!(settings.theme, Theme::Dark);
         assert!(settings.autostart);
         assert_eq!(settings.poll_interval_seconds, 60);
-        assert!(!settings.notifications);
+        assert!(settings.notifications);
         assert_eq!(settings.thresholds, vec![80, 95, 100]);
         assert!(settings.validate().is_ok());
         assert_eq!(notes.len(), 3);
@@ -288,5 +315,69 @@ mod tests {
         })
         .unwrap();
         assert_eq!(saved["trayShowPercent"], true);
+    }
+
+    #[test]
+    fn notifications_default_on_only_for_new_stores() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            let settings = Settings::recover(value, &mut notes);
+            assert!(settings.notifications);
+            assert!(!settings.notify_on_reset);
+            assert_eq!(settings.thresholds, vec![80, 95, 100]);
+            assert_eq!(
+                settings.notification_permission,
+                NotificationPermission::Unasked
+            );
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "notifications": false, "thresholds": [50, 90] })),
+            &mut notes,
+        );
+        assert!(!settings.notifications);
+        assert_eq!(settings.thresholds, vec![50, 90]);
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn notification_fields_recover_from_bad_values() {
+        let mut notes = Vec::new();
+        let settings = Settings::recover(
+            Some(serde_json::json!({
+                "notifyOnReset": true,
+                "notificationPermission": "denied"
+            })),
+            &mut notes,
+        );
+        assert!(settings.notify_on_reset);
+        assert_eq!(
+            settings.notification_permission,
+            NotificationPermission::Denied
+        );
+        let settings = Settings::recover(
+            Some(serde_json::json!({
+                "notifyOnReset": "sometimes",
+                "notificationPermission": "maybe",
+                "thresholds": [0, 101]
+            })),
+            &mut notes,
+        );
+        assert!(!settings.notify_on_reset);
+        assert_eq!(
+            settings.notification_permission,
+            NotificationPermission::Unasked
+        );
+        assert_eq!(settings.thresholds, vec![80, 95, 100]);
+        assert_eq!(
+            notes,
+            vec![
+                "Reset alerts was reset to its default.",
+                "Notification permission was reset to its default.",
+                "Alert thresholds was reset to its default.",
+            ]
+        );
+        let saved = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(saved["notifyOnReset"], false);
+        assert_eq!(saved["notificationPermission"], "unasked");
     }
 }

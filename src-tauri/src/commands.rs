@@ -227,7 +227,10 @@ pub async fn save_settings(
         })?;
     }
     let mut next = inner.view.clone();
-    next.settings = settings;
+    next.settings = Settings {
+        notification_permission: inner.view.settings.notification_permission,
+        ..settings
+    };
     next.notice = None;
     next.changed();
     if let Err(error) = runtime.persist(&next, &inner.alerts) {

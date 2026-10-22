@@ -1,4 +1,10 @@
-use super::{model::UsageError, notifications, providers, tray};
+use super::{
+    model::UsageError,
+    notifications::{self, AlertKind},
+    providers,
+    settings::NotificationPermission,
+    tray,
+};
 use crate::runtime::{publish, Runtime};
 use std::{
     collections::HashMap,
@@ -8,7 +14,7 @@ use std::{
     },
     time::{Duration, Instant, SystemTime},
 };
-use tauri::{AppHandle, Manager};
+use tauri::{plugin::PermissionState, AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 pub struct Schedule {
@@ -109,6 +115,54 @@ pub fn watch_wake(runtime: Arc<Runtime>) {
     std::mem::forget(observer);
 }
 
+fn permission(
+    state: Option<PermissionState>,
+    previous: NotificationPermission,
+) -> NotificationPermission {
+    match state {
+        Some(PermissionState::Granted) => NotificationPermission::Granted,
+        Some(PermissionState::Denied) => NotificationPermission::Denied,
+        _ => previous,
+    }
+}
+
+async fn sync_permission(app: &AppHandle, runtime: &Runtime) {
+    let previous = runtime
+        .inner
+        .lock()
+        .await
+        .view
+        .settings
+        .notification_permission;
+    let state = if previous == NotificationPermission::Unasked {
+        app.notification().request_permission()
+    } else {
+        app.notification().permission_state()
+    };
+    let next = permission(state.ok(), previous);
+    if next == previous {
+        return;
+    }
+    let mut inner = runtime.inner.lock().await;
+    inner.view.settings.notification_permission = next;
+    inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+    inner.view.changed();
+    let view = inner.view.clone();
+    drop(inner);
+    publish(app, &view);
+}
+
+fn post(app: &AppHandle, account_label: &str, alert: &notifications::Alert) {
+    let mut builder = app
+        .notification()
+        .builder()
+        .title(alert.title(account_label));
+    if let Some(body) = alert.body(chrono::Utc::now()) {
+        builder = builder.body(body);
+    }
+    let _ = builder.show();
+}
+
 pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
     static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
     tauri::async_runtime::spawn(async move {
@@ -175,6 +229,9 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             if !due.is_empty() {
                 publish(&app, &view);
                 last_tray_update = Instant::now();
+                if view.settings.notifications {
+                    sync_permission(&app, &runtime).await;
+                }
             } else if last_tray_update.elapsed() >= Duration::from_secs(5) {
                 tray::update(&app, &view);
                 last_tray_update = Instant::now();
@@ -221,6 +278,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                                 &account.id,
                                 &snapshot,
                                 &thresholds,
+                                chrono::Utc::now(),
                             );
                             let target = &mut inner.view.accounts[index];
                             target.snapshot = Some(snapshot);
@@ -286,22 +344,14 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     let view = inner.view.clone();
                     drop(inner);
                     publish(&app, &view);
-                    if view.settings.notifications {
-                        for alert in alerts {
-                            let body = if alert.threshold == 100 {
-                                format!("{} · {} limit reached.", account.label, alert.window_label)
-                            } else {
-                                format!(
-                                    "{} · {} usage reached {}%.",
-                                    account.label, alert.window_label, alert.threshold
-                                )
-                            };
-                            let _ = app
-                                .notification()
-                                .builder()
-                                .title("Margin")
-                                .body(body)
-                                .show();
+                    let settings = &view.settings;
+                    if settings.notifications
+                        && settings.notification_permission == NotificationPermission::Granted
+                    {
+                        for alert in alerts.iter().filter(|alert| {
+                            settings.notify_on_reset || alert.kind != AlertKind::Reset
+                        }) {
+                            post(&app, &account.label, alert);
                         }
                     }
                 });
@@ -317,6 +367,16 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permission_answer_is_kept_until_the_system_decides() {
+        use NotificationPermission::*;
+        assert_eq!(permission(Some(PermissionState::Granted), Unasked), Granted);
+        assert_eq!(permission(Some(PermissionState::Denied), Granted), Denied);
+        assert_eq!(permission(Some(PermissionState::Granted), Denied), Granted);
+        assert_eq!(permission(Some(PermissionState::Prompt), Unasked), Unasked);
+        assert_eq!(permission(None, Denied), Denied);
+    }
 
     #[test]
     fn rate_limit_backoff_respects_retry_after() {

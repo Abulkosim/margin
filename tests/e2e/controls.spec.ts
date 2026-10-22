@@ -425,3 +425,67 @@ test('tooltips support focus and Escape without native title bubbles', async ({ 
   await page.getByRole('tab', { name: /^Accounts/ }).click()
   await expect(page.locator('[title]')).toHaveCount(0)
 })
+
+function notificationState(settings: Partial<AppState['settings']> = {}): AppState {
+  const state = createDemoState(null)
+  return { ...state, settings: { ...state.settings, notifications: true, ...settings } }
+}
+
+async function savedSettings(page: Page): Promise<AppState['settings'][]> {
+  return page.evaluate(() => (window.__CONTROL_TEST__?.saved ?? []) as AppState['settings'][])
+}
+
+test('threshold chips toggle and save sorted thresholds', async ({ page }) => {
+  await installDesktopBridge(page, { state: notificationState(), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const chip = (value: number) => page.getByRole('button', { name: `Notify at ${value}% used`, exact: true })
+  await expect(page.locator('.threshold-chip')).toHaveText(['50%', '80%', '90%', '95%', '100%'])
+  await expect(chip(80)).toHaveAttribute('aria-pressed', 'true')
+  await expect(chip(50)).toHaveAttribute('aria-pressed', 'false')
+  await chip(50).click()
+  await expect(chip(50)).toHaveAttribute('aria-pressed', 'true')
+  await chip(95).click()
+  await expect(chip(95)).toHaveAttribute('aria-pressed', 'false')
+  await chip(90).click()
+  await expect(chip(90)).toHaveAttribute('aria-pressed', 'true')
+  expect((await savedSettings(page)).map(settings => settings.thresholds)).toEqual([[50, 80, 95, 100], [50, 80, 100], [50, 80, 90, 100]])
+})
+
+test('the last selected threshold cannot be cleared', async ({ page }) => {
+  await installDesktopBridge(page, { state: notificationState({ thresholds: [95] }), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const only = page.getByRole('button', { name: 'Notify at 95% used', exact: true })
+  await expect(only).toHaveAttribute('aria-pressed', 'true')
+  await expect(only).toBeDisabled()
+  await page.getByRole('button', { name: 'Notify at 80% used', exact: true }).click()
+  await expect(only).toBeEnabled()
+  expect((await savedSettings(page)).map(settings => settings.thresholds)).toEqual([[80, 95]])
+})
+
+test('reset alerts save and follow the usage alerts switch', async ({ page }) => {
+  await installDesktopBridge(page, { state: notificationState(), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const reset = page.getByRole('switch', { name: 'Notify when limits reset', exact: true })
+  await expect(reset).toHaveAttribute('aria-checked', 'false')
+  await reset.click()
+  await expect(reset).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('switch', { name: 'Usage alerts', exact: true }).click()
+  await expect(reset).toBeDisabled()
+  const saved = await savedSettings(page)
+  expect(saved).toHaveLength(2)
+  expect(saved[0]).toMatchObject({ notifyOnReset: true, notifications: true })
+  expect(saved[1]).toMatchObject({ notifyOnReset: true, notifications: false })
+  await expect(page.getByText(/Notifications are off in/)).toHaveCount(0)
+})
+
+test('denied notifications explain where to turn them on without a dead button', async ({ page }) => {
+  await installDesktopBridge(page, { state: notificationState({ notificationPermission: 'denied' }), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const note = page.getByRole('status').filter({ hasText: /Notifications are off in (System|Windows) Settings\./ })
+  await expect(note).toBeVisible()
+  await expect(note.getByRole('button')).toHaveCount(0)
+})

@@ -8,6 +8,7 @@ use runtime::Runtime;
 use std::{sync::Arc, time::Instant};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_notification::NotificationExt;
 
 pub fn run() {
     tauri::Builder::default()
@@ -48,6 +49,12 @@ pub fn run() {
             let runtime = Arc::new(Runtime::new(path).map_err(std::io::Error::other)?);
             app.manage(runtime.clone());
             tray::setup(app.handle())?;
+            let opener = app.handle().clone();
+            app.notification().on_action(move |performed| {
+                if performed.action_id() == "tap" {
+                    tray::show(&opener, false);
+                }
+            })?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Ok(enabled) = handle.autolaunch().is_enabled() {

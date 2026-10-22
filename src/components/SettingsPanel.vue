@@ -5,6 +5,7 @@ import { version } from '../../package.json'
 import { accountIdSchema, providerSchema, type Account, type AccountId, type Provider, type Settings } from '../lib/model'
 import { accountSource, providerName } from '../lib/format'
 import AppIcon from './AppIcon.vue'
+import NotificationSettings from './settings/NotificationSettings.vue'
 import UpdateSettings from './settings/UpdateSettings.vue'
 import type { UpdateState } from '../lib/updater'
 import AppSelect from './ui/AppSelect.vue'
@@ -119,14 +120,6 @@ async function setMetric(value: string): Promise<void> {
   if (metric) await patchSettings({ trayMetric: metric.value })
 }
 
-async function toggleThreshold(value: number): Promise<void> {
-  const thresholds = props.settings.thresholds.includes(value)
-    ? props.settings.thresholds.filter(threshold => threshold !== value)
-    : [...props.settings.thresholds, value].sort((a, b) => a - b)
-  if (!thresholds.length) return
-  await patchSettings({ thresholds })
-}
-
 async function openAdd(): Promise<void> {
   adding.value = true
   formError.value = null
@@ -220,11 +213,7 @@ async function confirmRemove(): Promise<void> {
             <AppSelect id="idle-interval" :model-value="String(settings.idlePollIntervalSeconds)" :options="idleOptions" :disabled="busy" @update:model-value="setIntervalSetting($event, 'idlePollIntervalSeconds')"/>
           </div>
         </section>
-        <section class="settings-section">
-          <h2>Notifications</h2>
-          <div class="setting-row"><span id="notification-label" class="setting-label">Usage alerts</span><AppSwitch :model-value="settings.notifications" aria-labelledby="notification-label" :disabled="busy" @update:model-value="patchSettings({ notifications: $event })"/></div>
-          <div class="threshold-options" :class="{ 'is-disabled': !settings.notifications }"><span>Notify at</span><button v-for="threshold in [80, 95, 100]" :key="threshold" class="threshold-chip" :class="{ selected: settings.thresholds.includes(threshold) }" :aria-pressed="settings.thresholds.includes(threshold)" :aria-label="`Notify at ${threshold}% used`" :disabled="busy || !settings.notifications" @click="toggleThreshold(threshold)"><AppIcon v-if="settings.thresholds.includes(threshold)" name="check" :size="11"/>{{ threshold }}%</button><span>used</span></div>
-        </section>
+        <NotificationSettings :settings="settings" :busy="busy" @change="patchSettings"/>
         <section class="settings-section">
           <h2>Startup</h2>
           <div class="setting-row"><span id="autostart-label" class="setting-label">Launch at login</span><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
