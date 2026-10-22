@@ -44,10 +44,10 @@ const trayOptions = computed(() => [
   ...props.accounts.map(account => ({ value: account.id, label: account.label, description: providerName(account.provider) })),
 ])
 const metricOptions: { value: Settings['trayMetric']; label: string }[] = [
-  { value: 'core', label: 'Session and weekly' },
-  { value: 'session', label: 'Session only' },
-  { value: 'weekly', label: 'Weekly only' },
-  { value: 'all', label: 'Any window' },
+  { value: 'core', label: 'Session + weekly' },
+  { value: 'session', label: 'Session' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'all', label: 'Any limit' },
 ]
 const layoutOptions: { value: Settings['overviewLayout']; label: string }[] = [
   { value: 'cards', label: 'Cards' },
