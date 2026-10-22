@@ -13,6 +13,7 @@ See remaining quota and reset times across multiple accounts, right from your me
 <p>
   <img src="docs/images/overview-dark.png" alt="Margin dark browser preview showing sample Claude and Codex accounts" width="300" />
   <img src="docs/images/overview-light.png" alt="Margin light browser preview showing sample Claude and Codex accounts" width="300" />
+  <img src="docs/images/compact-light.png" alt="Margin light compact overview preview with one row per sample account" width="300" />
 </p>
 
 Browser previews with sample accounts. [Settings preview](docs/images/settings-light.png).
