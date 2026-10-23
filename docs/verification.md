@@ -2,7 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.5.0
+## Current release: v0.5.1
+
+**[v0.5.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.1).** Published 2026-10-23 04:53 UTC; verified on 2026-10-22/23 on macOS 26.6.2. A layout patch: the popover opens straight on the accounts, the title block is gone, and provider filters sit in the header and only appear when both Claude and Codex accounts exist.
+
+- `pnpm typecheck`, 60 frontend unit tests, 164 Chromium/WebKit browser cases, 164 Rust tests, formatting, and strict Clippy passed locally and in [main CI](https://github.com/Abulkosim/margin/actions/runs/39816861155) on `97fe546`. The [release build](https://github.com/Abulkosim/margin/actions/runs/39818075986) passed for the tag, including Windows x64.
+- New browser tests assert the first account card starts under 72 CSS pixels from the top (it was about 206) and that the provider filters are absent with a single provider. The header shrinks and scrolls its filters on narrow Linux WebKit fonts, which had overflowed 360 px in CI; the expand re-measure test now polls instead of asserting once.
+- All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.5.1 installed for x86_64 and arm64. `latest.json` reports 0.5.1 and still points at the `Abulkosim/usagebar` slug; the public latest endpoint serves it.
+- Attestations were not re-verified from this network (see v0.5.0). Native checks remain pending: in-app update of the owner's Mac, the compact header on a real menu bar, notifications, and Windows.
+
+## Previous release: v0.5.0
 
 **[v0.5.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.0).** Published 2026-10-22 16:19 UTC; verified on 2026-10-22 on macOS 26.6.2. Adds tray metric selection, a more legible tray ring, pace lines, model-limit chips, read-only reset grants, notifications on by default, absolute reset times, a native folder picker with an ignore list, daily update checks, and a compact overview with a popover that fits its content.
 
