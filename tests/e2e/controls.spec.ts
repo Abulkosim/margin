@@ -125,7 +125,7 @@ test('tray metric defaults to session and weekly and saves the choice', async ({
   await expect(metric).toBeFocused()
   const saved = await page.evaluate(() => window.__CONTROL_TEST__?.saved ?? [])
   expect(saved).toHaveLength(1)
-  expect(saved[0]).toMatchObject({ trayMetric: 'weekly', trayMode: 'pinned' })
+  expect(saved[0]).toMatchObject({ trayMetric: 'weekly', trayMode: 'lowest' })
 })
 
 test.describe('macOS tray percentage', () => {

@@ -95,7 +95,7 @@ export const defaultSettings: Settings = {
   thresholds: [80, 95, 100],
   notifyOnReset: false,
   notificationPermission: 'unasked',
-  trayMode: 'pinned',
+  trayMode: 'lowest',
   trayMetric: 'core',
   trayShowPercent: false,
   pinnedAccountId: null,
