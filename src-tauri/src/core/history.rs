@@ -364,11 +364,12 @@ fn save(path: &Path, saved: &SavedHistory) -> Result<(), String> {
             .set_permissions(fs::Permissions::from_mode(0o600))
             .map_err(|_| SAVE_ERROR)?;
     }
-    serde_json::to_writer(&mut file, saved).map_err(|_| SAVE_ERROR)?;
-    file.flush().map_err(|_| SAVE_ERROR)?;
-    if file.as_file().metadata().map_err(|_| SAVE_ERROR)?.len() > MAX_BYTES {
+    let bytes = serde_json::to_vec(saved).map_err(|_| SAVE_ERROR)?;
+    if bytes.len() as u64 > MAX_BYTES {
         return Err(SAVE_ERROR.into());
     }
+    file.write_all(&bytes).map_err(|_| SAVE_ERROR)?;
+    file.flush().map_err(|_| SAVE_ERROR)?;
     file.as_file().sync_all().map_err(|_| SAVE_ERROR)?;
     file.persist(path).map_err(|_| SAVE_ERROR)?;
     Ok(())
