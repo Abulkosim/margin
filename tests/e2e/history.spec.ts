@@ -194,3 +194,50 @@ test('pace line stays hidden with under 30 minutes of history', async ({ page })
   await expect(page.locator('.quota-window')).toHaveCount(2)
   await expect(page.locator('.quota-pace')).toHaveCount(0)
 })
+
+test('history is not loaded while the popover is hidden and catches up when shown', async ({ page }) => {
+  const state = createDemoState(null)
+  state.accounts = state.accounts.slice(0, 1)
+  await page.addInitScript(state => {
+    let hidden = false
+    let requests = 0
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' })
+    window.addEventListener('set-hidden', event => {
+      if (!(event instanceof CustomEvent)) return
+      hidden = event.detail
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    Object.defineProperty(globalThis, '__TAURI__', { value: {
+      core: { invoke: async (command: string) => {
+        if (command === 'get_state') return state
+        if (command === 'get_account_history') {
+          document.documentElement.dataset.historyRequests = String(++requests)
+          return { accountId: state.accounts[0]?.id, points: [], error: null }
+        }
+        return null
+      } }, event: { listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
+        const listener = (event: Event): void => { if (event instanceof CustomEvent) handler({ payload: event.detail }) }
+        window.addEventListener(name, listener)
+        return () => window.removeEventListener(name, listener)
+      } },
+    } })
+  }, state)
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '1')
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('set-hidden', { detail: true })))
+  const account = state.accounts[0]
+  if (!account?.snapshot) throw new Error('Missing fixture')
+  for (const label of ['Renamed', 'Renamed again']) {
+    account.label = label
+    account.snapshot.fetchedAt = new Date(Date.parse(account.snapshot.fetchedAt) + 60_000).toISOString()
+    state.revision++
+    await page.evaluate(state => window.dispatchEvent(new CustomEvent('state_changed', { detail: state })), state)
+    await expect(page.getByRole('article', { name: `${label}, Claude` })).toBeVisible()
+  }
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '1')
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('set-hidden', { detail: false })))
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '2')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Usage history' }).getByText('No history yet.')).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '2')
+})

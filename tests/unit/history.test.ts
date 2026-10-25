@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountHistorySchema, historyReadings, historySegments, observedHourChange, historyWindows, type HistoryPoint } from '../../src/lib/history.ts'
+import { accountHistorySchema, maxHistoryPoints, historyReadings, historySegments, observedHourChange, historyWindows, type HistoryPoint } from '../../src/lib/history.ts'
 
 const time = Date.parse('2026-10-17T10:00:00Z')
 const point = (minutes: number, overrides: Partial<HistoryPoint> = {}): HistoryPoint => ({
@@ -14,7 +14,7 @@ test('history boundary rejects malformed, oversized, nonfinite and impossible re
   for (const invalid of [point(0, { usedPercent: 101 }), point(0, { usedPercent: Infinity }), point(0, { at: 'yesterday' }), point(0, { windowSeconds: -1 })]) {
     assert.equal(accountHistorySchema.safeParse({ ...value, points: [invalid] }).success, false)
   }
-  assert.equal(accountHistorySchema.safeParse({ ...value, points: Array.from({ length: 10_001 }, () => point(0)) }).success, false)
+  assert.equal(accountHistorySchema.safeParse({ ...value, points: Array.from({ length: maxHistoryPoints + 1 }, () => point(0)) }).success, false)
 })
 
 test('history sorts and deduplicates each window without treating another window’s extra reading as a gap', () => {
