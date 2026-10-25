@@ -581,7 +581,7 @@ fn show_on_main_thread(app: &AppHandle, settings: bool) {
         tauri::async_runtime::spawn(async move {
             let view = runtime.inner.lock().await.view.clone();
             crate::runtime::publish(&handle, &view);
-            poller::refresh(&runtime).await;
+            poller::refresh_on_open(&runtime).await;
         });
     }
 }
