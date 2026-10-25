@@ -76,6 +76,40 @@ pub struct Visibility {
     ring: Mutex<Option<(RingKey, Vec<u8>)>>,
     pub placement: Mutex<PopoverPlacement>,
     content_height: Mutex<Option<f64>>,
+    seen: Mutex<Seen>,
+}
+
+#[derive(Default)]
+struct Seen {
+    shown: bool,
+    hidden_at: Option<Instant>,
+}
+
+impl Seen {
+    fn show(&mut self, visible: bool, now: Instant) -> Option<u64> {
+        let hidden_for = match (self.shown, visible, self.hidden_at) {
+            (false, _, _) => None,
+            (true, true, _) => Some(0),
+            (true, false, hidden_at) => hidden_at.map(|hidden_at| {
+                u64::try_from(now.saturating_duration_since(hidden_at).as_millis())
+                    .unwrap_or(u64::MAX)
+            }),
+        };
+        self.shown = true;
+        hidden_for
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PopoverShown {
+    hidden_for_ms: Option<u64>,
+}
+
+pub fn mark_hidden(app: &AppHandle) {
+    if let Ok(mut seen) = app.state::<Visibility>().seen.lock() {
+        seen.hidden_at = Some(Instant::now());
+    }
 }
 
 const POPOVER_WIDTH: f64 = 420.0;
@@ -585,12 +619,20 @@ fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
 
 fn show_on_main_thread(app: &AppHandle, settings: bool) {
     if let Some(window) = app.get_webview_window("main") {
+        let visible = window.is_visible().unwrap_or(false);
         place(app, &window);
         let _ = window.show();
         let _ = window.set_focus();
         if settings {
             let _ = app.emit("open_settings", ());
         }
+        let hidden_for_ms = app
+            .state::<Visibility>()
+            .seen
+            .lock()
+            .ok()
+            .and_then(|mut seen| seen.show(visible, Instant::now()));
+        let _ = app.emit_to("main", "popover_shown", PopoverShown { hidden_for_ms });
         let runtime = app.state::<Arc<Runtime>>().inner().clone();
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -656,7 +698,9 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
                     .is_some_and(|time| time.elapsed().as_millis() < 250);
                 if let Some(window) = app.get_webview_window("main") {
                     if window.is_visible().unwrap_or(false) || blurred {
-                        let _ = window.hide();
+                        if window.hide().is_ok() {
+                            mark_hidden(app);
+                        }
                     } else {
                         show(app, false);
                     }
@@ -921,6 +965,20 @@ mod tests {
             "Margin · Personal · usage unavailable"
         );
         assert_eq!(tooltip(None, None, false, now), "Margin · Add an account");
+    }
+
+    #[test]
+    fn popover_shown_reports_time_since_last_hide() {
+        let start = Instant::now();
+        let mut seen = Seen::default();
+        assert_eq!(seen.show(false, start), None);
+        assert_eq!(seen.show(true, start), Some(0));
+        seen.hidden_at = Some(start);
+        assert_eq!(
+            seen.show(false, start + std::time::Duration::from_millis(1500)),
+            Some(1500)
+        );
+        assert_eq!(seen.show(true, start), Some(0));
     }
 
     #[test]

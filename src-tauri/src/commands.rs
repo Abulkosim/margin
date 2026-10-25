@@ -294,7 +294,9 @@ pub fn hide_window(app: AppHandle) -> Result<(), String> {
     app.get_webview_window("main")
         .ok_or("Window is unavailable.")?
         .hide()
-        .map_err(|_| "Could not close the popover.".into())
+        .map_err(|_| "Could not close the popover.")?;
+    crate::core::tray::mark_hidden(&app);
+    Ok(())
 }
 
 #[cfg(test)]
