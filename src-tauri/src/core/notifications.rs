@@ -1,5 +1,5 @@
 use super::model::{Snapshot, UsageWindow};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -48,16 +48,49 @@ impl Alert {
         match self.kind {
             AlertKind::Threshold(100) => format!("{account_label} · {window} limit reached"),
             AlertKind::Threshold(threshold) => {
-                format!("{account_label} · {window} {threshold}% used")
+                format!("{account_label} · {window} {}% left", 100 - threshold)
             }
             AlertKind::Reset => format!("{account_label} · {window} limit reset"),
         }
     }
 
     pub fn body(&self, now: DateTime<Utc>) -> Option<String> {
-        let milliseconds = (parse(self.resets_at.as_ref())? - now).num_milliseconds();
-        (milliseconds > 0).then(|| format!("Resets in {}", short_duration(milliseconds)))
+        self.body_in(&Local, now)
     }
+
+    fn body_in<Tz: TimeZone>(&self, zone: &Tz, now: DateTime<Utc>) -> Option<String>
+    where
+        Tz::Offset: std::fmt::Display,
+    {
+        let reset = parse(self.resets_at.as_ref())?;
+        let milliseconds = (reset - now).num_milliseconds();
+        (milliseconds > 0).then(|| {
+            format!(
+                "Resets in {} · {}",
+                short_duration(milliseconds),
+                clock_in(zone, reset, now)
+            )
+        })
+    }
+}
+
+pub fn reset_clock(at: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    clock_in(&Local, at, now)
+}
+
+fn clock_in<Tz: TimeZone>(zone: &Tz, at: DateTime<Utc>, now: DateTime<Utc>) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let local = at.with_timezone(zone);
+    let pattern = if local.date_naive() == now.with_timezone(zone).date_naive() {
+        "%H:%M"
+    } else if at - now < chrono::Duration::days(6) {
+        "%a %H:%M"
+    } else {
+        "%b %-d %H:%M"
+    };
+    local.format(pattern).to_string()
 }
 
 fn short_duration(milliseconds: i64) -> String {
@@ -305,8 +338,16 @@ mod tests {
             kind: AlertKind::Threshold(95),
             resets_at: Some(RESET.into()),
         };
-        assert_eq!(alert.title("Personal"), "Personal · Session 95% used");
-        assert_eq!(alert.body(now()).as_deref(), Some("Resets in 1h 20m"));
+        assert_eq!(alert.title("Personal"), "Personal · Session 5% left");
+        assert_eq!(
+            alert.body_in(&Utc, now()).as_deref(),
+            Some("Resets in 1h 20m · Fri 00:00")
+        );
+        let early = Alert {
+            kind: AlertKind::Threshold(80),
+            ..alert.clone()
+        };
+        assert_eq!(early.title("Personal"), "Personal · Session 20% left");
         let full = Alert {
             kind: AlertKind::Threshold(100),
             ..alert.clone()
@@ -320,7 +361,25 @@ mod tests {
         assert_eq!(reset.title("Personal"), "Personal · Session limit reset");
         assert_eq!(reset.body(now()), None);
         assert_eq!(short_duration(30_000), "<1m");
+        assert_eq!(reset.body_in(&Utc, now()), None);
         assert_eq!(short_duration(90 * 3_600_000), "3d 18h");
+    }
+
+    #[test]
+    fn reset_clock_names_the_day_only_when_needed() {
+        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let now = at("2099-12-31T10:00:00Z");
+        assert_eq!(clock_in(&Utc, at("2099-12-31T16:30:00Z"), now), "16:30");
+        assert_eq!(clock_in(&Utc, at("2100-01-01T09:05:00Z"), now), "Fri 09:05");
+        assert_eq!(
+            clock_in(&Utc, at("2100-01-08T09:05:00Z"), now),
+            "Jan 8 09:05"
+        );
+        let east = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+        assert_eq!(
+            clock_in(&east, at("2099-12-31T16:30:00Z"), now),
+            "Fri 01:30"
+        );
     }
 
     #[test]
