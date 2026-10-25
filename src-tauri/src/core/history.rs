@@ -237,7 +237,7 @@ fn reconcile(entry: &mut Entry, account: &Account) -> bool {
     };
     if !same_identity
         || entry.saved.provider != account.provider
-        || entry.saved.source != account.source
+        || !same_source(&entry.saved.source, &account.source)
     {
         entry.saved = empty(account);
         entry.gap = true;
@@ -250,8 +250,19 @@ fn reconcile(entry: &mut Entry, account: &Account) -> bool {
             entry.gap = true;
         }
         entry.saved.identity = current.clone();
+        entry.saved.source = account.source.clone();
     }
     true
+}
+
+fn same_source(saved: &AccountSource, current: &AccountSource) -> bool {
+    match (saved, current) {
+        (
+            AccountSource::ConfigDir { path: before, .. },
+            AccountSource::ConfigDir { path: now, .. },
+        ) => before == now,
+        _ => saved == current,
+    }
 }
 
 fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) {
@@ -492,6 +503,35 @@ mod tests {
         assert_eq!(points.len(), MAX_POINTS - 1);
         prune(&mut points, at(10_200) + Duration::days(8));
         assert!(points.is_empty());
+    }
+
+    #[test]
+    fn linking_a_keychain_item_keeps_the_folder_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let mut folder = account(0, 10.0);
+        folder.provider = Provider::Claude;
+        store.record(&folder, 60, at(0));
+        let path = match &folder.source {
+            AccountSource::ConfigDir { path, .. } => path.clone(),
+            AccountSource::Keychain => unreachable!(),
+        };
+        folder.source = AccountSource::ConfigDir {
+            path: path.clone(),
+            keychain_suffix: Some("0123abcd".into()),
+        };
+        folder.snapshot.as_mut().unwrap().fetched_at = at(60).to_rfc3339();
+        store.record(&folder, 60, at(60));
+        assert_eq!(store.get(&folder, at(60)).points.len(), 2);
+        drop(store);
+        let mut store = HistoryStore::new(directory.path().into());
+        folder.source = AccountSource::ConfigDir {
+            path,
+            keychain_suffix: None,
+        };
+        assert_eq!(store.get(&folder, at(60)).points.len(), 2);
+        folder.source = AccountSource::Keychain;
+        assert!(store.get(&folder, at(60)).points.is_empty());
     }
 
     #[test]
