@@ -31,3 +31,8 @@ test('daily update checks default on and older settings parse with them on', () 
   assert.equal(settingsSchema.parse({ ...defaultSettings, autoCheckUpdates: false }).autoCheckUpdates, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, autoCheckUpdates: 'daily' }).success, false)
 })
+
+test('new installs order accounts by urgency', () => {
+  assert.equal(defaultSettings.accountOrder, 'urgency')
+  assert.equal(settingsSchema.parse({ ...defaultSettings, accountOrder: 'added' }).accountOrder, 'added')
+})

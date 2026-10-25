@@ -134,6 +134,24 @@ export function signedOutMessage(account: Account, now: number): string | null {
   return error.signInCommand ? `${status}. Run:` : `${status}. Sign in with the ${providerName(account.provider)} CLI, then refresh.`
 }
 
+export function orderAccounts(accounts: Account[], settings: Settings, now: number, connectionInterrupted = false): Account[] {
+  if (settings.accountOrder === 'added') return accounts
+  const pinned = settings.trayMode === 'pinned' ? settings.pinnedAccountId : null
+  const rank = (account: Account): [number, number] => {
+    if (account.id === pinned) return [0, 0]
+    const { session, weekly } = coreSummary(account.snapshot?.windows ?? [])
+    const core = [session, weekly].filter(window => window !== null)
+    if (!core.length || accountIsStale(account, settings, now, connectionInterrupted)) return [2, 0]
+    return [1, Math.min(...core.map(window => remainingPercent(window.usedPercent)))]
+  }
+  const ranks = new Map(accounts.map(account => [account.id, rank(account)]))
+  return [...accounts].sort((a, b) => {
+    const [groupA, valueA] = ranks.get(a.id) ?? [2, 0]
+    const [groupB, valueB] = ranks.get(b.id) ?? [2, 0]
+    return groupA - groupB || valueA - valueB
+  })
+}
+
 export function resetClock(resetsAt: string | null, now: number): string | null {
   if (!resetsAt) return null
   const time = Date.parse(resetsAt)

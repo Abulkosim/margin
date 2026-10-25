@@ -5,6 +5,7 @@ export const accountIdSchema = z.string().min(1).brand<'AccountId'>()
 export const settingsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']),
   overviewLayout: z.enum(['cards', 'compact']).default('cards'),
+  accountOrder: z.enum(['urgency', 'added']).default('urgency'),
   pollIntervalSeconds: z.number().int().min(30).max(3600),
   idlePollIntervalSeconds: z.number().int().min(30).max(86400),
   notifications: z.boolean(),
@@ -62,6 +63,7 @@ export const accountSchema = z.object({
   }).nullable(),
   refreshing: z.boolean(),
 })
+export const popoverShownSchema = z.object({ hiddenForMs: z.number().nonnegative().nullable() })
 export const appStateSchema = z.object({
   revision: z.number().int().nonnegative(),
   accounts: z.array(accountSchema),
@@ -81,10 +83,12 @@ export type UsageWindow = z.infer<typeof usageWindowSchema>
 export type ResetGrants = z.infer<typeof resetGrantsSchema>
 export type WindowScope = NonNullable<UsageWindow['scope']>
 export type AppState = z.infer<typeof appStateSchema>
+export type PopoverShown = z.infer<typeof popoverShownSchema>
 
 export const defaultSettings: Settings = {
   theme: 'system',
   overviewLayout: 'cards',
+  accountOrder: 'urgency',
   pollIntervalSeconds: 60,
   idlePollIntervalSeconds: 300,
   notifications: true,
