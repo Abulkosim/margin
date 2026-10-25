@@ -125,12 +125,26 @@ watch([fitsContent, compact, () => state.value.accounts.length], () => { void ne
 watch(compact, () => { expandedId.value = null })
 
 let settingsRequestedAt = Number.NEGATIVE_INFINITY
+let pickingFolder = false
+let folderPickEndedAt = Number.NEGATIVE_INFINITY
+
+async function pickFolder(provider: Provider): Promise<string | null> {
+  pickingFolder = true
+  try {
+    return await chooseFolder(provider)
+  } finally {
+    pickingFolder = false
+    folderPickEndedAt = Date.now()
+  }
+}
 
 function onPopoverShown(payload: unknown): void {
   const result = popoverShownSchema.safeParse(payload)
   if (!result.success) return
   const { hiddenForMs } = result.data
   if (hiddenForMs !== null && hiddenForMs < 60_000) return
+  if (pickingFolder || (hiddenForMs !== null && Date.now() - folderPickEndedAt < hiddenForMs + 1000)) return
+  now.value = Date.now()
   sortAccounts()
   expandedId.value = null
   if (performance.now() - settingsRequestedAt > 1000) page.value = 'overview'
@@ -295,7 +309,7 @@ onUnmounted(() => {
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/><button v-if="showsAttention" class="text-button attention-button" @click="showAttention">{{ status }}</button><template v-else>{{ status }}</template></span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
-        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="chooseFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
+        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
         <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
       </div>

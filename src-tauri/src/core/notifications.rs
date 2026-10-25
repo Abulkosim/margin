@@ -40,6 +40,7 @@ pub struct Alert {
     pub window_label: String,
     pub kind: AlertKind,
     pub resets_at: Option<String>,
+    pub used_percent: f64,
 }
 
 impl Alert {
@@ -48,7 +49,10 @@ impl Alert {
         match self.kind {
             AlertKind::Threshold(100) => format!("{account_label} · {window} limit reached"),
             AlertKind::Threshold(threshold) => {
-                format!("{account_label} · {window} {}% left", 100 - threshold)
+                let left = (100.0 - self.used_percent)
+                    .floor()
+                    .clamp(0.0, f64::from(100 - threshold));
+                format!("{account_label} · {window} {left}% left")
             }
             AlertKind::Reset => format!("{account_label} · {window} limit reset"),
         }
@@ -166,6 +170,7 @@ pub fn observe(
             window_label: window.label.clone(),
             kind,
             resets_at: window.resets_at.clone(),
+            used_percent: window.used_percent,
         };
         // A missing reset cannot prove a new period; percentage drops never rearm alerts.
         match memory.get_mut(&key) {
@@ -337,14 +342,21 @@ mod tests {
             window_label: "Session".into(),
             kind: AlertKind::Threshold(95),
             resets_at: Some(RESET.into()),
+            used_percent: 95.0,
         };
         assert_eq!(alert.title("Personal"), "Personal · Session 5% left");
+        let jumped = Alert {
+            used_percent: 97.4,
+            ..alert.clone()
+        };
+        assert_eq!(jumped.title("Personal"), "Personal · Session 2% left");
         assert_eq!(
             alert.body_in(&Utc, now()).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let early = Alert {
             kind: AlertKind::Threshold(80),
+            used_percent: 80.0,
             ..alert.clone()
         };
         assert_eq!(early.title("Personal"), "Personal · Session 20% left");

@@ -309,12 +309,14 @@ fn stale(account: &Account, state: &AppState) -> bool {
 
 fn selected(state: &AppState) -> Option<&Account> {
     if state.settings.tray_mode == TrayMode::Pinned {
-        return state
+        if let Some(account) = state
             .settings
             .pinned_account_id
             .as_ref()
             .and_then(|id| state.accounts.iter().find(|account| &account.id == id))
-            .or_else(|| state.accounts.first());
+        {
+            return Some(account);
+        }
     }
     state
         .accounts

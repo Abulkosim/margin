@@ -3,7 +3,7 @@ use crate::{
         accounts,
         model::{Account, Provider},
         poller,
-        settings::{OverviewLayout, Settings},
+        settings::{OverviewLayout, Settings, TrayMode},
     },
     runtime::{publish, AppState, Runtime},
 };
@@ -128,6 +128,7 @@ fn remove(state: &mut AppState, id: &str) -> Result<(), String> {
     state.accounts.retain(|account| account.id != id);
     if state.settings.pinned_account_id.as_deref() == Some(id) {
         state.settings.pinned_account_id = None;
+        state.settings.tray_mode = TrayMode::Lowest;
     }
     Ok(())
 }
@@ -302,10 +303,7 @@ pub fn hide_window(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{
-        model::{AccountSource, Identity},
-        settings::TrayMode,
-    };
+    use crate::core::model::{AccountSource, Identity};
 
     fn account(id: &str) -> Account {
         Account {
@@ -374,7 +372,7 @@ mod tests {
         assert_eq!(state.settings.pinned_account_id.as_deref(), Some("a"));
         remove(&mut state, "a").unwrap();
         assert_eq!(state.settings.pinned_account_id, None);
-        assert_eq!(state.settings.tray_mode, TrayMode::Pinned);
+        assert_eq!(state.settings.tray_mode, TrayMode::Lowest);
         assert!(remove(&mut state, "a").is_err());
     }
 }
