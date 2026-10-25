@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { accountIdSchema, type Account, type UsageWindow } from './model.ts'
 
+export const maxHistoryPoints = 80_000
 export const historyPointSchema = z.object({
   windowId: z.string().min(1),
   at: z.string().datetime({ offset: true }),
@@ -11,7 +12,7 @@ export const historyPointSchema = z.object({
 })
 export const accountHistorySchema = z.object({
   accountId: accountIdSchema,
-  points: z.array(historyPointSchema).max(10_000),
+  points: z.array(historyPointSchema).max(maxHistoryPoints),
   error: z.string().nullable(),
 })
 export type HistoryPoint = z.infer<typeof historyPointSchema>

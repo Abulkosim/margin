@@ -8,8 +8,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MAX_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_POINTS: usize = 10_000;
+const MAX_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_POINTS: usize = 80_000;
+const MAX_WINDOW_POINTS: usize = 10_240;
 const READ_ERROR: &str = "History could not be read. Current usage is still available.";
 const IDENTITY_ERROR: &str = "History is paused until account identity is available.";
 const SAVE_ERROR: &str = "History could not be saved. Current usage is still available.";
@@ -52,6 +53,7 @@ struct Entry {
     last_observed: Option<DateTime<Utc>>,
     present: HashSet<String>,
     last_percent: HashMap<String, f64>,
+    dirty: bool,
 }
 
 pub struct HistoryStore {
@@ -70,11 +72,12 @@ impl HistoryStore {
     fn entry(&mut self, account: &Account) -> &mut Entry {
         self.entries.entry(account.id.clone()).or_insert_with(|| {
             let result = load(&self.directory.join(format!("{}.json", account.id)));
-            let (saved, error) = match result {
+            let (mut saved, error) = match result {
                 Ok(Some(saved)) => (saved, None),
                 Ok(None) => (empty(account), None),
                 Err(error) => (empty(account), Some(error)),
             };
+            let dirty = compact(&mut saved.points);
             Entry {
                 saved,
                 unreadable: error.is_some(),
@@ -84,6 +87,7 @@ impl HistoryStore {
                 last_observed: None,
                 present: HashSet::new(),
                 last_percent: HashMap::new(),
+                dirty,
             }
         })
     }
@@ -91,7 +95,7 @@ impl HistoryStore {
     pub fn get(&mut self, account: &Account, now: DateTime<Utc>) -> AccountHistory {
         let entry = self.entry(account);
         let verified = reconcile(entry, account);
-        prune(&mut entry.saved.points, now);
+        entry.dirty |= prune(&mut entry.saved.points, now);
         AccountHistory {
             account_id: account.id.clone(),
             points: if verified {
@@ -156,14 +160,10 @@ impl HistoryStore {
                 .last_percent
                 .insert(window.id.clone(), window.used_percent)
                 .is_some_and(|previous| window.used_percent < previous);
-            let previous = entry
-                .saved
-                .points
-                .iter()
-                .rev()
-                .find(|point| point.window_id == window.id);
+            let (earlier, latest) = latest_two(&entry.saved.points, &window.id);
             let mut gap_before = gap || !entry.present.contains(&window.id);
-            if let Some(previous) = previous {
+            if let Some(index) = latest {
+                let previous = &entry.saved.points[index];
                 let previous_at = timestamp(&previous.at).expect("validated history timestamp");
                 if at <= previous_at {
                     entry.gap = true;
@@ -178,7 +178,20 @@ impl HistoryStore {
                 if !gap_before && !boundary && (at - previous_at).num_seconds() < 60 {
                     continue;
                 }
+                // An unchanged run stores only its first and latest reading.
+                let unchanged =
+                    !gap_before && !boundary && previous.used_percent == window.used_percent;
+                let run_tail = earlier
+                    .is_some_and(|earlier| continues_run(&entry.saved.points[earlier], previous));
+                if unchanged && run_tail {
+                    let mut tail = entry.saved.points.remove(index);
+                    tail.at = snapshot.fetched_at.clone();
+                    entry.saved.points.push(tail);
+                    entry.dirty = true;
+                    continue;
+                }
             }
+            entry.dirty = true;
             entry.saved.points.push(HistoryPoint {
                 window_id: window.id.clone(),
                 at: snapshot.fetched_at.clone(),
@@ -190,8 +203,11 @@ impl HistoryStore {
         }
         entry.last_percent.retain(|id, _| present.contains(id));
         entry.present = present;
-        prune(&mut entry.saved.points, now);
-        entry.error = save(&path, &entry.saved).err();
+        entry.dirty |= prune(&mut entry.saved.points, now);
+        if entry.dirty {
+            entry.error = save(&path, &entry.saved).err();
+            entry.dirty = entry.error.is_some();
+        }
     }
 
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
@@ -245,12 +261,16 @@ fn reconcile(entry: &mut Entry, account: &Account) -> bool {
         entry.last_observed = None;
         entry.present.clear();
         entry.last_percent.clear();
+        entry.dirty = true;
     } else {
         if previous.plan != current.plan {
             entry.gap = true;
         }
-        entry.saved.identity = current.clone();
-        entry.saved.source = account.source.clone();
+        if entry.saved.identity != *current || entry.saved.source != account.source {
+            entry.saved.identity = current.clone();
+            entry.saved.source = account.source.clone();
+            entry.dirty = true;
+        }
     }
     true
 }
@@ -265,14 +285,93 @@ fn same_source(saved: &AccountSource, current: &AccountSource) -> bool {
     }
 }
 
-fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) {
-    let cutoff = now - Duration::days(7);
-    points.retain(|point| {
-        timestamp(&point.at).is_some_and(|at| at >= cutoff && at <= now + Duration::seconds(30))
-    });
-    if points.len() > MAX_POINTS {
-        points.drain(..points.len() - MAX_POINTS);
+fn same_reading(a: &HistoryPoint, b: &HistoryPoint) -> bool {
+    a.window_id == b.window_id
+        && a.used_percent == b.used_percent
+        && a.resets_at == b.resets_at
+        && a.window_seconds == b.window_seconds
+}
+
+fn continues_run(earlier: &HistoryPoint, later: &HistoryPoint) -> bool {
+    !later.gap_before && same_reading(earlier, later)
+}
+
+fn latest_two(points: &[HistoryPoint], window_id: &str) -> (Option<usize>, Option<usize>) {
+    let mut found = points
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, point)| point.window_id == window_id)
+        .map(|(index, _)| index);
+    let latest = found.next();
+    (found.next(), latest)
+}
+
+fn compact(points: &mut Vec<HistoryPoint>) -> bool {
+    let mut middle = vec![false; points.len()];
+    let mut runs: HashMap<&str, (usize, bool)> = HashMap::new();
+    for (index, point) in points.iter().enumerate() {
+        if let Some((previous, continued)) = runs.get(point.window_id.as_str()).copied() {
+            let continues = continues_run(&points[previous], point);
+            middle[previous] = continued && continues;
+            runs.insert(&point.window_id, (index, continues));
+        } else {
+            runs.insert(&point.window_id, (index, false));
+        }
     }
+    let before = points.len();
+    let mut index = 0;
+    points.retain(|_| {
+        index += 1;
+        !middle[index - 1]
+    });
+    points.len() != before
+}
+
+fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) -> bool {
+    let cutoff = now - Duration::days(7);
+    let latest = now + Duration::seconds(30);
+    let mut keep = vec![true; points.len()];
+    let mut clamp = Vec::new();
+    let mut later: HashMap<&str, (usize, DateTime<Utc>)> = HashMap::new();
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut total = 0;
+    for (index, point) in points.iter().enumerate().rev() {
+        let window = point.window_id.as_str();
+        let Some(at) = timestamp(&point.at).filter(|at| *at <= latest) else {
+            keep[index] = false;
+            continue;
+        };
+        let expired = at < cutoff;
+        let held = |&(next, next_at): &(usize, DateTime<Utc>)| {
+            next_at > cutoff && continues_run(point, &points[next])
+        };
+        let count = counts.entry(window).or_default();
+        if (expired && !later.get(window).is_some_and(held))
+            || *count >= MAX_WINDOW_POINTS
+            || total >= MAX_POINTS
+        {
+            keep[index] = false;
+            continue;
+        }
+        if expired {
+            // The run was observed across the cutoff, so it starts there.
+            clamp.push(index);
+        }
+        *count += 1;
+        total += 1;
+        later.insert(window, (index, at));
+    }
+    let changed = !clamp.is_empty() || keep.contains(&false);
+    for index in clamp {
+        points[index].at = cutoff.to_rfc3339();
+    }
+    let mut index = 0;
+    points.retain(|_| {
+        index += 1;
+        keep[index - 1]
+    });
+    changed
 }
 
 fn timestamp(value: &str) -> Option<DateTime<Utc>> {
@@ -481,28 +580,176 @@ mod tests {
         assert_eq!(fs::metadata(&path).unwrap().len(), MAX_BYTES + 1);
     }
 
+    fn reading(window: &str, seconds: i64, used: f64) -> HistoryPoint {
+        HistoryPoint {
+            window_id: window.into(),
+            at: at(seconds).to_rfc3339(),
+            used_percent: used,
+            resets_at: None,
+            window_seconds: None,
+            gap_before: false,
+        }
+    }
+
+    fn changing(window: &str, seconds: std::ops::Range<i64>) -> Vec<HistoryPoint> {
+        seconds
+            .map(|second| reading(window, second, (second % 50) as f64))
+            .collect()
+    }
+
     #[test]
-    fn caps_and_expires_points_without_inventing_readings() {
-        let mut points: Vec<_> = (0..10_200)
-            .map(|second| HistoryPoint {
-                window_id: "session".into(),
-                at: at(second).to_rfc3339(),
-                used_percent: 10.0,
-                resets_at: None,
-                window_seconds: None,
-                gap_before: false,
-            })
-            .collect();
-        prune(&mut points, at(10_200));
-        assert_eq!(points.len(), MAX_POINTS);
-        assert_eq!(points[0].at, at(200).to_rfc3339());
+    fn caps_each_window_and_expires_points_without_inventing_readings() {
+        let mut points = vec![reading("weekly", 0, 5.0)];
+        points.extend(changing("session", 1..10_301));
+        assert!(prune(&mut points, at(10_300)));
+        assert_eq!(points.len(), MAX_WINDOW_POINTS + 1);
+        assert_eq!(points[0].window_id, "weekly");
+        assert_eq!(
+            points[1].at,
+            at(10_301 - MAX_WINDOW_POINTS as i64).to_rfc3339()
+        );
+        assert!(!prune(&mut points, at(10_300)));
         prune(
             &mut points,
-            at(200) + Duration::days(7) + Duration::seconds(1),
+            at(0) + Duration::days(7) + Duration::seconds(1),
         );
-        assert_eq!(points.len(), MAX_POINTS - 1);
-        prune(&mut points, at(10_200) + Duration::days(8));
+        assert_eq!(points.len(), MAX_WINDOW_POINTS);
+        prune(&mut points, at(10_300) + Duration::days(8));
         assert!(points.is_empty());
+        let mut future = vec![reading("session", 0, 5.0), reading("session", 60, 6.0)];
+        assert!(prune(&mut future, at(0)));
+        assert_eq!(future.len(), 1);
+    }
+
+    #[test]
+    fn unchanged_run_crossing_the_age_limit_starts_at_the_limit() {
+        let week = 7 * 24 * 60 * 60;
+        let mut points = vec![
+            reading("session", 0, 5.0),
+            reading("session", 600, 5.0),
+            reading("session", 1_200, 6.0),
+        ];
+        assert!(prune(&mut points, at(week + 300)));
+        assert_eq!(points.len(), 3);
+        assert_eq!(points[0].at, at(300).to_rfc3339());
+        assert_eq!(points[0].used_percent, 5.0);
+        let mut gapped = vec![reading("session", 0, 5.0), reading("session", 600, 5.0)];
+        gapped[1].gap_before = true;
+        prune(&mut gapped, at(week + 300));
+        assert_eq!(gapped.len(), 1);
+        assert_eq!(gapped[0].at, at(600).to_rfc3339());
+    }
+
+    #[test]
+    fn unchanged_readings_keep_the_first_and_latest_of_each_run() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        for (seconds, used) in [(0, 10.0), (60, 10.0), (120, 10.0), (180, 10.0), (240, 12.0)] {
+            store.record(&account(seconds, used), 60, at(seconds));
+        }
+        let mut reset = account(300, 12.0);
+        reset.snapshot.as_mut().unwrap().windows[0].resets_at = Some(at(36_000).to_rfc3339());
+        store.record(&reset, 60, at(300));
+        for seconds in [360, 420] {
+            reset.snapshot.as_mut().unwrap().fetched_at = at(seconds).to_rfc3339();
+            store.record(&reset, 60, at(seconds));
+        }
+        store.failed(&reset);
+        for seconds in [480, 540, 600] {
+            reset.snapshot.as_mut().unwrap().fetched_at = at(seconds).to_rfc3339();
+            store.record(&reset, 60, at(seconds));
+        }
+        let points = store.get(&reset, at(600)).points;
+        let shape: Vec<_> = points
+            .iter()
+            .map(|point| (point.at.clone(), point.used_percent, point.gap_before))
+            .collect();
+        let expected: Vec<_> = [
+            (0, 10.0, true),
+            (180, 10.0, false),
+            (240, 12.0, false),
+            (300, 12.0, false),
+            (420, 12.0, false),
+            (480, 12.0, true),
+            (600, 12.0, false),
+        ]
+        .into_iter()
+        .map(|(seconds, used, gap)| (at(seconds).to_rfc3339(), used, gap))
+        .collect();
+        assert_eq!(shape, expected);
+        assert_eq!(
+            load(&directory.path().join("codex-test.json"))
+                .unwrap()
+                .unwrap()
+                .points
+                .len(),
+            7
+        );
+    }
+
+    #[test]
+    fn skips_saving_when_nothing_changed() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("codex-test.json");
+        let mut store = HistoryStore::new(directory.path().into());
+        store.record(&account(0, 10.0), 60, at(0));
+        fs::remove_file(&path).unwrap();
+        store.record(&account(30, 11.0), 60, at(30));
+        let mut empty = account(40, 11.0);
+        empty.snapshot.as_mut().unwrap().windows.clear();
+        store.record(&empty, 60, at(40));
+        assert!(!path.exists());
+        store.record(&account(100, 11.0), 60, at(100));
+        assert_eq!(load(&path).unwrap().unwrap().points.len(), 2);
+    }
+
+    #[test]
+    fn dense_history_files_are_compacted_on_load() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("codex-test.json");
+        let mut saved = empty(&account(0, 10.0));
+        saved.points = [
+            (0, 10.0),
+            (60, 10.0),
+            (120, 10.0),
+            (180, 11.0),
+            (240, 11.0),
+            (300, 11.0),
+        ]
+        .into_iter()
+        .map(|(seconds, used)| HistoryPoint {
+            window_id: "session".into(),
+            at: at(seconds).to_rfc3339(),
+            used_percent: used,
+            resets_at: Some(at(18_000).to_rfc3339()),
+            window_seconds: Some(18_000),
+            gap_before: seconds == 0,
+        })
+        .collect();
+        saved.points[4].gap_before = true;
+        let mut weekly = saved.points[1].clone();
+        weekly.window_id = "weekly".into();
+        saved.points.insert(2, weekly);
+        save(&path, &saved).unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let kept: Vec<_> = store
+            .get(&account(300, 11.0), at(300))
+            .points
+            .into_iter()
+            .map(|point| (point.window_id, point.at))
+            .collect();
+        let expected: Vec<_> = [
+            ("session", 0),
+            ("weekly", 60),
+            ("session", 120),
+            ("session", 180),
+            ("session", 240),
+            ("session", 300),
+        ]
+        .into_iter()
+        .map(|(window, seconds)| (window.to_string(), at(seconds).to_rfc3339()))
+        .collect();
+        assert_eq!(kept, expected);
     }
 
     #[test]
@@ -725,23 +972,15 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("codex-test.json");
         let mut saved = empty(&account(0, 10.0));
-        saved.points = (0..MAX_POINTS)
-            .map(|second| HistoryPoint {
-                window_id: "session".into(),
-                at: at(second as i64).to_rfc3339(),
-                used_percent: 10.0,
-                resets_at: None,
-                window_seconds: None,
-                gap_before: false,
-            })
-            .collect();
+        saved.points = changing("session", 0..MAX_WINDOW_POINTS as i64);
         save(&path, &saved).unwrap();
         let mut store = HistoryStore::new(directory.path().into());
-        store.record(&account(10_060, 20.0), 60, at(10_060));
+        let latest = MAX_WINDOW_POINTS as i64 + 60;
+        store.record(&account(latest, 20.0), 60, at(latest));
         let persisted = load(&path).unwrap().unwrap();
-        assert_eq!(persisted.points.len(), MAX_POINTS);
+        assert_eq!(persisted.points.len(), MAX_WINDOW_POINTS);
         assert_eq!(persisted.points[0].at, at(1).to_rfc3339());
-        let later = 10_060 + 8 * 24 * 60 * 60;
+        let later = latest + 8 * 24 * 60 * 60;
         store.record(&account(later, 25.0), 60, at(later));
         assert_eq!(load(&path).unwrap().unwrap().points.len(), 1);
     }
