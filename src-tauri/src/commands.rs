@@ -1,5 +1,10 @@
 use crate::{
-    core::{accounts, model::Provider, poller, settings::Settings},
+    core::{
+        accounts,
+        model::{Account, Provider},
+        poller,
+        settings::{OverviewLayout, Settings},
+    },
     runtime::{publish, AppState, Runtime},
 };
 use std::sync::Arc;
@@ -54,10 +59,14 @@ pub async fn discover_accounts(
     app: AppHandle,
     runtime: State<'_, Arc<Runtime>>,
 ) -> Result<AppState, String> {
-    discover(&app, &runtime).await
+    discover(&app, &runtime, false).await
 }
 
-pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, String> {
+pub async fn discover(
+    app: &AppHandle,
+    runtime: &Runtime,
+    initial: bool,
+) -> Result<AppState, String> {
     let (existing, ignored) = {
         let inner = runtime.inner.lock().await;
         (
@@ -72,33 +81,55 @@ pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, St
             .map_err(|_| "Account discovery could not finish.")?;
     runtime
         .change(app, move |state| {
-            for account in discovered {
-                if let Some(existing) = state.accounts.iter_mut().find(|existing| {
-                    existing.id == account.id
-                        && accounts::gains_keychain_link(&existing.source, &account.source)
-                }) {
-                    existing.source = account.source;
-                    continue;
-                }
-                if state.accounts.len() >= 100 {
-                    break;
-                }
-                if !starting_ids.contains(&account.id)
-                    && !state
-                        .accounts
-                        .iter()
-                        .any(|existing| existing.id == account.id)
-                {
-                    state.accounts.push(account);
-                }
-            }
-            if state.settings.pinned_account_id.is_none() {
-                state.settings.pinned_account_id =
-                    state.accounts.first().map(|account| account.id.clone());
-            }
+            merge_discovered(state, discovered, &starting_ids, initial);
             Ok(())
         })
         .await
+}
+
+fn merge_discovered(
+    state: &mut AppState,
+    discovered: Vec<Account>,
+    starting_ids: &[String],
+    initial: bool,
+) {
+    for account in discovered {
+        if let Some(existing) = state.accounts.iter_mut().find(|existing| {
+            existing.id == account.id
+                && accounts::gains_keychain_link(&existing.source, &account.source)
+        }) {
+            existing.source = account.source;
+            continue;
+        }
+        if state.accounts.len() >= 100 {
+            break;
+        }
+        if !starting_ids.contains(&account.id)
+            && !state
+                .accounts
+                .iter()
+                .any(|existing| existing.id == account.id)
+        {
+            state.accounts.push(account);
+        }
+    }
+    if initial && state.accounts.len() >= 3 {
+        state.settings.overview_layout = OverviewLayout::Compact;
+    }
+}
+
+fn remove(state: &mut AppState, id: &str) -> Result<(), String> {
+    let removed = state
+        .accounts
+        .iter()
+        .find(|account| account.id == id)
+        .ok_or("Account no longer exists.")?;
+    accounts::ignore_source(&mut state.ignored_sources, removed);
+    state.accounts.retain(|account| account.id != id);
+    if state.settings.pinned_account_id.as_deref() == Some(id) {
+        state.settings.pinned_account_id = None;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -127,9 +158,6 @@ pub async fn add_account(
             if state.accounts.len() >= 100 {
                 return Err("Margin supports up to 100 account folders.".into());
             }
-            if state.settings.pinned_account_id.is_none() {
-                state.settings.pinned_account_id = Some(account.id.clone());
-            }
             state.accounts.push(account);
             Ok(())
         })
@@ -142,22 +170,7 @@ pub async fn remove_account(
     runtime: State<'_, Arc<Runtime>>,
     id: String,
 ) -> Result<AppState, String> {
-    runtime
-        .change(&app, move |state| {
-            let removed = state
-                .accounts
-                .iter()
-                .find(|account| account.id == id)
-                .ok_or("Account no longer exists.")?;
-            accounts::ignore_source(&mut state.ignored_sources, removed);
-            state.accounts.retain(|account| account.id != id);
-            if state.settings.pinned_account_id.as_deref() == Some(id.as_str()) {
-                state.settings.pinned_account_id =
-                    state.accounts.first().map(|account| account.id.clone());
-            }
-            Ok(())
-        })
-        .await
+    runtime.change(&app, move |state| remove(state, &id)).await
 }
 
 #[tauri::command]
@@ -171,7 +184,7 @@ pub async fn restore_ignored_accounts(
             Ok(())
         })
         .await?;
-    discover(&app, &runtime).await
+    discover(&app, &runtime, false).await
 }
 
 #[tauri::command]
@@ -262,7 +275,7 @@ pub async fn reset_store(
 ) -> Result<AppState, String> {
     let reset = runtime.reset_store().await?;
     publish(&app, &reset);
-    match discover(&app, &runtime).await {
+    match discover(&app, &runtime, false).await {
         Ok(next) => Ok(next),
         Err(error) => {
             let mut inner = runtime.inner.lock().await;
@@ -281,5 +294,87 @@ pub fn hide_window(app: AppHandle) -> Result<(), String> {
     app.get_webview_window("main")
         .ok_or("Window is unavailable.")?
         .hide()
-        .map_err(|_| "Could not close the popover.".into())
+        .map_err(|_| "Could not close the popover.")?;
+    crate::core::tray::mark_hidden(&app);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{
+        model::{AccountSource, Identity},
+        settings::TrayMode,
+    };
+
+    fn account(id: &str) -> Account {
+        Account {
+            id: id.into(),
+            provider: Provider::Codex,
+            label: id.into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: std::env::temp_dir()
+                    .join(format!(".codex-{id}"))
+                    .to_string_lossy()
+                    .into_owned(),
+                keychain_suffix: None,
+            },
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        }
+    }
+
+    fn empty() -> AppState {
+        AppState {
+            revision: 0,
+            accounts: Vec::new(),
+            settings: Settings::default(),
+            refreshing: false,
+            notice: None,
+            recovery: false,
+            recovered: Vec::new(),
+            ignored_sources: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn discovery_follows_the_lowest_account_without_pinning() {
+        let mut state = empty();
+        merge_discovered(&mut state, vec![account("a"), account("b")], &[], true);
+        assert_eq!(state.accounts.len(), 2);
+        assert_eq!(state.settings.tray_mode, TrayMode::Lowest);
+        assert_eq!(state.settings.pinned_account_id, None);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Cards);
+    }
+
+    #[test]
+    fn first_discovery_of_many_accounts_starts_compact_once() {
+        let mut state = empty();
+        let found = vec![account("a"), account("b"), account("c")];
+        merge_discovered(&mut state, found.clone(), &[], true);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Compact);
+        state.settings.overview_layout = OverviewLayout::Cards;
+        merge_discovered(&mut state, found.clone(), &[], false);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Cards);
+        let mut later = empty();
+        merge_discovered(&mut later, found, &[], false);
+        assert_eq!(later.settings.overview_layout, OverviewLayout::Cards);
+    }
+
+    #[test]
+    fn removing_the_pinned_account_clears_the_pin() {
+        let mut state = empty();
+        merge_discovered(&mut state, vec![account("a"), account("b")], &[], false);
+        state.settings.tray_mode = TrayMode::Pinned;
+        state.settings.pinned_account_id = Some("a".into());
+        remove(&mut state, "b").unwrap();
+        assert_eq!(state.settings.pinned_account_id.as_deref(), Some("a"));
+        remove(&mut state, "a").unwrap();
+        assert_eq!(state.settings.pinned_account_id, None);
+        assert_eq!(state.settings.tray_mode, TrayMode::Pinned);
+        assert!(remove(&mut state, "a").is_err());
+    }
 }

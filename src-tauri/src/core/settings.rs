@@ -13,8 +13,8 @@ pub enum Theme {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TrayMode {
-    #[default]
     Pinned,
+    #[default]
     Lowest,
 }
 
@@ -38,6 +38,14 @@ pub enum OverviewLayout {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub enum AccountOrder {
+    #[default]
+    Urgency,
+    Added,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub enum NotificationPermission {
     #[default]
     Unasked,
@@ -50,6 +58,7 @@ pub enum NotificationPermission {
 pub struct Settings {
     pub theme: Theme,
     pub overview_layout: OverviewLayout,
+    pub account_order: AccountOrder,
     pub poll_interval_seconds: u64,
     pub idle_poll_interval_seconds: u64,
     pub notifications: bool,
@@ -69,13 +78,14 @@ impl Default for Settings {
         Self {
             theme: Theme::System,
             overview_layout: OverviewLayout::Cards,
+            account_order: AccountOrder::Urgency,
             poll_interval_seconds: 60,
             idle_poll_interval_seconds: 300,
             notifications: true,
             thresholds: vec![80, 95, 100],
             notify_on_reset: false,
             notification_permission: NotificationPermission::Unasked,
-            tray_mode: TrayMode::Pinned,
+            tray_mode: TrayMode::Lowest,
             tray_metric: TrayMetric::Core,
             tray_show_percent: false,
             pinned_account_id: None,
@@ -125,6 +135,13 @@ impl Settings {
                 "overviewLayout",
                 defaults.overview_layout,
                 "Overview layout",
+                notes,
+            ),
+            account_order: field(
+                &map,
+                "accountOrder",
+                defaults.account_order,
+                "Account order",
                 notes,
             ),
             poll_interval_seconds: field(
@@ -294,6 +311,24 @@ mod tests {
     }
 
     #[test]
+    fn new_installs_follow_the_lowest_account_and_saved_modes_win() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert_eq!(
+                Settings::recover(value, &mut notes).tray_mode,
+                TrayMode::Lowest
+            );
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMode": "pinned", "pinnedAccountId": "claude-a" })),
+            &mut notes,
+        );
+        assert_eq!(settings.tray_mode, TrayMode::Pinned);
+        assert_eq!(settings.pinned_account_id.as_deref(), Some("claude-a"));
+        assert!(notes.is_empty());
+    }
+
+    #[test]
     fn tray_metric_defaults_to_core_and_recovers_unknown_values() {
         let mut notes = Vec::new();
         let settings = Settings::recover(
@@ -435,6 +470,41 @@ mod tests {
         })
         .unwrap();
         assert_eq!(saved["overviewLayout"], "compact");
+    }
+
+    #[test]
+    fn account_order_defaults_to_urgency_and_recovers_unknown_values() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert_eq!(
+                Settings::recover(value, &mut notes).account_order,
+                AccountOrder::Urgency
+            );
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "accountOrder": "added" })),
+            &mut notes,
+        );
+        assert_eq!(settings.account_order, AccountOrder::Added);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "accountOrder": "alphabetical", "theme": "light" })),
+            &mut notes,
+        );
+        assert_eq!(settings.account_order, AccountOrder::Urgency);
+        assert_eq!(settings.theme, Theme::Light);
+        assert_eq!(notes, vec!["Account order was reset to its default."]);
+        let saved = serde_json::to_value(Settings {
+            account_order: AccountOrder::Added,
+            ..Settings::default()
+        })
+        .unwrap();
+        assert_eq!(saved["accountOrder"], "added");
+        let parsed: Settings =
+            serde_json::from_value(serde_json::json!({ "accountOrder": "added" })).unwrap();
+        assert_eq!(parsed.account_order, AccountOrder::Added);
+        let missing: Settings = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(missing.account_order, AccountOrder::Urgency);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use super::{
     settings::NotificationPermission,
     tray,
 };
-use crate::runtime::{publish, Runtime};
+use crate::runtime::{publish, AppState, Runtime};
 use std::{
     collections::HashMap,
     sync::{
@@ -24,6 +24,7 @@ pub struct Schedule {
     pub in_flight: bool,
     pub generation: u64,
     pub wake_retries: u8,
+    pub fetched: Option<Instant>,
 }
 
 const WAKE_RETRIES: u8 = 6;
@@ -39,6 +40,7 @@ impl Schedule {
             in_flight: false,
             generation: 0,
             wake_retries: 0,
+            fetched: None,
         }
     }
 
@@ -71,9 +73,22 @@ pub fn resumed(last_tick: SystemTime, now: SystemTime, interval: Duration) -> bo
         .is_ok_and(|gap| gap > interval.saturating_mul(2))
 }
 
-fn bring_forward(schedules: &mut HashMap<String, Schedule>, after_wake: bool) {
+const OPEN_REFRESH_AGE: Duration = Duration::from_secs(30);
+
+fn bring_forward(
+    schedules: &mut HashMap<String, Schedule>,
+    after_wake: bool,
+    older_than: Option<Duration>,
+) {
     let now = Instant::now();
     for schedule in schedules.values_mut() {
+        if older_than.is_some_and(|age| {
+            schedule
+                .fetched
+                .is_some_and(|fetched| now.saturating_duration_since(fetched) < age)
+        }) {
+            continue;
+        }
         if after_wake {
             schedule.wake_retries = WAKE_RETRIES;
         }
@@ -83,13 +98,37 @@ fn bring_forward(schedules: &mut HashMap<String, Schedule>, after_wake: bool) {
     }
 }
 
+fn release(view: &mut AppState, schedules: &mut HashMap<String, Schedule>, id: &str) -> bool {
+    let Some(schedule) = schedules.get_mut(id) else {
+        return false;
+    };
+    let now = Instant::now();
+    schedule.in_flight = false;
+    schedule.next = now.max(schedule.not_before);
+    for account in view.accounts.iter_mut().filter(|account| account.id == id) {
+        account.refreshing = false;
+    }
+    view.refreshing = view.accounts.iter().any(|account| account.refreshing);
+    view.changed();
+    true
+}
+
 pub async fn refresh(runtime: &Runtime) {
-    bring_forward(&mut runtime.inner.lock().await.schedules, false);
+    bring_forward(&mut runtime.inner.lock().await.schedules, false, None);
+    runtime.wake.notify_one();
+}
+
+pub async fn refresh_on_open(runtime: &Runtime) {
+    bring_forward(
+        &mut runtime.inner.lock().await.schedules,
+        false,
+        Some(OPEN_REFRESH_AGE),
+    );
     runtime.wake.notify_one();
 }
 
 pub async fn refresh_after_wake(runtime: &Runtime) {
-    bring_forward(&mut runtime.inner.lock().await.schedules, true);
+    bring_forward(&mut runtime.inner.lock().await.schedules, true, None);
     runtime.wake.notify_one();
     runtime.update_wake.notify_one();
 }
@@ -174,7 +213,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             let tick = SystemTime::now();
             let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
             if resumed(last_tick, tick, interval) {
-                bring_forward(&mut inner.schedules, true);
+                bring_forward(&mut inner.schedules, true, None);
                 runtime.update_wake.notify_one();
             }
             last_tick = tick;
@@ -242,8 +281,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                 let runtime = runtime.clone();
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result =
-                        providers::fetch(&runtime.client, &account, &runtime.profiles).await;
+                    let result = providers::fetch(
+                        &runtime.client,
+                        &account,
+                        &runtime.profiles,
+                        &runtime.resets,
+                    )
+                    .await;
                     let visible = app
                         .get_webview_window("main")
                         .is_some_and(|window| window.is_visible().unwrap_or(false));
@@ -258,6 +302,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                             && item.provider == account.provider
                             && item.source == account.source
                     }) else {
+                        let state = &mut *inner;
+                        if release(&mut state.view, &mut state.schedules, &account.id) {
+                            let view = inner.view.clone();
+                            drop(inner);
+                            publish(&app, &view);
+                            runtime.wake.notify_one();
+                        }
                         return;
                     };
                     let interval = if visible {
@@ -307,6 +358,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     if let Some(schedule) = inner.schedules.get_mut(&account.id) {
                         schedule.in_flight = false;
                         let now = Instant::now();
+                        schedule.fetched = Some(now);
                         if let Some(error) = error {
                             if error.kind == "network" && schedule.wake_retries > 0 {
                                 schedule.wake_retries -= 1;
@@ -430,13 +482,68 @@ mod tests {
         limited.not_before = Instant::now() + Duration::from_secs(600);
         schedules.insert("limited".to_owned(), limited);
         schedules.insert("idle".to_owned(), Schedule::new(Duration::from_secs(600)));
-        bring_forward(&mut schedules, true);
+        bring_forward(&mut schedules, true, None);
         let now = Instant::now();
         assert!(schedules["idle"].ready(now));
         assert!(!schedules["limited"].ready(now));
         assert!(schedules
             .values()
             .all(|schedule| schedule.wake_retries == WAKE_RETRIES));
+    }
+
+    #[test]
+    fn source_change_mid_fetch_releases_the_account() {
+        use crate::core::model::{Account, AccountSource, Identity, Provider};
+        let account = Account {
+            id: "claude-a".into(),
+            provider: Provider::Claude,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::Keychain,
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: true,
+        };
+        let mut view = AppState {
+            revision: 0,
+            accounts: vec![account],
+            settings: Default::default(),
+            refreshing: true,
+            notice: None,
+            recovery: false,
+            recovered: Vec::new(),
+            ignored_sources: Vec::new(),
+        };
+        let mut schedules = HashMap::new();
+        let mut schedule = Schedule::new(Duration::from_secs(600));
+        schedule.in_flight = true;
+        schedules.insert("claude-a".to_owned(), schedule);
+        assert!(!release(&mut view, &mut schedules, "missing"));
+        assert!(release(&mut view, &mut schedules, "claude-a"));
+        assert!(!view.accounts[0].refreshing);
+        assert!(!view.refreshing);
+        assert_eq!(view.revision, 1);
+        assert!(schedules["claude-a"].ready(Instant::now()));
+    }
+
+    #[test]
+    fn opening_the_popover_refreshes_only_old_readings() {
+        let mut schedules = HashMap::new();
+        let mut recent = Schedule::new(Duration::from_secs(600));
+        recent.fetched = Some(Instant::now() - Duration::from_secs(10));
+        let mut old = Schedule::new(Duration::from_secs(600));
+        old.fetched = Some(Instant::now() - Duration::from_secs(31));
+        schedules.insert("recent".to_owned(), recent);
+        schedules.insert("old".to_owned(), old);
+        schedules.insert("never".to_owned(), Schedule::new(Duration::from_secs(600)));
+        bring_forward(&mut schedules, false, Some(OPEN_REFRESH_AGE));
+        let now = Instant::now();
+        assert!(!schedules["recent"].ready(now));
+        assert!(schedules["old"].ready(now));
+        assert!(schedules["never"].ready(now));
+        bring_forward(&mut schedules, false, None);
+        assert!(schedules["recent"].ready(Instant::now()));
     }
 
     #[test]

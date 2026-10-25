@@ -38,10 +38,11 @@ pub async fn fetch(
     client: &reqwest::Client,
     account: &Account,
     profiles: &claude::ProfileCache,
+    resets: &codex::ResetCreditCache,
 ) -> Result<(Snapshot, Identity), UsageError> {
     match account.provider {
         Provider::Claude => claude::fetch(client, account, profiles).await,
-        Provider::Codex => codex::fetch(client, account).await,
+        Provider::Codex => codex::fetch(client, account, resets).await,
     }
 }
 

@@ -1,5 +1,6 @@
 use super::{
     model::{Account, UsageWindow},
+    notifications::reset_clock,
     poller,
     ring::{ring_rgba, IconStyle},
     settings::{TrayMetric, TrayMode},
@@ -29,12 +30,86 @@ struct Presentation {
     title: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RingKey {
+    size: u32,
+    style: IconStyle,
+    stale: bool,
+    tenths: Option<i32>,
+}
+
+impl RingKey {
+    fn new(size: u32, amount: Option<f64>, stale: bool, style: IconStyle) -> Self {
+        Self {
+            size,
+            style,
+            stale,
+            tenths: amount
+                .filter(|amount| amount.is_finite())
+                .map(|amount| (amount.clamp(0.0, 100.0) * 10.0).round() as i32),
+        }
+    }
+
+    fn render(self) -> Vec<u8> {
+        ring_rgba(
+            self.size,
+            self.tenths.map(|tenths| f64::from(tenths) / 10.0),
+            self.stale,
+            self.style,
+        )
+    }
+}
+
+fn cached_ring(cache: &mut Option<(RingKey, Vec<u8>)>, key: RingKey) -> (Vec<u8>, bool) {
+    if let Some((_, pixels)) = cache.as_ref().filter(|(cached, _)| *cached == key) {
+        return (pixels.clone(), false);
+    }
+    let pixels = key.render();
+    *cache = Some((key, pixels.clone()));
+    (pixels, true)
+}
+
 #[derive(Default)]
 pub struct Visibility {
     pub last_blur: Mutex<Option<Instant>>,
     presentation: Mutex<Presentation>,
+    ring: Mutex<Option<(RingKey, Vec<u8>)>>,
     pub placement: Mutex<PopoverPlacement>,
     content_height: Mutex<Option<f64>>,
+    seen: Mutex<Seen>,
+}
+
+#[derive(Default)]
+struct Seen {
+    shown: bool,
+    hidden_at: Option<Instant>,
+}
+
+impl Seen {
+    fn show(&mut self, visible: bool, now: Instant) -> Option<u64> {
+        let hidden_for = match (self.shown, visible, self.hidden_at) {
+            (false, _, _) => None,
+            (true, true, _) => Some(0),
+            (true, false, hidden_at) => hidden_at.map(|hidden_at| {
+                u64::try_from(now.saturating_duration_since(hidden_at).as_millis())
+                    .unwrap_or(u64::MAX)
+            }),
+        };
+        self.shown = true;
+        hidden_for
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PopoverShown {
+    hidden_for_ms: Option<u64>,
+}
+
+pub fn mark_hidden(app: &AppHandle) {
+    if let Ok(mut seen) = app.state::<Visibility>().seen.lock() {
+        seen.hidden_at = Some(Instant::now());
+    }
 }
 
 const POPOVER_WIDTH: f64 = 420.0;
@@ -319,6 +394,35 @@ fn set_tabular_title(tray: &tauri::tray::TrayIcon, title: Option<&str>) -> bool 
     true
 }
 
+fn tooltip(
+    account: Option<&Account>,
+    window: Option<&UsageWindow>,
+    is_stale: bool,
+    now: chrono::DateTime<Utc>,
+) -> String {
+    let Some(account) = account else {
+        return "Margin · Add an account".into();
+    };
+    let Some(window) = window else {
+        return format!("Margin · {} · usage unavailable", account.label);
+    };
+    let reset = window
+        .resets_at
+        .as_deref()
+        .and_then(|reset| chrono::DateTime::parse_from_rfc3339(reset).ok())
+        .map(|reset| reset.with_timezone(&Utc))
+        .filter(|reset| *reset > now)
+        .map(|reset| format!(" · resets {}", reset_clock(reset, now)))
+        .unwrap_or_default();
+    format!(
+        "Margin · {} · {} {}% remaining{reset}{}",
+        account.label,
+        window.label.chars().take(64).collect::<String>(),
+        percent_label(100.0 - window.used_percent),
+        if is_stale { " · last known" } else { "" }
+    )
+}
+
 pub fn update(app: &AppHandle, state: &AppState) {
     let account = selected(state);
     let window = account
@@ -326,27 +430,16 @@ pub fn update(app: &AppHandle, state: &AppState) {
     let amount = window.map(|window| 100.0 - window.used_percent);
     let is_stale = account.is_some_and(|account| stale(account, state));
     let size = icon_size(app);
-    let pixels = ring_rgba(size, amount, is_stale, icon_style());
+    let key = RingKey::new(size, amount, is_stale, icon_style());
+    let pixels = match app.state::<Visibility>().ring.lock() {
+        Ok(mut cache) => cached_ring(&mut cache, key).0,
+        Err(_) => key.render(),
+    };
     #[cfg(target_os = "macos")]
     let title = amount
         .filter(|_| state.settings.tray_show_percent)
         .map(|amount| format!("{}%", percent_label(amount)));
-    let tooltip = match (account, amount) {
-        (Some(account), Some(amount)) => {
-            let window = window
-                .map(|window| window.label.chars().take(64).collect::<String>())
-                .unwrap_or_default();
-            format!(
-                "Margin · {} · {} · {}% remaining{}",
-                account.label,
-                window,
-                percent_label(amount),
-                if is_stale { " · last known" } else { "" }
-            )
-        }
-        (Some(account), None) => format!("Margin · {} · usage unavailable", account.label),
-        _ => "Margin · Add an account".into(),
-    };
+    let tooltip = tooltip(account, window, is_stale, Utc::now());
     let revision = state.revision;
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -526,18 +619,26 @@ fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
 
 fn show_on_main_thread(app: &AppHandle, settings: bool) {
     if let Some(window) = app.get_webview_window("main") {
+        let visible = window.is_visible().unwrap_or(false);
         place(app, &window);
         let _ = window.show();
         let _ = window.set_focus();
         if settings {
             let _ = app.emit("open_settings", ());
         }
+        let hidden_for_ms = app
+            .state::<Visibility>()
+            .seen
+            .lock()
+            .ok()
+            .and_then(|mut seen| seen.show(visible, Instant::now()));
+        let _ = app.emit_to("main", "popover_shown", PopoverShown { hidden_for_ms });
         let runtime = app.state::<Arc<Runtime>>().inner().clone();
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
             let view = runtime.inner.lock().await.view.clone();
             crate::runtime::publish(&handle, &view);
-            poller::refresh(&runtime).await;
+            poller::refresh_on_open(&runtime).await;
         });
     }
 }
@@ -597,7 +698,9 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
                     .is_some_and(|time| time.elapsed().as_millis() < 250);
                 if let Some(window) = app.get_webview_window("main") {
                     if window.is_visible().unwrap_or(false) || blurred {
-                        let _ = window.hide();
+                        if window.hide().is_ok() {
+                            mark_hidden(app);
+                        }
                     } else {
                         show(app, false);
                     }
@@ -835,6 +938,74 @@ mod tests {
         assert_eq!(selected(&state).unwrap().id, "a");
         state.settings.tray_metric = TrayMetric::Weekly;
         assert_eq!(selected(&state).unwrap().id, "a");
+    }
+
+    #[test]
+    fn tooltip_names_the_followed_window_and_its_reset_time() {
+        let now = Utc::now();
+        let mut work = windowed("Personal", &[("seven_day", 58.0, Some(30))]);
+        let reset = now + chrono::Duration::hours(30);
+        let window = work.snapshot.as_ref().unwrap().windows[0].clone();
+        assert_eq!(
+            tooltip(Some(&work), Some(&window), false, now),
+            format!(
+                "Margin · Personal · seven_day 42% remaining · resets {}",
+                reset_clock(reset, now)
+            )
+        );
+        let mut expired = window.clone();
+        expired.resets_at = Some((now - chrono::Duration::minutes(1)).to_rfc3339());
+        assert_eq!(
+            tooltip(Some(&work), Some(&expired), true, now),
+            "Margin · Personal · seven_day 42% remaining · last known"
+        );
+        work.snapshot = None;
+        assert_eq!(
+            tooltip(Some(&work), None, false, now),
+            "Margin · Personal · usage unavailable"
+        );
+        assert_eq!(tooltip(None, None, false, now), "Margin · Add an account");
+    }
+
+    #[test]
+    fn popover_shown_reports_time_since_last_hide() {
+        let start = Instant::now();
+        let mut seen = Seen::default();
+        assert_eq!(seen.show(false, start), None);
+        assert_eq!(seen.show(true, start), Some(0));
+        seen.hidden_at = Some(start);
+        assert_eq!(
+            seen.show(false, start + std::time::Duration::from_millis(1500)),
+            Some(1500)
+        );
+        assert_eq!(seen.show(true, start), Some(0));
+    }
+
+    #[test]
+    fn identical_ring_inputs_reuse_the_last_render() {
+        let mut cache = None;
+        let key = RingKey::new(36, Some(42.31), false, IconStyle::Template);
+        let (first, rendered) = cached_ring(&mut cache, key);
+        assert!(rendered);
+        let (again, rendered) = cached_ring(
+            &mut cache,
+            RingKey::new(36, Some(42.34), false, IconStyle::Template),
+        );
+        assert!(!rendered);
+        assert_eq!(first, again);
+        for changed in [
+            RingKey::new(32, Some(42.3), false, IconStyle::Template),
+            RingKey::new(32, Some(42.3), true, IconStyle::Template),
+            RingKey::new(32, Some(42.3), true, IconStyle::DarkTaskbar),
+            RingKey::new(32, Some(12.0), true, IconStyle::DarkTaskbar),
+            RingKey::new(32, None, true, IconStyle::DarkTaskbar),
+        ] {
+            assert!(cached_ring(&mut cache, changed).1);
+        }
+        assert_eq!(
+            key.render(),
+            ring_rgba(36, Some(42.3), false, IconStyle::Template)
+        );
     }
 
     #[test]
