@@ -5,7 +5,7 @@ use super::{
     settings::NotificationPermission,
     tray,
 };
-use crate::runtime::{publish, Runtime};
+use crate::runtime::{publish, AppState, Runtime};
 use std::{
     collections::HashMap,
     sync::{
@@ -81,6 +81,21 @@ fn bring_forward(schedules: &mut HashMap<String, Schedule>, after_wake: bool) {
             schedule.next = now.max(schedule.not_before);
         }
     }
+}
+
+fn release(view: &mut AppState, schedules: &mut HashMap<String, Schedule>, id: &str) -> bool {
+    let Some(schedule) = schedules.get_mut(id) else {
+        return false;
+    };
+    let now = Instant::now();
+    schedule.in_flight = false;
+    schedule.next = now.max(schedule.not_before);
+    for account in view.accounts.iter_mut().filter(|account| account.id == id) {
+        account.refreshing = false;
+    }
+    view.refreshing = view.accounts.iter().any(|account| account.refreshing);
+    view.changed();
+    true
 }
 
 pub async fn refresh(runtime: &Runtime) {
@@ -258,6 +273,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                             && item.provider == account.provider
                             && item.source == account.source
                     }) else {
+                        let state = &mut *inner;
+                        if release(&mut state.view, &mut state.schedules, &account.id) {
+                            let view = inner.view.clone();
+                            drop(inner);
+                            publish(&app, &view);
+                            runtime.wake.notify_one();
+                        }
                         return;
                     };
                     let interval = if visible {
@@ -437,6 +459,42 @@ mod tests {
         assert!(schedules
             .values()
             .all(|schedule| schedule.wake_retries == WAKE_RETRIES));
+    }
+
+    #[test]
+    fn source_change_mid_fetch_releases_the_account() {
+        use crate::core::model::{Account, AccountSource, Identity, Provider};
+        let account = Account {
+            id: "claude-a".into(),
+            provider: Provider::Claude,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::Keychain,
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: true,
+        };
+        let mut view = AppState {
+            revision: 0,
+            accounts: vec![account],
+            settings: Default::default(),
+            refreshing: true,
+            notice: None,
+            recovery: false,
+            recovered: Vec::new(),
+            ignored_sources: Vec::new(),
+        };
+        let mut schedules = HashMap::new();
+        let mut schedule = Schedule::new(Duration::from_secs(600));
+        schedule.in_flight = true;
+        schedules.insert("claude-a".to_owned(), schedule);
+        assert!(!release(&mut view, &mut schedules, "missing"));
+        assert!(release(&mut view, &mut schedules, "claude-a"));
+        assert!(!view.accounts[0].refreshing);
+        assert!(!view.refreshing);
+        assert_eq!(view.revision, 1);
+        assert!(schedules["claude-a"].ready(Instant::now()));
     }
 
     #[test]
