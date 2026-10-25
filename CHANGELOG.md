@@ -2,6 +2,7 @@
 
 | Version | Date (UTC) | Changes |
 | --- | --- | --- |
+| [v0.6.0](changelogs/v0.6.0.md) | 2026-10-25 | Accounts ordered by urgency, emails and sign-in commands inline, layout shortcuts, lighter background work. |
 | [v0.5.1](changelogs/v0.5.1.md) | 2026-10-23 | Popover opens straight on the accounts. |
 | [v0.5.0](changelogs/v0.5.0.md) | 2026-10-22 | Pace line, model chips, compact overview, notifications on by default, daily update check, clearer tray icon. |
 | [v0.4.0](changelogs/v0.4.0.md) | 2026-10-22 | Keychain accounts on Mac, signed-out state, wake refresh, settings recovery. |

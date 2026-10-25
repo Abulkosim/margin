@@ -60,9 +60,9 @@ This ignored integration test uses the pinned updater plugin and real public key
 
 v0.1.1 and earlier have no updater and need one manual upgrade to the first updater-enabled release. Publish the complete asset set together; a draft does not replace the current public update endpoint. Never edit a published release's signed files or reuse a version. To stop offering a bad release, mark it as a prerelease so the latest-release endpoint returns to the previous stable release, then ship a higher fixed version. Clients already updated do not automatically downgrade.
 
-## Roll back v0.5.1
+## Roll back v0.6.0
 
-Quit Margin and reinstall [v0.5.0](https://github.com/Abulkosim/margin/releases/tag/v0.5.0); the settings format is identical. To go back further, reinstall [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0): it drops the v0.5 fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes and keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
+Quit Margin and reinstall [v0.5.1](https://github.com/Abulkosim/margin/releases/tag/v0.5.1). It ignores the new `accountOrder` setting and keeps everything else. History files keep the same format; v0.6.0 only stores fewer points on flat stretches. To go back further, reinstall [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0): it drops the v0.5 fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes and keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
 
 ## Package managers
 

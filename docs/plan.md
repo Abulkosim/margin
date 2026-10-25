@@ -89,7 +89,11 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [ ] **3.13 Launch posts 👤** — drafts prepared by loop, posted by owner in own words, spaced over days: r/ClaudeAI (showcase flair), r/ClaudeCode, r/codex, r/macapps, r/windowsapps, X clip. Show HN last, after 3.1–3.4, owner-written. Drafts ready 2026-10-22 in `docs/launch/posts.md`; r/macapps main feed needs 100★ or 1 year → megathread PCP comment instead.
 - [ ] **3.14 SignPath Foundation application 👤** once there are some stars/releases (free Windows Authenticode).
 
-## Phase 4 — Depth (v0.6+)
+## Release v0.6.0 — comfort and efficiency (published 2026-10-25)
+
+From a performance and usability audit on 2026-10-25: buffered settings/history writes, run-length history with a per-window cap, skipped identical tray renders, open-only refresh of stale readings, Codex reset-credit cache, stuck-refresh fix, urgency ordering, inline email and sign-in command, reset view on reopen, ⌘1/⌘2, remaining-based alerts and tooltip reset time, new-install defaults (tray follows lowest, compact for 3+ accounts). Evidence in `docs/verification.md`.
+
+## Phase 4 — Depth (v0.7+)
 
 - [ ] **4.1 Burn-rate alerts** ("used 20% in the last hour"), quiet by default.
 - [ ] **4.2 Credits / extra-usage balance** on the card (Claude extra_usage already parsed; Codex credits if present).
