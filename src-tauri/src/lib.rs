@@ -64,7 +64,7 @@ pub fn run() {
                     inner.view.changed();
                 }
                 if runtime.first_run {
-                    if let Err(error) = commands::discover(&handle, &runtime).await {
+                    if let Err(error) = commands::discover(&handle, &runtime, true).await {
                         let mut inner = runtime.inner.lock().await;
                         inner.view.notice = Some(error);
                         inner.view.changed();

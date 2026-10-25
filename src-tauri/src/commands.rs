@@ -3,7 +3,7 @@ use crate::{
         accounts,
         model::{Account, Provider},
         poller,
-        settings::Settings,
+        settings::{OverviewLayout, Settings},
     },
     runtime::{publish, AppState, Runtime},
 };
@@ -59,10 +59,14 @@ pub async fn discover_accounts(
     app: AppHandle,
     runtime: State<'_, Arc<Runtime>>,
 ) -> Result<AppState, String> {
-    discover(&app, &runtime).await
+    discover(&app, &runtime, false).await
 }
 
-pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, String> {
+pub async fn discover(
+    app: &AppHandle,
+    runtime: &Runtime,
+    initial: bool,
+) -> Result<AppState, String> {
     let (existing, ignored) = {
         let inner = runtime.inner.lock().await;
         (
@@ -77,13 +81,18 @@ pub async fn discover(app: &AppHandle, runtime: &Runtime) -> Result<AppState, St
             .map_err(|_| "Account discovery could not finish.")?;
     runtime
         .change(app, move |state| {
-            merge_discovered(state, discovered, &starting_ids);
+            merge_discovered(state, discovered, &starting_ids, initial);
             Ok(())
         })
         .await
 }
 
-fn merge_discovered(state: &mut AppState, discovered: Vec<Account>, starting_ids: &[String]) {
+fn merge_discovered(
+    state: &mut AppState,
+    discovered: Vec<Account>,
+    starting_ids: &[String],
+    initial: bool,
+) {
     for account in discovered {
         if let Some(existing) = state.accounts.iter_mut().find(|existing| {
             existing.id == account.id
@@ -103,6 +112,9 @@ fn merge_discovered(state: &mut AppState, discovered: Vec<Account>, starting_ids
         {
             state.accounts.push(account);
         }
+    }
+    if initial && state.accounts.len() >= 3 {
+        state.settings.overview_layout = OverviewLayout::Compact;
     }
 }
 
@@ -172,7 +184,7 @@ pub async fn restore_ignored_accounts(
             Ok(())
         })
         .await?;
-    discover(&app, &runtime).await
+    discover(&app, &runtime, false).await
 }
 
 #[tauri::command]
@@ -263,7 +275,7 @@ pub async fn reset_store(
 ) -> Result<AppState, String> {
     let reset = runtime.reset_store().await?;
     publish(&app, &reset);
-    match discover(&app, &runtime).await {
+    match discover(&app, &runtime, false).await {
         Ok(next) => Ok(next),
         Err(error) => {
             let mut inner = runtime.inner.lock().await;
@@ -329,16 +341,31 @@ mod tests {
     #[test]
     fn discovery_follows_the_lowest_account_without_pinning() {
         let mut state = empty();
-        merge_discovered(&mut state, vec![account("a"), account("b")], &[]);
+        merge_discovered(&mut state, vec![account("a"), account("b")], &[], true);
         assert_eq!(state.accounts.len(), 2);
         assert_eq!(state.settings.tray_mode, TrayMode::Lowest);
         assert_eq!(state.settings.pinned_account_id, None);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Cards);
+    }
+
+    #[test]
+    fn first_discovery_of_many_accounts_starts_compact_once() {
+        let mut state = empty();
+        let found = vec![account("a"), account("b"), account("c")];
+        merge_discovered(&mut state, found.clone(), &[], true);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Compact);
+        state.settings.overview_layout = OverviewLayout::Cards;
+        merge_discovered(&mut state, found.clone(), &[], false);
+        assert_eq!(state.settings.overview_layout, OverviewLayout::Cards);
+        let mut later = empty();
+        merge_discovered(&mut later, found, &[], false);
+        assert_eq!(later.settings.overview_layout, OverviewLayout::Cards);
     }
 
     #[test]
     fn removing_the_pinned_account_clears_the_pin() {
         let mut state = empty();
-        merge_discovered(&mut state, vec![account("a"), account("b")], &[]);
+        merge_discovered(&mut state, vec![account("a"), account("b")], &[], false);
         state.settings.tray_mode = TrayMode::Pinned;
         state.settings.pinned_account_id = Some("a".into());
         remove(&mut state, "b").unwrap();
