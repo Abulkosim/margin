@@ -8,9 +8,11 @@ export function useAccountHistory(account: () => Account, demo: () => boolean): 
   const state = ref<HistoryState>({ kind: 'loading' })
   let request = 0
   let destroyed = false
+  let outdated = false
 
   async function load(): Promise<void> {
     const current = ++request
+    outdated = false
     const source = account()
     const id = source.id
     try {
@@ -24,7 +26,25 @@ export function useAccountHistory(account: () => Account, demo: () => boolean): 
     }
   }
 
-  watch([() => account().id, () => account().snapshot?.fetchedAt], () => { void load() }, { immediate: true })
-  onUnmounted(() => { destroyed = true; request++ })
+  function refresh(): void {
+    if (!demo() && document.visibilityState === 'hidden') {
+      outdated = true
+      request++
+      return
+    }
+    void load()
+  }
+
+  function visibilityChanged(): void {
+    if (outdated && document.visibilityState === 'visible') void load()
+  }
+
+  watch([() => account().id, () => account().snapshot?.fetchedAt], refresh, { immediate: true })
+  document.addEventListener('visibilitychange', visibilityChanged)
+  onUnmounted(() => {
+    destroyed = true
+    request++
+    document.removeEventListener('visibilitychange', visibilityChanged)
+  })
   return { state, load }
 }
