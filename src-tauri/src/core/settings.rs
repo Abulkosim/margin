@@ -13,8 +13,8 @@ pub enum Theme {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TrayMode {
-    #[default]
     Pinned,
+    #[default]
     Lowest,
 }
 
@@ -75,7 +75,7 @@ impl Default for Settings {
             thresholds: vec![80, 95, 100],
             notify_on_reset: false,
             notification_permission: NotificationPermission::Unasked,
-            tray_mode: TrayMode::Pinned,
+            tray_mode: TrayMode::Lowest,
             tray_metric: TrayMetric::Core,
             tray_show_percent: false,
             pinned_account_id: None,
@@ -291,6 +291,24 @@ mod tests {
         assert_eq!(settings.thresholds, vec![80, 95, 100]);
         assert!(settings.validate().is_ok());
         assert_eq!(notes.len(), 3);
+    }
+
+    #[test]
+    fn new_installs_follow_the_lowest_account_and_saved_modes_win() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert_eq!(
+                Settings::recover(value, &mut notes).tray_mode,
+                TrayMode::Lowest
+            );
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "trayMode": "pinned", "pinnedAccountId": "claude-a" })),
+            &mut notes,
+        );
+        assert_eq!(settings.tray_mode, TrayMode::Pinned);
+        assert_eq!(settings.pinned_account_id.as_deref(), Some("claude-a"));
+        assert!(notes.is_empty());
     }
 
     #[test]
