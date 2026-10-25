@@ -281,8 +281,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                 let runtime = runtime.clone();
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result =
-                        providers::fetch(&runtime.client, &account, &runtime.profiles).await;
+                    let result = providers::fetch(
+                        &runtime.client,
+                        &account,
+                        &runtime.profiles,
+                        &runtime.resets,
+                    )
+                    .await;
                     let visible = app
                         .get_webview_window("main")
                         .is_some_and(|window| window.is_visible().unwrap_or(false));

@@ -12,12 +12,62 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use reqwest::Url;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const DEFAULT_BASE_URL: &str = "https://chatgpt.com/backend-api";
 const AUTH_CLAIM: &str = "https://api.openai.com/auth";
 const PROFILE_CLAIM: &str = "https://api.openai.com/profile";
+
+const RESET_CREDITS_TTL: Duration = Duration::from_secs(15 * 60);
+
+#[derive(Default)]
+pub struct ResetCreditCache(Mutex<HashMap<String, CachedResetCredits>>);
+
+struct CachedResetCredits {
+    key: [u8; 32],
+    grants: Option<ResetGrants>,
+    fetched: Instant,
+}
+
+impl ResetCreditCache {
+    fn fresh(&self, account: &str, key: &[u8; 32]) -> Option<Option<ResetGrants>> {
+        let cache = self.0.lock().ok()?;
+        cache
+            .get(account)
+            .filter(|entry| &entry.key == key && entry.fetched.elapsed() < RESET_CREDITS_TTL)
+            .map(|entry| entry.grants.clone())
+    }
+
+    fn store(&self, account: &str, key: [u8; 32], grants: Option<ResetGrants>) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.insert(
+                account.to_owned(),
+                CachedResetCredits {
+                    key,
+                    grants,
+                    fetched: Instant::now(),
+                },
+            );
+        }
+    }
+}
+
+fn reset_credits_key(url: &Url, credentials: &Credentials, inline: u32) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    for part in [
+        url.as_str(),
+        credentials.access_token.as_str(),
+        credentials.account_id.as_deref().unwrap_or(""),
+    ] {
+        digest.update((part.len() as u64).to_be_bytes());
+        digest.update(part.as_bytes());
+    }
+    digest.update(inline.to_be_bytes());
+    digest.finalize().into()
+}
 
 struct Credentials {
     access_token: String,
@@ -28,13 +78,15 @@ struct Credentials {
 pub(super) async fn fetch(
     client: &reqwest::Client,
     account: &Account,
+    resets: &ResetCreditCache,
 ) -> Result<(Snapshot, Identity), UsageError> {
-    fetch_from(client, account, configured_usage_url).await
+    fetch_from(client, account, resets, configured_usage_url).await
 }
 
 async fn fetch_from(
     client: &reqwest::Client,
     account: &Account,
+    resets: &ResetCreditCache,
     resolve_url: impl Fn(&Path) -> Result<Url, UsageError>,
 ) -> Result<(Snapshot, Identity), UsageError> {
     let AccountSource::ConfigDir { path, .. } = &account.source else {
@@ -62,12 +114,22 @@ async fn fetch_from(
     }
     let value = response_json(response).await?;
     let mut snapshot = parse_usage(&value)?;
-    if snapshot
+    if let Some(inline) = snapshot
         .reset_grants
         .as_ref()
-        .is_some_and(|grants| grants.available > 0)
+        .map(|grants| grants.available)
+        .filter(|available| *available > 0)
     {
-        if let Some(grants) = fetch_reset_credits(client, &url, &credentials).await {
+        let key = reset_credits_key(&url, &credentials, inline);
+        let grants = match resets.fresh(&account.id, &key) {
+            Some(grants) => grants,
+            None => {
+                let grants = fetch_reset_credits(client, &url, &credentials).await;
+                resets.store(&account.id, key, grants.clone());
+                grants
+            }
+        };
+        if let Some(grants) = grants {
             snapshot.reset_grants = Some(grants);
         }
     }
@@ -787,7 +849,13 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let account = config_account(directory.path());
         let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
-        fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone())).await
+        fetch_from(
+            &reqwest::Client::new(),
+            &account,
+            &ResetCreditCache::default(),
+            |_| Ok(url.clone()),
+        )
+        .await
     }
 
     #[tokio::test]
@@ -909,7 +977,13 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let account = config_account(directory.path());
         let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
-        fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone())).await
+        fetch_from(
+            &reqwest::Client::new(),
+            &account,
+            &ResetCreditCache::default(),
+            |_| Ok(url.clone()),
+        )
+        .await
     }
 
     #[tokio::test]
@@ -933,9 +1007,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let account = config_account(directory.path());
         let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
-        let (snapshot, _) = fetch_from(&reqwest::Client::new(), &account, |_| Ok(url.clone()))
-            .await
-            .unwrap();
+        let (snapshot, _) = fetch_from(
+            &reqwest::Client::new(),
+            &account,
+            &ResetCreditCache::default(),
+            |_| Ok(url.clone()),
+        )
+        .await
+        .unwrap();
         assert!(snapshot.reset_grants.is_none());
     }
 
@@ -953,6 +1032,53 @@ mod tests {
         let grants = snapshot.reset_grants.unwrap();
         assert_eq!(grants.available, 2);
         assert_eq!(grants.expires_at.as_deref(), Some("2099-01-01T00:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn reset_credits_are_cached_between_polls() {
+        let server = wiremock::MockServer::start().await;
+        let mut usage: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-all-windows.json")).unwrap();
+        usage["rate_limit_reset_credits"] = json!({ "available_count": 1 });
+        wiremock::Mock::given(wiremock::matchers::path("/backend-api/wham/usage"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(usage))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let mut body: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-reset-credits.json"))
+                .unwrap();
+        body["credits"][0]["expires_at"] = json!("2099-01-02T00:00:00Z");
+        body["credits"][1]["expires_at"] = json!("2099-01-01T00:00:00Z");
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path(
+                "/backend-api/wham/rate-limit-reset-credits",
+            ))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let directory = tempfile::tempdir().unwrap();
+        let account = config_account(directory.path());
+        let url = Url::parse(&format!("{}/backend-api/wham/usage", server.uri())).unwrap();
+        let cache = ResetCreditCache::default();
+        for _ in 0..2 {
+            let (snapshot, _) = fetch_from(&reqwest::Client::new(), &account, &cache, |_| {
+                Ok(url.clone())
+            })
+            .await
+            .unwrap();
+            assert_eq!(snapshot.reset_grants.unwrap().available, 2);
+        }
+        let credentials = Credentials {
+            access_token: "synthetic".into(),
+            account_id: None,
+            identity: Identity::default(),
+        };
+        assert_ne!(
+            reset_credits_key(&url, &credentials, 1),
+            reset_credits_key(&url, &credentials, 2)
+        );
     }
 
     #[tokio::test]
