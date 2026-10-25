@@ -33,24 +33,37 @@ export function currentSegment(points: HistoryPoint[]): HistoryPoint[] {
   return segment
 }
 
+// Least squares over the line drawn through the readings, so each stretch counts by its duration.
+// A flat run stored as two points weighs the same as the same run polled every minute.
 export function fitPace(points: HistoryPoint[]): PaceFit | null {
   const segment = currentSegment(points)
   const last = segment.at(-1)
   const resetsAt = last ? resetOf(last.resetsAt) : null
   if (!last || resetsAt === null || segment.length < minPacePoints) return null
   const origin = Date.parse(segment[0]?.at ?? last.at)
-  const xs = segment.map(point => Date.parse(point.at) - origin)
-  if ((xs.at(-1) ?? 0) < minPaceSpan) return null
-  const meanX = xs.reduce((sum, x) => sum + x, 0) / xs.length
-  const meanY = segment.reduce((sum, point) => sum + point.usedPercent, 0) / segment.length
-  let covariance = 0
-  let variance = 0
-  segment.forEach((point, index) => {
-    const dx = (xs[index] ?? 0) - meanX
-    covariance += dx * (point.usedPercent - meanY)
-    variance += dx * dx
-  })
-  const slope = variance > 0 ? covariance / variance : 0
+  const xs = segment.map(point => (Date.parse(point.at) - origin) / 60_000)
+  if ((xs.at(-1) ?? 0) * 60_000 < minPaceSpan) return null
+  let span = 0
+  let sumX = 0
+  let sumY = 0
+  let sumXX = 0
+  let sumXY = 0
+  for (let index = 1; index < segment.length; index++) {
+    const x1 = xs[index - 1] ?? 0
+    const x2 = xs[index] ?? 0
+    const y1 = segment[index - 1]?.usedPercent ?? 0
+    const y2 = segment[index]?.usedPercent ?? 0
+    const width = x2 - x1
+    span += width
+    sumX += width * (x1 + x2) / 2
+    sumY += width * (y1 + y2) / 2
+    sumXX += width * (x1 * x1 + x1 * x2 + x2 * x2) / 3
+    sumXY += width * (2 * x1 * y1 + x1 * y2 + x2 * y1 + 2 * x2 * y2) / 6
+  }
+  const meanX = sumX / span
+  const variance = sumXX / span - meanX * meanX
+  const covariance = sumXY / span - meanX * sumY / span
+  const slope = variance > 0 ? covariance / variance / 60_000 : 0
   return slope > 0 ? { slope, resetsAt } : null
 }
 

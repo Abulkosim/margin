@@ -55,7 +55,10 @@ export function observedHourChange(readings: HistoryReading[], now: number): num
   let startIndex = -1
   readings.forEach((point, index) => { if (point.timestamp <= hourAgo) startIndex = index })
   const start = readings[startIndex]
-  if (!start || hourAgo - start.timestamp > 5 * 60_000) return null
+  if (!start) return null
+  const next = readings[startIndex + 1]
+  const heldUntil = next && !next.boundary && next.usedPercent === start.usedPercent ? next.timestamp : start.timestamp
+  if (hourAgo - heldUntil > 5 * 60_000) return null
   if (readings.slice(startIndex + 1).some(point => point.boundary)) return null
   return Math.round((latest.usedPercent - start.usedPercent) * 10) / 10
 }
