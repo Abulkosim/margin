@@ -29,10 +29,50 @@ struct Presentation {
     title: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RingKey {
+    size: u32,
+    style: IconStyle,
+    stale: bool,
+    tenths: Option<i32>,
+}
+
+impl RingKey {
+    fn new(size: u32, amount: Option<f64>, stale: bool, style: IconStyle) -> Self {
+        Self {
+            size,
+            style,
+            stale,
+            tenths: amount
+                .filter(|amount| amount.is_finite())
+                .map(|amount| (amount.clamp(0.0, 100.0) * 10.0).round() as i32),
+        }
+    }
+
+    fn render(self) -> Vec<u8> {
+        ring_rgba(
+            self.size,
+            self.tenths.map(|tenths| f64::from(tenths) / 10.0),
+            self.stale,
+            self.style,
+        )
+    }
+}
+
+fn cached_ring(cache: &mut Option<(RingKey, Vec<u8>)>, key: RingKey) -> (Vec<u8>, bool) {
+    if let Some((_, pixels)) = cache.as_ref().filter(|(cached, _)| *cached == key) {
+        return (pixels.clone(), false);
+    }
+    let pixels = key.render();
+    *cache = Some((key, pixels.clone()));
+    (pixels, true)
+}
+
 #[derive(Default)]
 pub struct Visibility {
     pub last_blur: Mutex<Option<Instant>>,
     presentation: Mutex<Presentation>,
+    ring: Mutex<Option<(RingKey, Vec<u8>)>>,
     pub placement: Mutex<PopoverPlacement>,
     content_height: Mutex<Option<f64>>,
 }
@@ -326,7 +366,11 @@ pub fn update(app: &AppHandle, state: &AppState) {
     let amount = window.map(|window| 100.0 - window.used_percent);
     let is_stale = account.is_some_and(|account| stale(account, state));
     let size = icon_size(app);
-    let pixels = ring_rgba(size, amount, is_stale, icon_style());
+    let key = RingKey::new(size, amount, is_stale, icon_style());
+    let pixels = match app.state::<Visibility>().ring.lock() {
+        Ok(mut cache) => cached_ring(&mut cache, key).0,
+        Err(_) => key.render(),
+    };
     #[cfg(target_os = "macos")]
     let title = amount
         .filter(|_| state.settings.tray_show_percent)
@@ -835,6 +879,33 @@ mod tests {
         assert_eq!(selected(&state).unwrap().id, "a");
         state.settings.tray_metric = TrayMetric::Weekly;
         assert_eq!(selected(&state).unwrap().id, "a");
+    }
+
+    #[test]
+    fn identical_ring_inputs_reuse_the_last_render() {
+        let mut cache = None;
+        let key = RingKey::new(36, Some(42.31), false, IconStyle::Template);
+        let (first, rendered) = cached_ring(&mut cache, key);
+        assert!(rendered);
+        let (again, rendered) = cached_ring(
+            &mut cache,
+            RingKey::new(36, Some(42.34), false, IconStyle::Template),
+        );
+        assert!(!rendered);
+        assert_eq!(first, again);
+        for changed in [
+            RingKey::new(32, Some(42.3), false, IconStyle::Template),
+            RingKey::new(32, Some(42.3), true, IconStyle::Template),
+            RingKey::new(32, Some(42.3), true, IconStyle::DarkTaskbar),
+            RingKey::new(32, Some(12.0), true, IconStyle::DarkTaskbar),
+            RingKey::new(32, None, true, IconStyle::DarkTaskbar),
+        ] {
+            assert!(cached_ring(&mut cache, changed).1);
+        }
+        assert_eq!(
+            key.render(),
+            ring_rgba(36, Some(42.3), false, IconStyle::Template)
+        );
     }
 
     #[test]
