@@ -27,12 +27,24 @@ export function useMargin() {
   let connectingListener: Promise<void> | null = null
   let destroyed = false
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  const clock = window.setInterval(() => { now.value = Date.now() }, 1000)
+  let clock: number | undefined
+  const tick = (): void => { now.value = Date.now() }
+  function syncClock(): void {
+    clearInterval(clock)
+    clock = undefined
+    if (globalThis.document?.visibilityState === 'hidden') return
+    tick()
+    clock = window.setInterval(tick, 1000)
+  }
+  syncClock()
+  globalThis.document?.addEventListener('visibilitychange', syncClock)
 
   const theme = query.get('theme')
   if (demo && (theme === 'light' || theme === 'dark')) state.value.settings.theme = theme
   const layout = query.get('layout')
   if (demo && (layout === 'cards' || layout === 'compact')) state.value.settings.overviewLayout = layout
+  const order = query.get('order')
+  if (demo && (order === 'urgency' || order === 'added')) state.value.settings.accountOrder = order
 
   function notify(text: string, kind: 'error' | 'success' = 'success'): void {
     clearTimeout(toastTimer)
@@ -218,6 +230,7 @@ export function useMargin() {
     destroyed = true
     stopListening?.()
     clearInterval(clock)
+    globalThis.document?.removeEventListener('visibilitychange', syncClock)
     clearTimeout(toastTimer)
   })
 

@@ -53,7 +53,12 @@ const layoutOptions: { value: Settings['overviewLayout']; label: string }[] = [
   { value: 'cards', label: 'Cards' },
   { value: 'compact', label: 'Compact' },
 ]
+const orderOptions: { value: Settings['accountOrder']; label: string }[] = [
+  { value: 'urgency', label: 'Lowest remaining' },
+  { value: 'added', label: 'As added' },
+]
 const isMac = navigator.userAgent.includes('Mac')
+const layoutShortcuts = isMac ? '⌘1 / ⌘2' : 'Ctrl+1 / Ctrl+2'
 const refreshOptions = computed(() => intervalOptions([30, 60, 120, 300], props.settings.pollIntervalSeconds))
 const idleOptions = computed(() => intervalOptions([300, 600, 900], props.settings.idlePollIntervalSeconds))
 const themes: { id: Settings['theme']; label: string; icon: 'system' | 'sun' | 'moon' }[] = [
@@ -129,6 +134,11 @@ async function setLayout(value: string): Promise<void> {
   if (layout) await patchSettings({ overviewLayout: layout.value })
 }
 
+async function setOrder(value: string): Promise<void> {
+  const order = orderOptions.find(option => option.value === value)
+  if (order) await patchSettings({ accountOrder: order.value })
+}
+
 async function openAdd(): Promise<void> {
   adding.value = true
   formError.value = null
@@ -202,8 +212,12 @@ async function confirmRemove(): Promise<void> {
           <h2>Appearance</h2>
           <div class="theme-options"><button v-for="theme in themes" :key="theme.id" class="theme-option" :class="{ selected: settings.theme === theme.id }" :aria-pressed="settings.theme === theme.id" :disabled="busy" @click="patchSettings({ theme: theme.id })"><span class="theme-thumbnail" :class="`thumbnail-${theme.id}`"><span/><span/><span/></span><span><AppIcon :name="theme.icon" :size="13"/>{{ theme.label }}</span><span v-if="settings.theme === theme.id" class="theme-check"><AppIcon name="check" :size="10"/></span></button></div>
           <div class="setting-row">
-            <div><label for="overview-layout">Overview</label><p>Compact shows one row per account.</p></div>
+            <div><label for="overview-layout">Overview</label><p>Compact shows one row per account. {{ layoutShortcuts }} to switch.</p></div>
             <AppSelect id="overview-layout" :model-value="settings.overviewLayout" :options="layoutOptions" :disabled="busy" @update:model-value="setLayout"/>
+          </div>
+          <div class="setting-row">
+            <div><label for="account-order">Account order</label><p>{{ settings.accountOrder === 'urgency' ? 'Pinned account stays first.' : 'Same order as Accounts.' }}</p></div>
+            <AppSelect id="account-order" :model-value="settings.accountOrder" :options="orderOptions" :disabled="busy" @update:model-value="setOrder"/>
           </div>
         </section>
         <section class="settings-section">

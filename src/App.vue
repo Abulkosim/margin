@@ -7,11 +7,11 @@ import AccountCard from './components/AccountCard.vue'
 import AccountRow from './components/AccountRow.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
-import { accountIsStale, relativeAge } from './lib/format'
+import { accountIsStale, orderAccounts, relativeAge } from './lib/format'
 import { useMargin } from './lib/margin'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
-import type { Account, AccountId, Provider } from './lib/model'
+import { popoverShownSchema, type Account, type AccountId, type Provider, type Settings } from './lib/model'
 
 const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow } = useMargin()
 const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
@@ -33,8 +33,17 @@ const systemDark = ref(media.matches)
 const dark = computed(() => state.value.settings.theme === 'dark' || (state.value.settings.theme === 'system' && systemDark.value))
 const busy = computed(() => pending.value !== null)
 const refreshing = computed(() => (!connectionError.value && state.value.refreshing) || pending.value === 'refresh_accounts' || pending.value === 'discover_accounts' || pending.value === 'restore_ignored_accounts')
-const visibleAccounts = computed(() => state.value.accounts.filter(account => filter.value === 'all' || account.provider === filter.value))
-const staleCount = computed(() => state.value.accounts.filter(account => accountIsStale(account, state.value.settings, now.value, Boolean(connectionError.value))).length)
+const accountOrder = ref<AccountId[]>([])
+const orderedAccounts = computed(() => {
+  const position = new Map(accountOrder.value.map((id, index) => [id, index]))
+  return state.value.accounts
+    .map((account, index) => ({ account, rank: position.get(account.id) ?? accountOrder.value.length + index }))
+    .sort((a, b) => a.rank - b.rank)
+    .map(entry => entry.account)
+})
+const visibleAccounts = computed(() => orderedAccounts.value.filter(account => filter.value === 'all' || account.provider === filter.value))
+const needsAttention = (account: Account): boolean => accountIsStale(account, state.value.settings, now.value, Boolean(connectionError.value))
+const staleCount = computed(() => state.value.accounts.filter(needsAttention).length)
 const counts = computed(() => ({ all: state.value.accounts.length, claude: state.value.accounts.filter(account => account.provider === 'claude').length, codex: state.value.accounts.filter(account => account.provider === 'codex').length }))
 const showFilters = computed(() => counts.value.claude > 0 && counts.value.codex > 0)
 const filterOptions: { id: 'all' | Provider; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'claude', label: 'Claude' }, { id: 'codex', label: 'Codex' }]
@@ -52,11 +61,13 @@ let fitFrame = 0
 let fitObserver: ResizeObserver | undefined
 let stopSettingsListener: (() => void) | undefined
 let stopPlacementListener: (() => void) | undefined
+let stopShownListener: (() => void) | undefined
 let destroyed = false
 const latestFetch = computed(() => {
   const timestamps = state.value.accounts.flatMap(account => account.snapshot ? [account.snapshot.fetchedAt] : [])
   return timestamps.sort((a, b) => Date.parse(b) - Date.parse(a)).at(0)
 })
+const showsAttention = computed(() => !refreshing.value && !connectionError.value && staleCount.value > 0)
 const status = computed(() => {
   if (refreshing.value) return 'Checking usage'
   if (connectionError.value) return 'Connection interrupted'
@@ -64,6 +75,14 @@ const status = computed(() => {
   if (latestFetch.value) return `Updated ${relativeAge(latestFetch.value, now.value)}`
   return state.value.accounts.length ? 'Waiting for usage' : 'No accounts connected'
 })
+
+function sortAccounts(): void {
+  accountOrder.value = orderAccounts(state.value.accounts, state.value.settings, now.value, Boolean(connectionError.value)).map(account => account.id)
+}
+
+watch(() => state.value.accounts.map(account => account.id).join('\n'), sortAccounts, { immediate: true })
+watch(() => state.value.settings.accountOrder, sortAccounts)
+watch(loading, value => { if (!value) sortAccounts() })
 
 watch(counts, value => {
   if (filter.value !== 'all' && (!value.claude || !value.codex)) filter.value = 'all'
@@ -105,6 +124,49 @@ function observeFit(): void {
 watch([fitsContent, compact, () => state.value.accounts.length], () => { void nextTick(observeFit) })
 watch(compact, () => { expandedId.value = null })
 
+let settingsRequestedAt = Number.NEGATIVE_INFINITY
+
+function onPopoverShown(payload: unknown): void {
+  const result = popoverShownSchema.safeParse(payload)
+  if (!result.success) return
+  const { hiddenForMs } = result.data
+  if (hiddenForMs !== null && hiddenForMs < 60_000) return
+  sortAccounts()
+  expandedId.value = null
+  if (performance.now() - settingsRequestedAt > 1000) page.value = 'overview'
+  void nextTick(() => scroller.value?.scrollTo({ top: 0 }))
+}
+
+async function showAttention(): Promise<void> {
+  const target = orderedAccounts.value.find(needsAttention)
+  if (!target) return
+  if (filter.value !== 'all' && filter.value !== target.provider) filter.value = 'all'
+  if (compact.value) expandedId.value = target.id
+  await nextTick()
+  const id = CSS.escape(target.id)
+  const element = accountList.value?.querySelector<HTMLElement>(compact.value ? `.compact-row[aria-controls="account-${id}"]` : `.account-card[data-account-id="${id}"]`)
+  if (!element) return
+  const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ;(element.closest('li') ?? element).scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
+  element.focus({ preventScroll: true })
+}
+
+function moveRowFocus(event: KeyboardEvent): void {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || !target.classList.contains('compact-row')) return
+  const rows = [...(accountList.value?.querySelectorAll<HTMLElement>('.compact-row') ?? [])]
+  const index = rows.indexOf(target)
+  const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: rows.length - 1 }[event.key]
+  const row = next === undefined ? undefined : rows[next]
+  if (!row) return
+  event.preventDefault()
+  row.focus()
+}
+
+async function setLayout(layout: Settings['overviewLayout']): Promise<void> {
+  if (state.value.settings.overviewLayout !== layout) await saveSettings({ ...state.value.settings, overviewLayout: layout })
+}
+
 function openSettings(tab: 'general' | 'accounts' = 'general'): void {
   settingsTab.value = tab
   page.value = 'settings'
@@ -144,7 +206,7 @@ async function connectPopoverPlacement(): Promise<void> {
 function onKeydown(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
   if (document.querySelector('[role="alertdialog"]')) {
-    if ((event.metaKey || event.ctrlKey) && [',', 'r'].includes(event.key.toLowerCase())) event.preventDefault()
+    if ((event.metaKey || event.ctrlKey) && [',', 'r', '1', '2'].includes(event.key.toLowerCase())) event.preventDefault()
     return
   }
   if (event.key === 'Escape') {
@@ -153,6 +215,10 @@ function onKeydown(event: KeyboardEvent): void {
   }
   if ((event.metaKey || event.ctrlKey) && event.key === ',') { event.preventDefault(); openSettings() }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') { event.preventDefault(); void refresh() }
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && (event.key === '1' || event.key === '2')) {
+    event.preventDefault()
+    void setLayout(event.key === '1' ? 'cards' : 'compact')
+  }
 }
 
 onMounted(async () => {
@@ -164,9 +230,14 @@ onMounted(async () => {
   if (!desktop || demo) return
   void connectPopoverPlacement()
   try {
-    const unlisten = await window.__TAURI__?.event.listen('open_settings', () => openSettings())
+    const unlisten = await window.__TAURI__?.event.listen('open_settings', () => { settingsRequestedAt = performance.now(); openSettings() })
     if (destroyed) unlisten?.()
     else stopSettingsListener = unlisten
+  } catch { }
+  try {
+    const unlisten = await window.__TAURI__?.event.listen('popover_shown', event => onPopoverShown(event.payload))
+    if (destroyed) unlisten?.()
+    else stopShownListener = unlisten
   } catch { }
 })
 onUnmounted(() => {
@@ -175,6 +246,7 @@ onUnmounted(() => {
   cancelAnimationFrame(fitFrame)
   stopSettingsListener?.()
   stopPlacementListener?.()
+  stopShownListener?.()
   media.removeEventListener('change', syncSystemTheme)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', syncViewportWidth)
@@ -209,7 +281,7 @@ onUnmounted(() => {
             <div v-else ref="accountList" class="account-list">
               <template v-if="compact && visibleAccounts.length">
                 <div class="compact-columns" aria-hidden="true"><span>Session</span><span>Weekly</span><span>Resets</span></div>
-                <ul class="compact-list">
+                <ul class="compact-list" @keydown="moveRowFocus">
                   <li v-for="account in visibleAccounts" :key="account.id" class="compact-item" :class="{ expanded: expandedId === account.id }">
                     <AccountRow :account="account" :settings="state.settings" :now="now" :pinned="isPinned(account)" :expanded="expandedId === account.id" :connection-error="connectionError" :controls="`account-${account.id}`" @toggle="toggleExpanded(account.id)"/>
                     <div v-if="expandedId === account.id" :id="`account-${account.id}`" class="compact-detail"><AccountCard :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></div>
@@ -220,7 +292,7 @@ onUnmounted(() => {
               <div v-if="!visibleAccounts.length" class="filter-empty"><AppIcon :name="filter === 'claude' ? 'claude' : 'codex'" :size="25"/><p>No {{ filter === 'claude' ? 'Claude' : 'Codex' }} accounts yet.</p><button class="text-button" @click="openSettings('accounts')">Add an account<AppIcon name="plus" :size="13"/></button></div>
             </div>
           </main>
-          <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/>{{ status }}</span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
+          <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/><button v-if="showsAttention" class="text-button attention-button" @click="showAttention">{{ status }}</button><template v-else>{{ status }}</template></span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
         <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="chooseFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
@@ -234,5 +306,7 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-button { position: relative; }
+.attention-button { padding: 0; font-size: inherit; color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb,currentColor 30%,transparent); text-underline-offset: 3px; }
+.attention-button:hover { color: inherit; text-decoration-color: currentColor; }
 .update-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1.5px var(--surface); }
 </style>

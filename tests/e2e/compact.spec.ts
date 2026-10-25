@@ -62,9 +62,17 @@ test('compact rows show session, weekly, and the next reset of the tighter limit
       else await expect(button.locator('.compact-value').nth(index)).not.toHaveClass(/quota-low/)
     }
   }
-  await expect(row(page, 'Studio')).toHaveAttribute('aria-label', 'Studio, Claude, session 18 percent left, weekly 86 percent left, resets in 45m')
+  await expect(row(page, 'Studio')).toHaveAttribute('aria-label', /^Studio, Claude, hello@studio\.example, session 18 percent left, weekly 86 percent left, session resets in 45m, \d{1,2}:\d{2}/)
+  await expect(row(page, 'Personal')).toHaveAttribute('aria-label', /, weekly resets in 4d 6h, \w{3} \d{1,2}:\d{2}/)
   await expect(page.locator('.compact-value').first()).toHaveCSS('font-variant-numeric', 'tabular-nums')
-  await expect(page.locator('.compact-label').first()).toHaveAttribute('title', 'Personal · alex@example.com')
+  await expect(page.locator('.compact-label').first()).not.toHaveAttribute('title')
+  for (const [name, limiting] of [['Personal', 1], ['Studio', 0], ['Work', 1]] as const) {
+    const values = row(page, name).locator('.compact-value')
+    await expect(values.nth(limiting)).toHaveClass(/limiting/)
+    await expect(values.nth(1 - limiting)).not.toHaveClass(/limiting/)
+    const [strong, quiet] = await Promise.all([values.nth(limiting), values.nth(1 - limiting)].map(value => value.evaluate(element => getComputedStyle(element).fontWeight)))
+    expect(Number(strong)).toBeGreaterThan(Number(quiet))
+  }
 })
 
 test('stale, signed-out, and pinned accounts keep their markers in compact rows', async ({ page }) => {
@@ -83,9 +91,12 @@ test('stale, signed-out, and pinned accounts keep their markers in compact rows'
   await expect(signedOut.locator('.compact-value')).toHaveCount(0)
   const label = signedOut.locator('.compact-label')
   await expect(label).toHaveCSS('text-overflow', 'ellipsis')
-  await expect(label).toHaveAttribute('title', 'Client work for Northwind Studio · alex@northwind.example')
+  await expect(signedOut).toHaveAttribute('aria-label', /^Client work for Northwind Studio, Claude, alex@northwind\.example, signed out$/)
   await signedOut.click()
-  await expect(page.getByRole('article', { name: 'Client work for Northwind Studio, Claude' }).getByText(/Signed out 1d ago/)).toBeVisible()
+  const card = page.getByRole('article', { name: 'Client work for Northwind Studio, Claude' })
+  await expect(card.getByText('Signed out 1d ago. Run:', { exact: true })).toBeVisible()
+  await expect(card.locator('.account-email')).toHaveText('alex@northwind.example')
+  await expect(card.getByRole('button', { name: 'Copy command: CLAUDE_CONFIG_DIR=~/.claude-client claude', exact: true })).toBeVisible()
 })
 
 test('rows expand to the full card one at a time with mouse and keyboard', async ({ page }, info) => {

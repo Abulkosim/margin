@@ -31,3 +31,10 @@ test('daily update checks default on and older settings parse with them on', () 
   assert.equal(settingsSchema.parse({ ...defaultSettings, autoCheckUpdates: false }).autoCheckUpdates, false)
   assert.equal(settingsSchema.safeParse({ ...defaultSettings, autoCheckUpdates: 'daily' }).success, false)
 })
+
+test('new installs follow the lowest account and order by urgency', () => {
+  assert.equal(defaultSettings.trayMode, 'lowest')
+  assert.equal(defaultSettings.pinnedAccountId, null)
+  assert.equal(defaultSettings.accountOrder, 'urgency')
+  assert.equal(settingsSchema.parse({ ...defaultSettings, accountOrder: 'added' }).accountOrder, 'added')
+})
