@@ -131,9 +131,7 @@ export function signedOutMessage(account: Account, now: number): string | null {
   const error = account.error
   if (error?.kind !== 'signedOut') return null
   const status = error.signedOutSince ? `Signed out ${relativeAge(error.signedOutSince, now)}` : 'Signed out'
-  const program = account.provider === 'claude' ? 'claude' : 'codex login'
-  const folder = account.source.kind === 'configDir' ? ` in ${account.source.path}` : ''
-  return `${status} · run ${program}${folder}`
+  return error.signInCommand ? `${status}. Run:` : `${status}. Sign in with the ${providerName(account.provider)} CLI, then refresh.`
 }
 
 export function resetClock(resetsAt: string | null, now: number): string | null {

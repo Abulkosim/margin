@@ -130,16 +130,16 @@ test('keychain-backed Claude sources parse and describe where the token lives', 
   assert.equal(accountSource(account), '/example/.codex-work')
 })
 
-test('signed-out copy names the tool and the account folder', () => {
+test('signed-out copy leads into the sign-in command', () => {
   const claude = accountSchema.parse({
     ...account, provider: 'claude', source: { kind: 'configDir', path: '/example/.claude-work' },
     error: { kind: 'signedOut', message: 'Claude is signed out.', retryAfterSeconds: null, signedOutSince: '2026-10-16T08:00:00Z', signInCommand: 'CLAUDE_CONFIG_DIR=/example/.claude-work claude' },
   })
-  assert.equal(signedOutMessage(claude, now), 'Signed out 2h ago · run claude in /example/.claude-work')
-  const keychain = accountSchema.parse({ ...claude, source: { kind: 'keychain' } })
-  assert.equal(signedOutMessage(keychain, now), 'Signed out 2h ago · run claude')
+  assert.equal(signedOutMessage(claude, now), 'Signed out 2h ago. Run:')
   const codex = accountSchema.parse({ ...account, error: { kind: 'signedOut', message: 'Codex is signed out.', retryAfterSeconds: null, signInCommand: 'CODEX_HOME=/example/.codex-work codex login' } })
-  assert.equal(signedOutMessage(codex, now), 'Signed out · run codex login in /example/.codex-work')
+  assert.equal(signedOutMessage(codex, now), 'Signed out. Run:')
+  const noCommand = accountSchema.parse({ ...claude, error: { kind: 'signedOut', message: 'Claude is signed out.', retryAfterSeconds: null } })
+  assert.equal(signedOutMessage(noCommand, now), 'Signed out. Sign in with the Claude CLI, then refresh.')
   assert.equal(signedOutMessage(account, now), null)
   assert.equal(signedOutMessage(accountSchema.parse({ ...account, error: { kind: 'auth', message: 'Denied', retryAfterSeconds: null } }), now), null)
 })

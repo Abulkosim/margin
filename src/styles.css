@@ -294,6 +294,13 @@ button:disabled:hover {
   margin-bottom: 10px;
   box-shadow: 0 1px 2px #00000002;
 }
+.account-card:focus {
+  outline: none;
+}
+.account-card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .account-card:last-child {
   margin-bottom: 0;
 }
@@ -344,6 +351,18 @@ button:disabled:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+}
+.account-subline {
+  display: flex;
+  min-width: 0;
+}
+.account-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-subline>.middot,.account-plan {
+  flex-shrink: 0;
 }
 .pin-button {
   height: 25px;
@@ -692,8 +711,51 @@ button:disabled:hover {
   display: flex;
   gap: 18px;
 }
+.command-copy+.account-error-actions {
+  margin-top: 4px;
+}
+.command-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 10px 0 4px;
+  padding: 7px 9px 7px 10px;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+.command-copy:hover {
+  background: var(--hover);
+}
+.command-copy>code {
+  flex: 1;
+  min-width: 0;
+  font: 500 12px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing: -.1px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.command-copy-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 18px;
+  font-size: 12px;
+  color: var(--tertiary);
+  transition: color .18s;
+}
+.command-copy:hover .command-copy-state {
+  color: var(--secondary);
+}
+.command-copy.copied .command-copy-state {
+  color: var(--accent-ink);
+}
 .sign-in-copy {
-  margin: 4px 0 0 19px;
+  width: calc(100% - 19px);
+  margin-left: 19px;
 }
 .inline-empty {
   font-size: 13px;
@@ -1101,7 +1163,7 @@ button:disabled:hover {
 .threshold-options {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   margin-top: 13px;
   color: var(--tertiary);
   font-size: 13px;
@@ -1111,8 +1173,10 @@ button:disabled:hover {
 .threshold-options>span:first-child {
   margin-right: 4px;
 }
-.threshold-options>span:last-child {
-  margin-left: 2px;
+.threshold-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .threshold-options.is-disabled {
   opacity: .5;
@@ -1123,7 +1187,7 @@ button:disabled:hover {
   gap: 4px;
   border: 1px solid var(--line);
   border-radius: 5px;
-  padding: 5px 7px;
+  padding: 5px 6px;
   font-size: 13px;
   background: var(--card);
   font-variant-numeric: tabular-nums;
@@ -1767,8 +1831,13 @@ input::placeholder {
 }
 .compact-value {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -.15px;
+  color: var(--tertiary);
+}
+.compact-value.limiting {
+  font-weight: 600;
+  color: var(--ink);
 }
 .compact-value.quota-low {
   color: var(--warning);
@@ -1805,15 +1874,17 @@ input::placeholder {
   margin: 0;
 }
 .compact-detail .account-heading {
-  justify-content: flex-end;
   min-height: 25px;
-  margin-bottom: 2px;
+  margin-bottom: 8px;
 }
 .compact-detail .pin-button {
   opacity: 1;
 }
-.compact-detail .account-heading>.provider-mark,.compact-detail .account-heading-copy {
+.compact-detail .account-heading>.provider-mark,.compact-detail .account-heading h2,.compact-detail .account-subline>.middot,.compact-detail .account-plan {
   display: none;
+}
+.compact-detail .account-heading p {
+  margin: 0;
 }
 @media(max-width:350px) {
   .compact-columns,.compact-row {

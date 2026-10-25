@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
 import { accountIsStale, formatMoney, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, retryingMessage, signedOutMessage } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
@@ -8,6 +8,7 @@ import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
 import AppTooltip from './ui/AppTooltip.vue'
+import CopyCommand from './ui/CopyCommand.vue'
 
 const props = defineProps<{ account: Account; demo: boolean; settings: Settings; now: number; pinned: boolean; busy: boolean; connectionError: string | null }>()
 defineEmits<{ pin: []; refresh: [] }>()
@@ -22,32 +23,10 @@ const pace = (window: UsageWindow): string | null => stale.value || !paceFits.va
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)
-const errorMessage = computed(() => props.connectionError ?? signedOutMessage(props.account, props.now) ?? props.account.error?.message)
+const signedOut = computed(() => props.connectionError ? null : signedOutMessage(props.account, props.now))
+const errorMessage = computed(() => props.connectionError ?? signedOut.value ?? props.account.error?.message)
+const showUpdated = computed(() => !signedOut.value || !props.account.error?.signedOutSince)
 const signInCommand = computed(() => props.connectionError ? null : props.account.error?.signInCommand ?? null)
-const copied = ref(false)
-let copiedTimer: ReturnType<typeof setTimeout> | undefined
-onBeforeUnmount(() => clearTimeout(copiedTimer))
-
-async function copyCommand() {
-  const command = signInCommand.value
-  if (!command) return
-  try {
-    await navigator.clipboard.writeText(command)
-  } catch {
-    const field = document.createElement('textarea')
-    field.value = command
-    field.setAttribute('readonly', '')
-    field.style.position = 'fixed'
-    field.style.opacity = '0'
-    document.body.append(field)
-    field.select()
-    document.execCommand('copy')
-    field.remove()
-  }
-  copied.value = true
-  clearTimeout(copiedTimer)
-  copiedTimer = setTimeout(() => { copied.value = false }, 1600)
-}
 const groups = computed(() => groupWindows(props.account.snapshot?.windows ?? []))
 const extraWindows = computed(() => groups.value.more)
 const spokenReset = (window: UsageWindow): string => resetCountdown(window.resetsAt, props.now).toLowerCase()
@@ -57,12 +36,12 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
 </script>
 
 <template>
-  <article class="account-card" :class="{ 'account-stale': stale, 'account-refreshing': refreshing }" :aria-label="`${account.label}, ${providerName(account.provider)}`">
+  <article class="account-card" tabindex="-1" :data-account-id="account.id" :class="{ 'account-stale': stale, 'account-refreshing': refreshing }" :aria-label="`${account.label}, ${providerName(account.provider)}`">
     <div class="account-heading">
       <span class="provider-mark" :class="account.provider"><AppIcon :name="account.provider" :size="20" /></span>
       <div class="account-heading-copy">
-        <AppTooltip :text="account.identity.email ?? account.label"><h2 tabindex="0">{{ account.label }}</h2></AppTooltip>
-        <p>{{ providerName(account.provider) }}<template v-if="plan"><span class="middot">·</span>{{ plan }}</template></p>
+        <h2>{{ account.label }}</h2>
+        <p class="account-subline"><span class="account-email">{{ account.identity.email ?? providerName(account.provider) }}</span><template v-if="plan"><span class="middot">·</span><span class="account-plan">{{ plan }}</span></template></p>
       </div>
       <span v-if="stale && account.snapshot" class="stale-badge">Last known</span>
       <AppTooltip :text="pinned ? 'Pinned to tray' : 'Show this account in tray'"><button class="icon-button pin-button" :class="{ 'is-pinned': pinned }" :aria-label="pinned ? `Unpin ${account.label} from tray` : `Pin ${account.label} to tray`" :disabled="busy" :aria-pressed="pinned" @click="$emit('pin')"><AppIcon name="pin" :size="14" /></button></AppTooltip>
@@ -94,16 +73,16 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
         <span>{{ expanded ? 'Show less' : extraWindows.length ? `${extraWindows.length} more ${extraWindows.length === 1 ? 'window' : 'windows'}` : 'Extra usage' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: expanded }" />
       </button>
       <p v-if="retrying" class="retry-note" role="status"><AppIcon name="refresh" :size="12" />{{ retrying }}</p>
-      <div v-if="stale" class="stale-note"><AppIcon name="alert" :size="13" /><p><span>Updated {{ relativeAge(account.snapshot.fetchedAt, now) }}.</span> {{ errorMessage ?? 'Waiting for a fresh reading.' }}</p></div>
-      <AppTooltip v-if="stale && signInCommand" :text="signInCommand"><button class="text-button sign-in-copy" :aria-label="copied ? 'Command copied' : `Copy command: ${signInCommand}`" @click="copyCommand">{{ copied ? 'Copied' : 'Copy command' }} <AppIcon :name="copied ? 'check' : 'copy'" :size="12" /></button></AppTooltip>
+      <div v-if="stale" class="stale-note"><AppIcon name="alert" :size="13" /><p><span v-if="showUpdated">Updated {{ relativeAge(account.snapshot.fetchedAt, now) }}. </span><span v-if="signedOut">{{ signedOut }}</span><template v-else>{{ errorMessage ?? 'Waiting for a fresh reading.' }}</template></p></div>
+      <CopyCommand v-if="stale && signInCommand" class="sign-in-copy" :command="signInCommand" />
     </template>
 
     <div v-else-if="refreshing" class="quota-loading" aria-label="Loading account usage" role="status"><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/></div>
     <div v-else class="account-error">
       <div class="account-error-title"><AppIcon name="alert" :size="15" /><span>{{ errorMessage ? 'Usage unavailable' : 'Waiting for usage' }}</span></div>
       <p>{{ errorMessage ?? 'Refresh to read this account’s usage.' }}</p>
+      <CopyCommand v-if="signInCommand" :command="signInCommand" />
       <div class="account-error-actions">
-        <AppTooltip v-if="signInCommand" :text="signInCommand"><button class="text-button" :aria-label="copied ? 'Command copied' : `Copy command: ${signInCommand}`" @click="copyCommand">{{ copied ? 'Copied' : 'Copy command' }} <AppIcon :name="copied ? 'check' : 'copy'" :size="12" /></button></AppTooltip>
         <button class="text-button" :disabled="busy" @click="$emit('refresh')">Try again <AppIcon name="refresh" :size="12" /></button>
       </div>
     </div>
