@@ -1,5 +1,6 @@
 use super::{
     model::{Account, UsageWindow},
+    notifications::reset_clock,
     poller,
     ring::{ring_rgba, IconStyle},
     settings::{TrayMetric, TrayMode},
@@ -359,6 +360,35 @@ fn set_tabular_title(tray: &tauri::tray::TrayIcon, title: Option<&str>) -> bool 
     true
 }
 
+fn tooltip(
+    account: Option<&Account>,
+    window: Option<&UsageWindow>,
+    is_stale: bool,
+    now: chrono::DateTime<Utc>,
+) -> String {
+    let Some(account) = account else {
+        return "Margin · Add an account".into();
+    };
+    let Some(window) = window else {
+        return format!("Margin · {} · usage unavailable", account.label);
+    };
+    let reset = window
+        .resets_at
+        .as_deref()
+        .and_then(|reset| chrono::DateTime::parse_from_rfc3339(reset).ok())
+        .map(|reset| reset.with_timezone(&Utc))
+        .filter(|reset| *reset > now)
+        .map(|reset| format!(" · resets {}", reset_clock(reset, now)))
+        .unwrap_or_default();
+    format!(
+        "Margin · {} · {} {}% remaining{reset}{}",
+        account.label,
+        window.label.chars().take(64).collect::<String>(),
+        percent_label(100.0 - window.used_percent),
+        if is_stale { " · last known" } else { "" }
+    )
+}
+
 pub fn update(app: &AppHandle, state: &AppState) {
     let account = selected(state);
     let window = account
@@ -375,22 +405,7 @@ pub fn update(app: &AppHandle, state: &AppState) {
     let title = amount
         .filter(|_| state.settings.tray_show_percent)
         .map(|amount| format!("{}%", percent_label(amount)));
-    let tooltip = match (account, amount) {
-        (Some(account), Some(amount)) => {
-            let window = window
-                .map(|window| window.label.chars().take(64).collect::<String>())
-                .unwrap_or_default();
-            format!(
-                "Margin · {} · {} · {}% remaining{}",
-                account.label,
-                window,
-                percent_label(amount),
-                if is_stale { " · last known" } else { "" }
-            )
-        }
-        (Some(account), None) => format!("Margin · {} · usage unavailable", account.label),
-        _ => "Margin · Add an account".into(),
-    };
+    let tooltip = tooltip(account, window, is_stale, Utc::now());
     let revision = state.revision;
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -879,6 +894,33 @@ mod tests {
         assert_eq!(selected(&state).unwrap().id, "a");
         state.settings.tray_metric = TrayMetric::Weekly;
         assert_eq!(selected(&state).unwrap().id, "a");
+    }
+
+    #[test]
+    fn tooltip_names_the_followed_window_and_its_reset_time() {
+        let now = Utc::now();
+        let mut work = windowed("Personal", &[("seven_day", 58.0, Some(30))]);
+        let reset = now + chrono::Duration::hours(30);
+        let window = work.snapshot.as_ref().unwrap().windows[0].clone();
+        assert_eq!(
+            tooltip(Some(&work), Some(&window), false, now),
+            format!(
+                "Margin · Personal · seven_day 42% remaining · resets {}",
+                reset_clock(reset, now)
+            )
+        );
+        let mut expired = window.clone();
+        expired.resets_at = Some((now - chrono::Duration::minutes(1)).to_rfc3339());
+        assert_eq!(
+            tooltip(Some(&work), Some(&expired), true, now),
+            "Margin · Personal · seven_day 42% remaining · last known"
+        );
+        work.snapshot = None;
+        assert_eq!(
+            tooltip(Some(&work), None, false, now),
+            "Margin · Personal · usage unavailable"
+        );
+        assert_eq!(tooltip(None, None, false, now), "Margin · Add an account");
     }
 
     #[test]
