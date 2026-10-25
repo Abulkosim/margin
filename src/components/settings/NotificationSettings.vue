@@ -11,6 +11,8 @@ const choices = computed(() => [...new Set([...presets, ...props.settings.thresh
 const systemSettings = navigator.userAgent.includes('Mac') ? 'System Settings' : 'Windows Settings'
 const blocked = computed(() => props.settings.notifications && props.settings.notificationPermission === 'denied')
 
+const remaining = (threshold: number): number => 100 - threshold
+
 function selected(threshold: number): boolean {
   return props.settings.thresholds.includes(threshold)
 }
@@ -33,7 +35,7 @@ function toggle(threshold: number): void {
     <h2>Notifications</h2>
     <div class="setting-row"><span id="notification-label" class="setting-label">Usage alerts</span><AppSwitch :model-value="settings.notifications" aria-labelledby="notification-label" :disabled="busy" @update:model-value="emit('change', { notifications: $event })"/></div>
     <p v-if="blocked" class="notification-blocked" role="status"><AppIcon name="alert" :size="13"/><span>Notifications are off in {{ systemSettings }}.</span></p>
-    <div class="threshold-options" :class="{ 'is-disabled': !settings.notifications }"><span>Notify at</span><button v-for="threshold in choices" :key="threshold" class="threshold-chip" :class="{ selected: selected(threshold) }" :aria-pressed="selected(threshold)" :aria-label="`Notify at ${threshold}% used`" :disabled="busy || !settings.notifications || locked(threshold)" @click="toggle(threshold)"><AppIcon v-if="selected(threshold)" name="check" :size="11"/>{{ threshold }}%</button></div>
+    <div class="threshold-options" :class="{ 'is-disabled': !settings.notifications }"><span>Notify at</span><span v-for="(threshold, index) in choices" :key="threshold" class="threshold-item"><button class="threshold-chip" :class="{ selected: selected(threshold) }" :aria-pressed="selected(threshold)" :aria-label="`Notify at ${remaining(threshold)}% left`" :disabled="busy || !settings.notifications || locked(threshold)" @click="toggle(threshold)"><AppIcon v-if="selected(threshold)" name="check" :size="11"/>{{ remaining(threshold) }}%</button><span v-if="index === choices.length - 1">left</span></span></div>
     <div class="setting-row reset-row" :class="{ 'is-disabled': !settings.notifications }"><div><span id="reset-alert-label" class="setting-label">Notify when limits reset</span><p>Session and weekly, after a usage alert.</p></div><AppSwitch :model-value="settings.notifyOnReset" aria-labelledby="reset-alert-label" :disabled="busy || !settings.notifications" @update:model-value="emit('change', { notifyOnReset: $event })"/></div>
   </section>
 </template>
