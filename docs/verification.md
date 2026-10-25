@@ -2,7 +2,19 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.5.1
+## Current release: v0.6.0
+
+**[v0.6.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.6.0).** Published 2026-10-25 03:07 UTC; verified on 2026-10-25 on macOS 26.6.2. Comfort and efficiency release from a performance and usability audit of v0.5.1.
+
+- Audit of the running v0.5.1 (2 accounts, 45 h uptime): 0.3% idle CPU, 38–58 MB. History and settings were written one JSON token per `write()` (142 ms per save on a 214 KB file, under the runtime lock); 78% of stored history points repeated the previous one.
+- `pnpm typecheck`, 73 frontend unit tests, 186 Chromium/WebKit browser cases, 181 Rust tests, formatting, strict Clippy, and 14 release-script tests passed on `6f1b506`. `node scripts/check-release.mjs v0.6.0` passed. [Main CI](https://github.com/Abulkosim/margin/actions/runs/40155985114) and the [release build](https://github.com/Abulkosim/margin/actions/runs/40156455871) passed, including Windows x64.
+- New tests cover buffered writes, run-length history (dense and compacted series give the same pace and hourly change), per-window caps, release of accounts whose source changed mid-fetch, skipped identical ring renders, refresh-on-open of readings older than 30 s, the 15-minute Codex reset-credit cache, remaining-based alert copy with the actual remaining value, the local reset clock, new-install defaults, urgency ordering, reset on reopen, ⌘1/⌘2, ↑/↓, and the attention button.
+- An independent review of the diff found no ship-blockers. Fixed before tagging: tray mode after removing the pinned account, alert titles overstating what is left after a jump, a stale clock in the reopen sort, and Settings resetting after the folder picker. Not fixed: history compaction before pruning when the system clock moves back, `resetsAt` jitter adding history points, and a 24-hour clock in tooltips and notifications.
+- All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.6.0 installed for x86_64 and arm64. `latest.json` reports 0.6.0 with `Abulkosim/usagebar` URLs; the public latest endpoint serves it. Release notes match `changelogs/v0.6.0.md`.
+- Installed on the owner's Mac by replacing v0.5.1 with the verified archive (backup kept under `.cache/`). Both accounts refreshed within 20 seconds of launch; existing settings were kept and `accountOrder` was added. The real Codex history compacted from 1414 points (214 KB) to 408 points (62 KB) on first load.
+- Pending: Windows checks of `visibilityState` for the paused clock and skipped history loads, the native popover reset after a minute, and notification wording on a real threshold.
+
+## Previous release: v0.5.1
 
 **[v0.5.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.1).** Published 2026-10-23 04:53 UTC; verified on 2026-10-22/23 on macOS 26.6.2. A layout patch: the popover opens straight on the accounts, the title block is gone, and provider filters sit in the header and only appear when both Claude and Codex accounts exist.
 
