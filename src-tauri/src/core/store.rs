@@ -89,18 +89,13 @@ pub fn save(path: &Path, state: &StoredState) -> Result<(), String> {
             .set_permissions(fs::Permissions::from_mode(0o600))
             .map_err(|_| "Margin could not protect its settings file.")?;
     }
-    serde_json::to_writer_pretty(&mut file, state).map_err(|_| "Could not encode settings.")?;
-    file.write_all(b"\n")
-        .map_err(|_| "Could not write settings.")?;
-    if file
-        .as_file()
-        .metadata()
-        .map_err(|_| "Could not inspect saved settings.")?
-        .len()
-        > MAX_STORE_BYTES
-    {
+    let mut bytes = serde_json::to_vec_pretty(state).map_err(|_| "Could not encode settings.")?;
+    bytes.push(b'\n');
+    if bytes.len() as u64 > MAX_STORE_BYTES {
         return Err("Margin's settings exceed the supported file size.".into());
     }
+    file.write_all(&bytes)
+        .map_err(|_| "Could not write settings.")?;
     file.as_file()
         .sync_all()
         .map_err(|_| "Could not flush settings.")?;
