@@ -2,7 +2,19 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.6.0
+## Current release: v0.7.0
+
+**[v0.7.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.7.0).** Published 2026-10-26 04:38 UTC; verified on 2026-10-26 on macOS 26.6.2. Adds Make active, fast usage alerts, and `margin --json` / `--line`.
+
+- `pnpm typecheck`, 79 frontend unit tests, 212 Chromium/WebKit browser cases, 255 Rust tests (251 library including 42 for the switch module, 4 CLI integration), formatting, strict Clippy, `cargo deny`, `pnpm audit`, and 14 release-script tests passed on `ebca3f1`. [Main CI](https://github.com/Abulkosim/margin/actions/runs/40268545191) and the [release build](https://github.com/Abulkosim/margin/actions/runs/40269334501) passed, including Windows x64, which is the only compile of the Windows switch and console code. The Security workflow had failed since v0.6.0 on GHSA-mrhx-c7xc-m3w5 (zod below 4.6.6); zod is now 4.6.7.
+- **Make active** follows a written design based on Claude Code 2.1.310's refresh code, claude-swap, and Codex's `refresh_token_reused` handling: copying a sign-in leaves two live copies of one rotating refresh token, so Margin swaps instead. Tests use fake stores and temporary folders only: plan table, failure injection at every write with rollback, Claude Code lock folders (held lock aborts with nothing written), `.claude.json` splicing that keeps other keys, journal recovery, guarded restore, history relocation, no secrets in IPC, and a source scan that fails if any other module writes files. An independent review found no ship-blockers; ten fixes followed, including refusing while Codex runs, clearing every copy on a move, and expiring restore offers after 30 minutes. **No real switch was performed on this Mac.**
+- **Fast usage alerts** are covered by unit tests for dense and run-length history, gaps, resets, cooldown, and suppression next to threshold alerts. No real notification was triggered.
+- **Command line:** against the owner's live data, `margin --line` printed one account line and `--json` returned schema 1 with `appRunning: true` and both accounts `ok`, without starting a second app instance. The output contains no tokens or credential paths. Windows console attachment is compile-checked only.
+- All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.7.0 installed for x86_64 and arm64. `latest.json` reports 0.7.0; the public latest endpoint serves it. Release notes match `changelogs/v0.7.0.md`.
+- Installed on the owner's Mac over v0.6.0 from the verified archive (backup under `.cache/`). Both accounts refreshed within 15 seconds; settings were kept and the fast-alert fields added with defaults.
+- Pending, owner: a real Make active switch and Undo on the Mac (no Keychain prompt, four `Margin backup` items, `/status` in both folders), both folders still signed in the next day, the same for Codex, Windows switching with the CLIs closed and open, the Windows command line, and a real fast usage alert.
+
+## Previous release: v0.6.0
 
 **[v0.6.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.6.0).** Published 2026-10-25 03:07 UTC; verified on 2026-10-25 on macOS 26.6.2. Comfort and efficiency release from a performance and usability audit of v0.5.1.
 
