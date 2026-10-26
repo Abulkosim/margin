@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevron' | 'check' | 'copy' | 'close' | 'pin' | 'claude' | 'codex' | 'folder' | 'edit' | 'trash' | 'alert' | 'sun' | 'moon' | 'system' | 'external'; size?: number }>()
+defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevron' | 'check' | 'copy' | 'close' | 'pin' | 'claude' | 'codex' | 'folder' | 'edit' | 'trash' | 'alert' | 'sun' | 'moon' | 'system' | 'external' | 'swap'; size?: number }>()
 </script>
 
 <template>
@@ -23,6 +23,7 @@ defineProps<{ name: 'margin' | 'refresh' | 'settings' | 'plus' | 'back' | 'chevr
     <template v-else-if="name === 'sun'"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/></template>
     <path v-else-if="name === 'moon'" d="M20 14a8 8 0 0 1-10-10A9 9 0 1 0 20 14Z"/>
     <template v-else-if="name === 'system'"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></template>
+    <path v-else-if="name === 'swap'" d="m16 3 4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12"/>
     <template v-else-if="name === 'external'"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></template>
   </svg>
 </template>

@@ -343,6 +343,26 @@ button:disabled:hover {
   text-overflow: ellipsis;
   overflow: hidden;
 }
+.account-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.account-title>h2,.account-title>h3 {
+  min-width: 0;
+}
+.active-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.6;
+  letter-spacing: .1px;
+}
 .account-heading p {
   font-size: 13px;
   line-height: 1.5;
@@ -971,6 +991,18 @@ button:disabled:hover {
 }
 .toast-message .icon-button:hover {
   background: #8883;
+}
+.toast-action {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 5px;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  background: #8883;
+}
+.toast-action:hover {
+  background: #8885;
 }
 .toast-error>svg {
   color: var(--warning);

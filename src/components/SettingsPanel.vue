@@ -2,9 +2,10 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle, TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { version } from '../../package.json'
-import { accountIdSchema, providerSchema, type Account, type AccountId, type Provider, type Settings } from '../lib/model'
+import { accountIdSchema, providerSchema, type Account, type AccountId, type MakeActivePreview, type Provider, type RestoreOffer, type Settings } from '../lib/model'
 import { accountSource, providerName } from '../lib/format'
 import AppIcon from './AppIcon.vue'
+import MakeActiveDialog from './settings/MakeActiveDialog.vue'
 import NotificationSettings from './settings/NotificationSettings.vue'
 import UpdateSettings from './settings/UpdateSettings.vue'
 import type { UpdateState } from '../lib/updater'
@@ -20,6 +21,11 @@ const props = defineProps<{
   remove: (id: AccountId) => Promise<boolean>;
   rename: (id: AccountId, label: string) => Promise<boolean>;
   chooseFolder: (provider: Provider) => Promise<string | null>;
+  activeIds: string[]; restoreOffer: RestoreOffer | null;
+  previewMakeActive: (id: AccountId) => Promise<MakeActivePreview | null>;
+  makeActive: (preview: MakeActivePreview) => Promise<boolean>;
+  restoreBackup: (id: string) => Promise<boolean>;
+  dismissRestore: (id: string) => Promise<boolean>;
 }>()
 defineEmits<{ back: []; discover: []; showHidden: []; checkUpdate: []; installUpdate: [] }>()
 const tab = ref(props.initialTab)
@@ -35,6 +41,15 @@ const renameLabel = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
 const addAccountButton = ref<HTMLButtonElement | null>(null)
 let removeTrigger: HTMLElement | null = null
+const switchPreview = ref<MakeActivePreview | null>(null)
+let switchTrigger: HTMLElement | null = null
+const restoreReason = computed(() => {
+  const offer = props.restoreOffer
+  if (!offer) return ''
+  if (offer.reason === 'verifyFailed') return `${offer.provider === 'claude' ? 'Claude Code' : 'Codex'} changed the sign-in during the switch.`
+  if (offer.reason === 'rollbackFailed') return 'A switch failed and couldn’t be undone.'
+  return 'A switch didn’t finish.'
+})
 const formError = ref<string | null>(null)
 const choosing = ref(false)
 const hiddenNote = computed(() => props.hiddenCount === 1 ? '1 removed account hidden from Find accounts' : `${props.hiddenCount} removed accounts hidden from Find accounts`)
@@ -105,6 +120,27 @@ function restoreRemoveFocus(event: Event): void {
   if (removeTrigger?.isConnected) removeTrigger.focus()
   else (addAccountButton.value ?? pathInput.value)?.focus()
   removeTrigger = null
+}
+
+const canMakeActive = (account: Account): boolean => account.source.kind === 'configDir' && !props.activeIds.includes(account.id)
+
+async function openMakeActive(account: Account, event: MouseEvent): Promise<void> {
+  switchTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  switchPreview.value = await props.previewMakeActive(account.id)
+}
+
+async function confirmMakeActive(): Promise<void> {
+  const preview = switchPreview.value
+  if (!preview) return
+  await props.makeActive(preview)
+  switchPreview.value = null
+}
+
+function restoreSwitchFocus(event: Event): void {
+  event.preventDefault()
+  if (switchTrigger?.isConnected) switchTrigger.focus()
+  else addAccountButton.value?.focus()
+  switchTrigger = null
 }
 
 async function patchSettings(patch: Partial<Settings>): Promise<void> {
@@ -251,16 +287,17 @@ async function confirmRemove(): Promise<void> {
 
       <TabsContent value="accounts" class="settings-content accounts-settings">
         <div class="section-heading"><div><h2>Your accounts</h2><p>From your CLI logins.</p></div><button class="text-button discover-button" :disabled="busy" @click="$emit('discover')"><AppIcon name="refresh" :size="13"/>Find accounts</button></div>
+        <div v-if="restoreOffer" class="switch-restore" role="alert"><AppIcon name="alert" :size="14"/><div><p><strong>{{ restoreReason }}</strong> Restore the sign-ins saved before it. Backups older than a few hours may need sign-in again.</p><div class="switch-restore-actions"><button class="button button-small" :disabled="busy" @click="restoreBackup(restoreOffer.id)">Restore backup</button><button class="text-button" :disabled="busy" @click="dismissRestore(restoreOffer.id)">Dismiss</button></div></div></div>
         <p v-if="hiddenCount" class="hidden-note">{{ hiddenNote }} · <button class="text-button" type="button" :disabled="busy" @click="$emit('showHidden')">Show them</button></p>
         <div v-if="!accounts.length" class="settings-empty"><AppIcon name="folder" :size="28"/><p>No accounts connected.</p><span>Find a signed-in Claude or Codex account, or add a config folder below.</span></div>
         <article v-for="account in accounts" :key="account.id" class="managed-account">
-          <div class="managed-account-heading"><span class="provider-mark small" :class="account.provider"><AppIcon :name="account.provider" :size="17"/></span><div class="managed-account-copy"><h3>{{ account.label }}</h3><p>{{ account.identity.email ?? providerName(account.provider) }}</p></div><AppTooltip text="Rename account"><button class="icon-button" :aria-label="`Rename ${account.label}`" :disabled="busy" @click="startRename(account)"><AppIcon name="edit" :size="14"/></button></AppTooltip><AppTooltip text="Remove account"><button class="icon-button remove-button" :aria-label="`Remove ${account.label}`" :disabled="busy" @click="openRemove(account, $event)"><AppIcon name="trash" :size="14"/></button></AppTooltip></div>
+          <div class="managed-account-heading"><span class="provider-mark small" :class="account.provider"><AppIcon :name="account.provider" :size="17"/></span><div class="managed-account-copy"><div class="account-title"><h3>{{ account.label }}</h3><span v-if="activeIds.includes(account.id)" class="active-tag">Active</span></div><p>{{ account.identity.email ?? providerName(account.provider) }}</p></div><AppTooltip text="Rename account"><button class="icon-button" :aria-label="`Rename ${account.label}`" :disabled="busy" @click="startRename(account)"><AppIcon name="edit" :size="14"/></button></AppTooltip><AppTooltip text="Remove account"><button class="icon-button remove-button" :aria-label="`Remove ${account.label}`" :disabled="busy" @click="openRemove(account, $event)"><AppIcon name="trash" :size="14"/></button></AppTooltip></div>
           <form v-if="renameTarget === account.id" class="rename-form" @submit.prevent="submitRename"><label class="sr-only" :for="`rename-${account.id}`">Account name</label><input :id="`rename-${account.id}`" :ref="setRenameInput" v-model="renameLabel" class="text-input" maxlength="48" autocomplete="off" :disabled="busy" @keydown.esc.stop="renameTarget = null"><button class="button button-small" type="submit" :disabled="busy || !renameLabel.trim()">Save</button><button class="icon-button" type="button" aria-label="Cancel rename" @click="renameTarget = null"><AppIcon name="close" :size="14"/></button></form>
-          <AppTooltip :text="accountSource(account)"><div class="account-path" tabindex="0"><AppIcon name="folder" :size="12"/><span>{{ accountSource(account) }}</span></div></AppTooltip>
+          <div class="managed-account-footer"><AppTooltip :text="accountSource(account)"><div class="account-path" tabindex="0"><AppIcon name="folder" :size="12"/><span>{{ accountSource(account) }}</span></div></AppTooltip><button v-if="canMakeActive(account)" class="text-button make-active-button" :aria-label="`Make ${account.label} active`" :disabled="busy" @click="openMakeActive(account, $event)"><AppIcon name="swap" :size="12"/>Make active</button></div>
         </article>
         <button v-if="!adding" ref="addAccountButton" class="add-account-button" :disabled="busy" @click="openAdd"><AppIcon name="plus" :size="16"/>Add account</button>
         <form v-else class="add-account-form" @submit.prevent="submitAccount"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="adding = false"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><div class="path-field"><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="provider === 'claude' ? '~/.claude-work' : '~/.codex-work'" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><button v-if="canChooseFolder" class="button button-small" type="button" :disabled="busy || choosing" @click="pickFolder"><AppIcon name="folder" :size="13"/>Choose folder…</button></div><p id="path-help">The folder containing {{ provider === 'claude' ? '.credentials.json' : 'auth.json' }}. Sign in with the CLI first.</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
-        <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Margin reads your CLI credentials without changing them.</p></div>
+        <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Margin reads your CLI sign-ins. It changes them only when you choose Make active.</p></div>
       </TabsContent>
     </TabsRoot>
 
@@ -276,6 +313,7 @@ async function confirmRemove(): Promise<void> {
       </AlertDialogOverlay>
     </AlertDialogPortal>
   </AlertDialogRoot>
+  <MakeActiveDialog :preview="switchPreview" :busy="busy" @confirm="confirmMakeActive" @close="switchPreview = null" @closed="restoreSwitchFocus"/>
 </template>
 
 <style scoped>
@@ -294,6 +332,50 @@ async function confirmRemove(): Promise<void> {
 }
 .hidden-note>.text-button:hover {
   color: var(--ink);
+}
+.managed-account-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.managed-account-footer .account-path {
+  margin-top: 0;
+  min-width: 0;
+}
+.make-active-button {
+  flex-shrink: 0;
+  gap: 5px;
+  padding: 0;
+  font-size: 12px;
+}
+.switch-restore {
+  display: flex;
+  gap: 9px;
+  margin-bottom: 16px;
+  padding: 12px 13px;
+  border-radius: 9px;
+  background: var(--warning-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--secondary);
+}
+.switch-restore>svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--warning);
+}
+.switch-restore strong {
+  color: var(--ink);
+  font-weight: 550;
+}
+.switch-restore-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 9px;
 }
 .path-field {
   display: flex;

@@ -10,7 +10,7 @@ import UsageHistory from './UsageHistory.vue'
 import AppTooltip from './ui/AppTooltip.vue'
 import CopyCommand from './ui/CopyCommand.vue'
 
-const props = defineProps<{ account: Account; demo: boolean; settings: Settings; now: number; pinned: boolean; busy: boolean; connectionError: string | null }>()
+const props = defineProps<{ account: Account; demo: boolean; settings: Settings; now: number; pinned: boolean; active?: boolean; busy: boolean; connectionError: string | null }>()
 defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
@@ -40,7 +40,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
     <div class="account-heading">
       <span class="provider-mark" :class="account.provider"><AppIcon :name="account.provider" :size="20" /></span>
       <div class="account-heading-copy">
-        <h2>{{ account.label }}</h2>
+        <div class="account-title"><h2>{{ account.label }}</h2><span v-if="active" class="active-tag">Active</span></div>
         <p class="account-subline"><span class="account-email">{{ account.identity.email ?? providerName(account.provider) }}</span><template v-if="plan"><span class="middot">·</span><span class="account-plan">{{ plan }}</span></template></p>
       </div>
       <span v-if="stale && account.snapshot" class="stale-badge">Last known</span>
