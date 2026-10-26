@@ -63,6 +63,26 @@ export const accountSchema = z.object({
   }).nullable(),
   refreshing: z.boolean(),
 })
+export const restoreOfferSchema = z.object({
+  id: z.string(),
+  provider: providerSchema,
+  reason: z.enum(['unfinished', 'verifyFailed', 'rollbackFailed']),
+  createdAt: z.string(),
+})
+export const switchViewSchema = z.object({
+  activeAccountIds: z.array(z.string()).default([]),
+  restore: restoreOfferSchema.nullable().default(null),
+})
+export const makeActivePreviewSchema = z.object({
+  accountId: accountIdSchema,
+  provider: providerSchema,
+  kind: z.enum(['swap', 'move']),
+  fingerprint: z.string(),
+  target: z.string(),
+  displaced: z.string().nullable(),
+  folder: z.string(),
+  running: z.boolean(),
+})
 export const popoverShownSchema = z.object({ hiddenForMs: z.number().nonnegative().nullable() })
 export const appStateSchema = z.object({
   revision: z.number().int().nonnegative(),
@@ -73,6 +93,12 @@ export const appStateSchema = z.object({
   recovery: z.boolean().default(false),
   recovered: z.array(z.string()).default([]),
   ignoredSources: z.array(z.string()).default([]),
+  switching: switchViewSchema.default({ activeAccountIds: [], restore: null }),
+})
+export const activatedSchema = z.object({
+  state: appStateSchema,
+  target: z.string(),
+  previousAccountId: accountIdSchema.nullable(),
 })
 
 export type Provider = z.infer<typeof providerSchema>
@@ -83,6 +109,8 @@ export type UsageWindow = z.infer<typeof usageWindowSchema>
 export type ResetGrants = z.infer<typeof resetGrantsSchema>
 export type WindowScope = NonNullable<UsageWindow['scope']>
 export type AppState = z.infer<typeof appStateSchema>
+export type RestoreOffer = z.infer<typeof restoreOfferSchema>
+export type MakeActivePreview = z.infer<typeof makeActivePreviewSchema>
 export type PopoverShown = z.infer<typeof popoverShownSchema>
 
 export const defaultSettings: Settings = {

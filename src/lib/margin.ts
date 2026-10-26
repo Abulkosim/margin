@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
-import { createDemoState } from './demo.ts'
-import { accountSchema, appStateSchema, defaultSettings, type AccountId, type AppState, type Provider, type Settings } from './model.ts'
+import { createDemoState, demoActivate, demoPreview } from './demo.ts'
+import { accountSchema, activatedSchema, appStateSchema, defaultSettings, makeActivePreviewSchema, type AccountId, type AppState, type MakeActivePreview, type Provider, type Settings } from './model.ts'
 
 declare global {
   interface Window {
@@ -11,17 +11,19 @@ declare global {
   }
 }
 
-type Command = 'refresh_accounts' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store'
+type Command = 'refresh_accounts' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore'
+export type ToastAction = { label: string; run: () => void }
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
   const demo = query.get('demo') === '1'
   const desktop = typeof window.__TAURI__?.core.invoke === 'function'
-  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [] })
+  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [], switching: { activeAccountIds: [], restore: null } })
+  const demoRunning = query.get('running') === '1'
   const loading = ref(desktop && !demo)
   const connectionError = ref<string | null>(null)
   const pending = ref<Command | null>(null)
-  const message = ref<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const message = ref<{ kind: 'error' | 'success'; text: string; action?: ToastAction } | null>(null)
   const now = ref(Date.now())
   let stopListening: (() => void) | undefined
   let connectingListener: Promise<void> | null = null
@@ -46,10 +48,10 @@ export function useMargin() {
   const order = query.get('order')
   if (demo && (order === 'urgency' || order === 'added')) state.value.settings.accountOrder = order
 
-  function notify(text: string, kind: 'error' | 'success' = 'success'): void {
+  function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
     clearTimeout(toastTimer)
-    message.value = { kind, text }
-    toastTimer = setTimeout(() => { message.value = null }, kind === 'error' ? 9000 : 3500)
+    message.value = { kind, text, action }
+    toastTimer = setTimeout(() => { message.value = null }, kind === 'error' || action ? 9000 : 3500)
   }
 
   function acceptState(payload: unknown): boolean {
@@ -203,6 +205,67 @@ export function useMargin() {
     return reset
   }
 
+  async function call(command: Command, args: Record<string, unknown>, demoResult: () => unknown): Promise<unknown> {
+    if (pending.value) return undefined
+    pending.value = command
+    try {
+      if (demo) {
+        const result = demoResult()
+        if (typeof result === 'string') throw new Error(result)
+        return result
+      }
+      const tauri = window.__TAURI__
+      if (!tauri) throw new Error('Open the desktop app to manage your accounts.')
+      return await tauri.core.invoke(command, args)
+    } catch (error: unknown) {
+      notify(error instanceof Error ? error.message : typeof error === 'string' ? error : 'That did not work. Please try again.', 'error')
+      return undefined
+    } finally {
+      pending.value = null
+    }
+  }
+
+  async function previewMakeActive(id: AccountId): Promise<MakeActivePreview | null> {
+    const result = await call('preview_make_active', { id }, () => demoPreview(state.value, id, demoRunning))
+    if (result === undefined) return null
+    const preview = makeActivePreviewSchema.safeParse(result)
+    if (!preview.success) notify('Margin received an unreadable response. Try again.', 'error')
+    return preview.success ? preview.data : null
+  }
+
+  async function makeActive(preview: MakeActivePreview, undo = true): Promise<boolean> {
+    const result = await call('make_active', { id: preview.accountId, fingerprint: preview.fingerprint }, () => {
+      const next = demoActivate(state.value, preview.accountId)
+      return { state: { ...next.state, revision: state.value.revision + 1 }, target: preview.target, previousAccountId: next.previousAccountId }
+    })
+    if (result === undefined) return false
+    const activated = activatedSchema.safeParse(result)
+    if (!activated.success) {
+      notify('Margin received an unreadable response. Refresh to try again.', 'error')
+      return false
+    }
+    if (activated.data.state.revision >= state.value.revision) state.value = activated.data.state
+    const previous = activated.data.previousAccountId
+    notify(`${activated.data.target} is active.`, 'success', undo && previous ? { label: 'Undo', run: () => { void switchBack(previous) } } : undefined)
+    return true
+  }
+
+  async function switchBack(id: AccountId): Promise<void> {
+    message.value = null
+    const preview = await previewMakeActive(id)
+    if (preview) await makeActive(preview, false)
+  }
+
+  async function restoreSwitchBackup(id: string): Promise<boolean> {
+    const restored = await perform('restore_switch_backup', { id }, () => { state.value.switching = { ...state.value.switching, restore: null } })
+    if (restored) notify('Backup restored.')
+    return restored
+  }
+
+  async function dismissSwitchRestore(id: string): Promise<boolean> {
+    return perform('dismiss_switch_restore', { id }, () => { state.value.switching = { ...state.value.switching, restore: null } })
+  }
+
   async function hideWindow(): Promise<void> {
     if (!desktop || demo) return
     try {
@@ -234,5 +297,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore }
 }
