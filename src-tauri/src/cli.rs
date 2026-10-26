@@ -482,8 +482,17 @@ fn line(
     } else {
         vec![[Provider::Claude, Provider::Codex]
             .into_iter()
-            .filter_map(|provider| chosen(accounts, provider, settings, env, now))
-            .map(|account| segment(account, settings, now))
+            .filter_map(
+                |provider| match chosen(accounts, provider, settings, env, now) {
+                    Pick::Account(account) => Some(segment(account, settings, now)),
+                    Pick::NotTracked => Some(Segment {
+                        label: provider.name().to_owned(),
+                        stale: false,
+                        body: Body::Status("not tracked"),
+                    }),
+                    Pick::None => None,
+                },
+            )
             .collect()]
     };
     let rows = fit(&rows, options.all, env.columns);
@@ -493,20 +502,29 @@ fn line(
         .join("\n")
 }
 
-/// The account this terminal is using, or the tray's pick for the provider.
+enum Pick<'a> {
+    Account(&'a Account),
+    /// The terminal points at a folder Margin does not track; showing another
+    /// account's usage here would be wrong.
+    NotTracked,
+    None,
+}
+
+/// The account this terminal is using, or the tray's pick for the provider
+/// when no folder is configured.
 fn chosen<'a>(
     accounts: &'a [Account],
     provider: Provider,
     settings: &Settings,
     env: &Env,
     now: DateTime<Utc>,
-) -> Option<&'a Account> {
+) -> Pick<'a> {
     let subset: Vec<&Account> = accounts
         .iter()
         .filter(|account| account.provider == provider)
         .collect();
     if subset.is_empty() {
-        return None;
+        return Pick::None;
     }
     let (configured, folder) = match provider {
         Provider::Claude => (&env.claude_dir, ".claude"),
@@ -527,12 +545,20 @@ fn chosen<'a>(
             AccountSource::Keychain => is_default,
         });
         if let Some(account) = matched {
-            return Some(account);
+            return Pick::Account(account);
+        }
+        if configured.is_some() {
+            return Pick::NotTracked;
         }
     }
     let owned: Vec<Account> = subset.iter().map(|account| (*account).clone()).collect();
-    let pick = tray::selected(&owned, settings, now)?;
-    subset.into_iter().find(|account| account.id == pick.id)
+    let Some(pick) = tray::selected(&owned, settings, now) else {
+        return Pick::None;
+    };
+    subset
+        .into_iter()
+        .find(|account| account.id == pick.id)
+        .map_or(Pick::None, Pick::Account)
 }
 
 /// One comparable form for a CLI folder: `~` expanded, relative to the
@@ -1767,19 +1793,29 @@ mod tests {
         assert!(pick(Some("~/.claude/"), None).starts_with("Personal 42%"));
         assert!(pick(None, Some("~/.codex-work")).ends_with("│ Codex Work 50%·2h18m   –"));
         let unknown = pick(Some("/nowhere/.claude"), None);
-        assert!(unknown.starts_with("Work 10%"), "{unknown}");
+        assert!(unknown.starts_with("Claude not tracked"), "{unknown}");
+        assert!(unknown.ends_with("│ Codex 95%·2h18m   –"), "{unknown}");
         let pinned = state(
             accounts,
             json!({ "trayMode": "pinned", "pinnedAccountId": "a" }),
         );
-        let pinned = long(
+        assert_eq!(
+            long(&pinned, false, &env_home(home, None, None)),
+            "Personal 42%·2h18m   –          │ Codex 95%·2h18m   –"
+        );
+        let tray_pick = long(&pinned, false, &Env::plain());
+        assert!(
+            tray_pick.starts_with("Personal 42%"),
+            "no folder at all: the tray's pick, {tray_pick}"
+        );
+        let untracked = long(
             &pinned,
             false,
             &env_home(home, Some("/nowhere/.claude"), Some("/nowhere/.codex")),
         );
         assert_eq!(
-            pinned,
-            "Personal 42%·2h18m   –          │ Codex Work 50%·2h18m   –"
+            untracked,
+            "Claude not tracked            │ Codex not tracked"
         );
     }
 
