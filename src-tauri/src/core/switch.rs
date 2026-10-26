@@ -28,6 +28,7 @@ const KEEP_RECORDS: usize = 5;
 const KEEP_DAYS: i64 = 7;
 const BACKUP_CHUNK: usize = 1_800;
 const MAX_BACKUP_CHUNKS: usize = 64;
+const RESTORE_MINUTES: i64 = 30;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -55,7 +56,21 @@ impl Location {
                     )
                     .unwrap_or_else(|| format!("unreadable-{}", sha(bytes))),
             ),
-            _ => Some(sha(bytes)),
+            _ => Some(match serde_json::from_slice::<Value>(bytes) {
+                Ok(value) => sha(value.to_string().as_bytes()),
+                Err(_) => sha(bytes),
+            }),
+        }
+    }
+
+    /// Keychain values go in as compact JSON: `security -w` prints a secret that
+    /// contains a newline as hex, which would never read back equal.
+    fn stored(&self, bytes: &[u8]) -> Vec<u8> {
+        match self {
+            Self::Keychain { .. } => serde_json::from_slice::<Value>(bytes)
+                .map(|value| value.to_string().into_bytes())
+                .unwrap_or_else(|_| bytes.to_vec()),
+            _ => bytes.to_vec(),
         }
     }
 
@@ -360,19 +375,27 @@ fn global_config(dir: &Path, default: bool, context: &Context) -> Result<PathBuf
 #[derive(Clone, Debug)]
 pub struct SlotState {
     pub spec: SlotSpec,
+    /// Every credential location that holds a value, in Claude Code's order.
+    pub values: Vec<(Location, Vec<u8>)>,
+    /// The first location holding a login.
     pub credential: Option<(Location, Vec<u8>)>,
     pub config: Option<Vec<u8>>,
     pub symlink: Option<PathBuf>,
     pub keyring: Option<bool>,
+    pub unreadable: bool,
+    pub conflict: bool,
 }
 
 pub fn read_slot(spec: &SlotSpec, store: &dyn CredentialStore) -> Result<SlotState, SwitchError> {
     let mut state = SlotState {
         spec: spec.clone(),
+        values: Vec::new(),
         credential: None,
         config: None,
         symlink: None,
         keyring: Some(false),
+        unreadable: false,
+        conflict: false,
     };
     let paths = spec
         .credentials
@@ -386,10 +409,26 @@ pub fn read_slot(spec: &SlotSpec, store: &dyn CredentialStore) -> Result<SlotSta
     }
     for location in &spec.credentials {
         if let Some(bytes) = store.read(location)? {
-            state.credential = Some((location.clone(), bytes));
-            break;
+            state.values.push((location.clone(), bytes));
         }
     }
+    let mut logins = Vec::new();
+    for (location, bytes) in &state.values {
+        let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
+            state.unreadable = true;
+            continue;
+        };
+        if let Some(family) = login_family(spec.provider, &value) {
+            logins.push((location.clone(), bytes.clone(), family));
+        }
+    }
+    state.conflict = logins
+        .iter()
+        .any(|(_, _, family)| Some(family) != logins.first().map(|(_, _, first)| first));
+    state.credential = logins
+        .into_iter()
+        .next()
+        .map(|(location, bytes, _)| (location, bytes));
     if let Some(path) = &spec.config {
         state.config = store.read(&Location::Config { path: path.clone() })?;
     }
@@ -410,8 +449,32 @@ pub fn read_slot(spec: &SlotSpec, store: &dyn CredentialStore) -> Result<SlotSta
     Ok(state)
 }
 
+/// A location counts as a login only with an access token; the refresh token
+/// (else the access token) names the token family.
+fn login_family(provider: Provider, value: &Value) -> Option<String> {
+    let (tokens, access, refresh) = match provider {
+        Provider::Claude => (value.get("claudeAiOauth")?, "accessToken", "refreshToken"),
+        Provider::Codex => (value.get("tokens")?, "access_token", "refresh_token"),
+    };
+    let access = text_field(tokens.get(access))?;
+    Some(text_field(tokens.get(refresh)).unwrap_or(access))
+}
+
+/// Codex has no lock: an in-flight refresh could write the displaced tokens
+/// back after the switch, so a running Codex is refused, not warned about.
+pub fn check_running(provider: Provider, running: bool) -> Result<(), Refusal> {
+    if provider == Provider::Codex && running {
+        return Err(Refusal::CodexRunning);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
+    CodexRunning,
+    TwoSignIns,
+    RestoreStale,
+    RestoreExpired,
     NotOffered,
     SameAccount,
     SourceSignedOut,
@@ -461,6 +524,12 @@ pub fn plan(default: &SlotState, source: &SlotState) -> Result<Plan, Refusal> {
             Some(true) => return Err(Refusal::CodexKeyring),
             None => return Err(Refusal::CodexConfig(state.spec.dir.clone())),
             Some(false) => {}
+        }
+        if state.unreadable {
+            return Err(Refusal::Unreadable(state.spec.dir.clone()));
+        }
+        if state.conflict {
+            return Err(Refusal::TwoSignIns);
         }
     }
     let source_login = login(source)?.ok_or(Refusal::SourceSignedOut)?;
@@ -555,14 +624,17 @@ fn claude_login(state: &SlotState) -> Result<Option<Login>, Refusal> {
 }
 
 fn codex_login(state: &SlotState) -> Result<Option<Login>, Refusal> {
+    if state.values.iter().any(|(_, bytes)| {
+        serde_json::from_slice::<Value>(bytes)
+            .is_ok_and(|value| value.get("auth_mode").and_then(Value::as_str) == Some("apikey"))
+    }) {
+        return Err(Refusal::ApiKey);
+    }
     let Some((_, bytes)) = &state.credential else {
         return Ok(None);
     };
     let value: Value =
         serde_json::from_slice(bytes).map_err(|_| Refusal::Unreadable(state.spec.dir.clone()))?;
-    if value.get("auth_mode").and_then(Value::as_str) == Some("apikey") {
-        return Err(Refusal::ApiKey);
-    }
     let Some(tokens) = value.get("tokens").filter(|tokens| tokens.is_object()) else {
         return Ok(None);
     };
@@ -618,30 +690,52 @@ pub struct Write {
 /// Credentials first (default slot, then source), then `oauthAccount` in both
 /// Claude config files. Every other config key is kept byte for byte.
 pub fn writes(plan: &Plan, default: &SlotState, source: &SlotState) -> Result<Vec<Write>, Refusal> {
-    let (source_location, source_bytes) =
-        source.credential.clone().ok_or(Refusal::SourceSignedOut)?;
-    let default_before = default.credential.as_ref().map(|(_, bytes)| bytes.clone());
-    let default_location = default
-        .credential
-        .as_ref()
-        .map(|(location, _)| location.clone())
-        .or_else(|| default.spec.credentials.first().cloned())
-        .ok_or(Refusal::NotOffered)?;
-    let mut writes = vec![
-        Write {
-            location: default_location,
-            before: default_before.clone(),
-            after: Some(source_bytes.clone()),
-        },
-        Write {
-            location: source_location,
-            before: Some(source_bytes),
-            after: match plan.kind {
-                PlanKind::Swap => default_before,
-                PlanKind::Move => None,
-            },
-        },
-    ];
+    let (_, source_bytes) = source.credential.clone().ok_or(Refusal::SourceSignedOut)?;
+    // The CLI reads the first location holding any value, so the incoming
+    // sign-in goes there; every other copy in either slot is cleared.
+    let target = |state: &SlotState| {
+        state
+            .values
+            .first()
+            .map(|(location, _)| location.clone())
+            .or_else(|| state.spec.credentials.first().cloned())
+            .ok_or(Refusal::NotOffered)
+    };
+    let current = |state: &SlotState, location: &Location| {
+        state
+            .values
+            .iter()
+            .find(|(known, _)| known == location)
+            .map(|(_, bytes)| bytes.clone())
+    };
+    let mut writes = Vec::new();
+    let mut written = Vec::new();
+    let default_location = target(default)?;
+    writes.push(Write {
+        before: current(default, &default_location),
+        after: Some(default_location.stored(&source_bytes)),
+        location: default_location.clone(),
+    });
+    written.push(default_location);
+    if plan.kind == PlanKind::Swap {
+        let (_, default_bytes) = default.credential.clone().ok_or(Refusal::NotOffered)?;
+        let source_location = target(source)?;
+        writes.push(Write {
+            before: current(source, &source_location),
+            after: Some(source_location.stored(&default_bytes)),
+            location: source_location.clone(),
+        });
+        written.push(source_location);
+    }
+    for (location, bytes) in default.values.iter().chain(&source.values) {
+        if !written.contains(location) {
+            writes.push(Write {
+                location: location.clone(),
+                before: Some(bytes.clone()),
+                after: None,
+            });
+        }
+    }
     if plan.provider == Provider::Claude {
         let text = |state: &SlotState| -> Result<(PathBuf, String), Refusal> {
             let path = state.spec.config.clone().ok_or(Refusal::ConfigUnreadable)?;
@@ -733,6 +827,39 @@ pub struct SwitchRecord {
     pub target_email: Option<String>,
     #[serde(default)]
     pub displaced_email: Option<String>,
+    /// Fingerprints of the stores when the switch failed; a restore is safe
+    /// only while they still match.
+    #[serde(default)]
+    pub live: Option<Vec<Option<String>>>,
+}
+
+impl SwitchRecord {
+    fn age_minutes(&self, now: chrono::DateTime<chrono::Utc>) -> Option<i64> {
+        chrono::DateTime::parse_from_rfc3339(&self.created_at)
+            .ok()
+            .map(|at| (now - at.with_timezone(&chrono::Utc)).num_minutes())
+    }
+
+    /// Failed or unfinished, with live fingerprints, and under 30 minutes old.
+    pub fn restorable(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        matches!(
+            self.state,
+            RecordState::Started | RecordState::VerifyFailed | RecordState::RollbackFailed
+        ) && self.live.is_some()
+            && self
+                .age_minutes(now)
+                .is_some_and(|age| (0..RESTORE_MINUTES).contains(&age))
+    }
+}
+
+fn fingerprints(store: &dyn CredentialStore, items: &[RecordItem]) -> Vec<Option<String>> {
+    items
+        .iter()
+        .map(|item| match store.read(&item.location) {
+            Ok(bytes) => item.location.fingerprint(bytes.as_deref()),
+            Err(_) => Some("unreadable".into()),
+        })
+        .collect()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -752,6 +879,13 @@ pub trait Journal {
     fn records(&self) -> Vec<SwitchRecord>;
     fn begin(&mut self, record: &SwitchRecord, backup: &[u8]) -> Result<(), SwitchError>;
     fn mark(&mut self, id: &str, state: RecordState) -> Result<(), SwitchError>;
+    /// Marks a failure and keeps what the stores held at that moment.
+    fn fail(
+        &mut self,
+        id: &str,
+        state: RecordState,
+        live: Vec<Option<String>>,
+    ) -> Result<(), SwitchError>;
     fn backup(&self, id: &str) -> Result<Option<Vec<u8>>, SwitchError>;
 }
 
@@ -802,6 +936,17 @@ pub fn message(error: &SwitchError, provider: Provider, label: &str, folder: &Pa
     match error {
         SwitchError::Refused(refusal) => match refusal {
             Refusal::NotOffered => "Only another folder of the same CLI can be made active.".into(),
+            Refusal::CodexRunning => "Quit Codex first. It could undo the switch.".into(),
+            Refusal::TwoSignIns => format!(
+                "This folder has two different sign-ins. Sign in again with {} first.",
+                provider.key()
+            ),
+            Refusal::RestoreStale => {
+                "The sign-ins changed since then. Restore is no longer safe.".into()
+            }
+            Refusal::RestoreExpired => {
+                "This backup is more than 30 minutes old. Restore is no longer safe.".into()
+            }
             Refusal::SameAccount => {
                 "Both folders hold the same account. Sign out of one first.".into()
             }
@@ -903,6 +1048,7 @@ pub fn execute(
 /// Writes a backup's values back, under the same locks, as a journaled operation.
 pub fn restore(
     id: &str,
+    now: chrono::DateTime<chrono::Utc>,
     store: &dyn CredentialStore,
     locks: &dyn LockSet,
     journal: &mut dyn Journal,
@@ -912,11 +1058,17 @@ pub fn restore(
         .into_iter()
         .find(|record| record.id == id)
         .ok_or(SwitchError::Journal)?;
+    if !original.restorable(now) {
+        return Err(Refusal::RestoreExpired.into());
+    }
     let blob: BackupBlob = journal
         .backup(id)?
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .ok_or(SwitchError::Journal)?;
     let _held = locks.acquire(&original.locks)?;
+    if original.live.as_ref() != Some(&fingerprints(store, &original.items)) {
+        return Err(Refusal::RestoreStale.into());
+    }
     let mut writes = Vec::new();
     for item in blob.items {
         let current = store.read(&item.location)?;
@@ -932,9 +1084,14 @@ pub fn restore(
                         .into_bytes(),
                 )
             }
-            _ => item
+            location => item
                 .value
-                .map(|value| STANDARD.decode(value).map_err(|_| SwitchError::Journal))
+                .map(|value| {
+                    STANDARD
+                        .decode(value)
+                        .map(|bytes| location.stored(&bytes))
+                        .map_err(|_| SwitchError::Journal)
+                })
                 .transpose()?,
         };
         if current != after {
@@ -988,6 +1145,7 @@ fn new_record(
         accounts: None,
         target_email: None,
         displaced_email: None,
+        live: None,
     }
 }
 
@@ -1033,13 +1191,15 @@ fn commit(
                     keychain: error == StoreError::Keychain,
                 })
             } else {
-                let _ = journal.mark(&record.id, RecordState::RollbackFailed);
+                let live = fingerprints(store, &record.items);
+                let _ = journal.fail(&record.id, RecordState::RollbackFailed, live);
                 Err(SwitchError::RollbackFailed { id: record.id })
             };
         }
     }
     if !verify(store, &record) {
-        let _ = journal.mark(&record.id, RecordState::VerifyFailed);
+        let live = fingerprints(store, &record.items);
+        let _ = journal.fail(&record.id, RecordState::VerifyFailed, live);
         return Err(SwitchError::VerifyFailed { id: record.id });
     }
     record.state = RecordState::Written;
@@ -1097,8 +1257,8 @@ pub struct RestoreOffer {
 }
 
 impl RestoreOffer {
-    pub fn new(record: &SwitchRecord) -> Self {
-        Self {
+    pub fn new(record: &SwitchRecord, now: chrono::DateTime<chrono::Utc>) -> Option<Self> {
+        record.restorable(now).then(|| Self {
             id: record.id.clone(),
             provider: record.provider,
             reason: match record.state {
@@ -1107,7 +1267,7 @@ impl RestoreOffer {
                 _ => "unfinished",
             },
             created_at: record.created_at.clone(),
-        }
+        })
     }
 }
 
@@ -1118,7 +1278,11 @@ pub struct Recovery {
 
 /// At launch: finish switches that wrote everything but not Margin's model, and
 /// offer a restore for any that stopped part way or failed verification.
-pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal) -> Recovery {
+pub fn recover(
+    store: &dyn CredentialStore,
+    journal: &mut dyn Journal,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Recovery {
     let mut recovery = Recovery {
         offer: None,
         apply: Vec::new(),
@@ -1128,7 +1292,7 @@ pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal) -> Recove
     for record in records {
         match record.state {
             RecordState::Started => {
-                let now: Option<Vec<Option<String>>> = record
+                let current: Option<Vec<Option<String>>> = record
                     .items
                     .iter()
                     .map(|item| {
@@ -1139,10 +1303,11 @@ pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal) -> Recove
                     })
                     .collect();
                 let matches = |side: fn(&RecordItem) -> &Option<String>| {
-                    now.as_ref().is_some_and(|now| {
-                        now.iter()
+                    current.as_ref().is_some_and(|current| {
+                        current
+                            .iter()
                             .zip(&record.items)
-                            .all(|(now, item)| now == side(item))
+                            .all(|(current, item)| current == side(item))
                     })
                 };
                 if matches(|item| &item.after) {
@@ -1151,11 +1316,19 @@ pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal) -> Recove
                 } else if matches(|item| &item.before) {
                     let _ = journal.mark(&record.id, RecordState::Abandoned);
                 } else {
-                    recovery.offer = Some(record);
+                    let live = fingerprints(store, &record.items);
+                    let _ = journal.fail(&record.id, RecordState::Started, live.clone());
+                    let record = SwitchRecord {
+                        live: Some(live),
+                        ..record
+                    };
+                    if record.restorable(now) {
+                        recovery.offer = Some(record);
+                    }
                 }
             }
             RecordState::Written => recovery.apply.push(record),
-            RecordState::VerifyFailed | RecordState::RollbackFailed => {
+            RecordState::VerifyFailed | RecordState::RollbackFailed if record.restorable(now) => {
                 recovery.offer = Some(record)
             }
             _ => {}
@@ -1183,6 +1356,19 @@ pub fn apply_to_accounts(accounts: &mut [Account], moved: &RecordAccounts) -> bo
         relocate(&mut accounts[previous], &moved.target_source);
     }
     true
+}
+
+/// Reverses `apply_to_accounts` after a restore put the old sign-ins back.
+pub fn undo_accounts(accounts: &mut [Account], moved: &RecordAccounts) -> bool {
+    apply_to_accounts(
+        accounts,
+        &RecordAccounts {
+            target: moved.target.clone(),
+            previous: moved.previous.clone(),
+            target_source: moved.default_source.clone(),
+            default_source: moved.target_source.clone(),
+        },
+    )
 }
 
 fn relocate(account: &mut Account, source: &AccountSource) {
@@ -1278,11 +1464,13 @@ impl Journal for DiskJournal {
         self.store_backup(&record.id, backup)?;
         let mut records = self.records();
         records.push(record.clone());
-        let cutoff = chrono::Utc::now() - chrono::Duration::days(KEEP_DAYS);
+        let now = chrono::Utc::now();
+        let cutoff = now - chrono::Duration::days(KEEP_DAYS);
         let keep_from = records.len().saturating_sub(KEEP_RECORDS);
         let (kept, dropped): (Vec<_>, Vec<_>) =
             records.into_iter().enumerate().partition(|(index, entry)| {
                 entry.id == record.id
+                    || entry.restorable(now)
                     || (*index >= keep_from
                         && chrono::DateTime::parse_from_rfc3339(&entry.created_at)
                             .is_ok_and(|at| at > cutoff))
@@ -1305,6 +1493,22 @@ impl Journal for DiskJournal {
             .find(|record| record.id == id)
             .ok_or(SwitchError::Journal)?;
         record.state = state;
+        self.save(&records)
+    }
+
+    fn fail(
+        &mut self,
+        id: &str,
+        state: RecordState,
+        live: Vec<Option<String>>,
+    ) -> Result<(), SwitchError> {
+        let mut records = self.records();
+        let record = records
+            .iter_mut()
+            .find(|record| record.id == id)
+            .ok_or(SwitchError::Journal)?;
+        record.state = state;
+        record.live = Some(live);
         self.save(&records)
     }
 

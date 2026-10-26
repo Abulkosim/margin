@@ -3,7 +3,7 @@ use crate::{
         model::{Account, Provider},
         switch::{
             self, Context, DiskJournal, Journal, PlanKind, ProperLockfile, RecordAccounts,
-            RecordState, RestoreOffer, SlotSpec, SwitchError, SystemStore,
+            RecordState, RestoreOffer, SlotSpec, SwitchError, SwitchRecord, SystemStore,
         },
     },
     runtime::{publish, AppState, Runtime, RuntimeState},
@@ -119,6 +119,9 @@ fn preview(target: &Target) -> Result<Preview, String> {
         &switch::read_slot(&source, &store).map_err(fail)?,
     )
     .map_err(|refusal| fail(SwitchError::Refused(refusal)))?;
+    let running = switch::running(plan.provider);
+    switch::check_running(plan.provider, running)
+        .map_err(|refusal| fail(SwitchError::Refused(refusal)))?;
     Ok(Preview {
         account_id: target.account.id.clone(),
         provider: plan.provider,
@@ -138,7 +141,7 @@ fn preview(target: &Target) -> Result<Preview, String> {
         folder: switch::display_path(&source.dir, &target.home),
         kind: plan.kind,
         fingerprint: plan.fingerprint,
-        running: switch::running(plan.provider),
+        running,
     })
 }
 
@@ -214,26 +217,23 @@ async fn finish(
     runtime: &Runtime,
     ids: &[String],
     change: impl FnOnce(&mut RuntimeState),
-) -> AppState {
+) -> (AppState, bool) {
     let mut inner = runtime.inner.lock().await;
     change(&mut inner);
     resume(&mut inner, ids);
     inner.view.switching.active_account_ids = switch::active_ids(&inner.view.accounts);
     inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+    let persisted = inner.view.notice.is_none();
     inner.view.changed();
     let view = inner.view.clone();
     drop(inner);
     publish(app, &view);
     runtime.wake.notify_one();
-    view
+    (view, persisted)
 }
 
-fn offer(journal: &DiskJournal, id: &str) -> Option<RestoreOffer> {
-    journal
-        .records()
-        .iter()
-        .find(|record| record.id == id)
-        .map(RestoreOffer::new)
+fn record(journal: &DiskJournal, id: &str) -> Option<SwitchRecord> {
+    journal.records().into_iter().find(|record| record.id == id)
 }
 
 #[tauri::command]
@@ -258,8 +258,10 @@ pub async fn make_active(
     let mut journal = runtime.journal();
     let job = target.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let provider = job.account.provider;
+        switch::check_running(provider, switch::running(provider))?;
         let (default, source) = job.specs()?;
-        let outcome = switch::execute(
+        switch::execute(
             &fingerprint,
             &default,
             &source,
@@ -267,17 +269,7 @@ pub async fn make_active(
             &SystemStore,
             &ProperLockfile::default(),
             &mut journal,
-        )?;
-        if outcome.plan.provider == Provider::Codex && switch::running(Provider::Codex) {
-            std::thread::sleep(Duration::from_secs(2));
-            if !switch::verify(&SystemStore, &outcome.record) {
-                let _ = journal.mark(&outcome.record.id, RecordState::VerifyFailed);
-                return Err(SwitchError::VerifyFailed {
-                    id: outcome.record.id,
-                });
-            }
-        }
-        Ok(outcome)
+        )
     })
     .await
     .map_err(|_| SwitchError::Io)
@@ -286,14 +278,13 @@ pub async fn make_active(
     match result {
         Ok(outcome) => {
             let record = outcome.record.clone();
-            let view = finish(&app, &runtime, &ids, |inner| {
+            let (view, persisted) = finish(&app, &runtime, &ids, |inner| {
                 if let Some(moved) = &record.accounts {
                     apply(inner, moved);
                 }
             })
             .await;
-            let mut journal = journal;
-            let _ = journal.mark(&record.id, RecordState::Done);
+            complete(&mut { journal }, &record.id, persisted);
             Ok(Activated {
                 state: view,
                 target: outcome
@@ -306,15 +297,24 @@ pub async fn make_active(
             })
         }
         Err(error) => {
-            let restore = match &error {
+            let failed = match &error {
                 SwitchError::VerifyFailed { id } | SwitchError::RollbackFailed { id } => {
-                    offer(&journal, id)
+                    record(&journal, id)
                 }
                 _ => None,
             };
+            let now = chrono::Utc::now();
             finish(&app, &runtime, &ids, |inner| {
-                if restore.is_some() {
-                    inner.view.switching.restore = restore;
+                let Some(failed) = failed else { return };
+                // Verify runs only after every write landed, so the sign-ins did
+                // move: the records follow them, and the restore stays offered.
+                if failed.state == RecordState::VerifyFailed {
+                    if let Some(moved) = &failed.accounts {
+                        apply(inner, moved);
+                    }
+                }
+                if let Some(offer) = RestoreOffer::new(&failed, now) {
+                    inner.view.switching.restore = Some(offer);
                 }
             })
             .await;
@@ -323,22 +323,41 @@ pub async fn make_active(
     }
 }
 
+/// Done only once the account move is saved; until then the record stays
+/// Written and launch recovery re-applies the move.
+fn complete(journal: &mut dyn Journal, id: &str, persisted: bool) {
+    if persisted {
+        let _ = journal.mark(id, RecordState::Done);
+    }
+}
+
 fn apply(inner: &mut RuntimeState, moved: &RecordAccounts) -> bool {
     if !switch::apply_to_accounts(&mut inner.view.accounts, moved) {
         return false;
     }
+    relocate_history(inner, moved);
+    true
+}
+
+fn undo(inner: &mut RuntimeState, moved: &RecordAccounts) {
+    if switch::undo_accounts(&mut inner.view.accounts, moved) {
+        relocate_history(inner, moved);
+    }
+}
+
+fn relocate_history(inner: &mut RuntimeState, moved: &RecordAccounts) {
     for id in std::iter::once(&moved.target).chain(moved.previous.as_ref()) {
         if let Some(account) = inner.view.accounts.iter().find(|account| &account.id == id) {
             inner.history.relocate(account);
         }
     }
-    true
 }
 
 /// At launch: finish switches whose files were written but whose account move
 /// wasn't saved, and surface a restore for any that stopped part way.
 pub fn recover(inner: &mut RuntimeState, journal: &mut DiskJournal) {
-    let recovery = switch::recover(&SystemStore, journal);
+    let now = chrono::Utc::now();
+    let recovery = switch::recover(&SystemStore, journal, now);
     for record in recovery.apply {
         let applied = record
             .accounts
@@ -348,7 +367,10 @@ pub fn recover(inner: &mut RuntimeState, journal: &mut DiskJournal) {
             let _ = journal.mark(&record.id, RecordState::Done);
         }
     }
-    inner.view.switching.restore = recovery.offer.as_ref().map(RestoreOffer::new);
+    inner.view.switching.restore = recovery
+        .offer
+        .as_ref()
+        .and_then(|record| RestoreOffer::new(record, now));
 }
 
 #[tauri::command]
@@ -377,11 +399,13 @@ pub async fn restore_switch_backup(
         (offer.provider, ids)
     };
     pause(&app, &runtime, &ids).await;
+    let original = record(&runtime.journal(), &id);
     let mut journal = runtime.journal();
     let backup = id.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         switch::restore(
             &backup,
+            chrono::Utc::now(),
             &SystemStore,
             &ProperLockfile::default(),
             &mut journal,
@@ -391,8 +415,19 @@ pub async fn restore_switch_backup(
     .map_err(|_| SwitchError::Io)
     .and_then(|result| result);
     let failed = result.as_ref().err().cloned();
-    let view = finish(&app, &runtime, &ids, |inner| {
+    let (view, _) = finish(&app, &runtime, &ids, |inner| {
         if failed.is_none() {
+            inner.view.switching.restore = None;
+            if let Some(moved) = original.and_then(|record| record.accounts) {
+                undo(inner, &moved);
+            }
+        }
+        if matches!(
+            failed,
+            Some(SwitchError::Refused(
+                switch::Refusal::RestoreStale | switch::Refusal::RestoreExpired
+            ))
+        ) {
             inner.view.switching.restore = None;
         }
     })
@@ -435,6 +470,25 @@ pub async fn dismiss_switch_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_switch_is_done_only_after_the_account_move_is_saved() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut journal = DiskJournal {
+            dir: directory.path().into(),
+            keychain: false,
+        };
+        let record: SwitchRecord = serde_json::from_value(serde_json::json!({
+            "id": "claude-1", "provider": "claude", "createdAt": chrono::Utc::now().to_rfc3339(),
+            "restore": false, "state": "written", "items": [], "locks": []
+        }))
+        .unwrap();
+        journal.begin(&record, b"{}").unwrap();
+        complete(&mut journal, "claude-1", false);
+        assert_eq!(journal.records()[0].state, RecordState::Written);
+        complete(&mut journal, "claude-1", true);
+        assert_eq!(journal.records()[0].state, RecordState::Done);
+    }
 
     #[test]
     fn preview_shape_has_no_secrets_or_paths_beyond_the_folder() {
