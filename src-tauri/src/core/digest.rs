@@ -10,6 +10,8 @@ const TITLE_LIMIT: usize = 40;
 const SHOWN_ACCOUNTS: usize = 2;
 const MAX_SUMMARY_ACCOUNTS: usize = 100;
 const MAX_PERIODS: u32 = 10_000;
+const MIN_SEND_GAP_DAYS: i64 = 6;
+const COMPARISON_MAX_AGE_DAYS: i64 = 8;
 
 pub const SESSION_IDS: [&str; 2] = ["five_hour", "primary_window"];
 pub const WEEKLY_IDS: [&str; 2] = ["seven_day", "secondary_window"];
@@ -76,11 +78,21 @@ pub struct DigestState {
 }
 
 impl DigestState {
-    /// Enabling starts the clock now, so the first digest is next Monday.
+    /// Enabling starts the clock now, so the first digest is the first Monday
+    /// 09:00 at least six days out.
     pub fn enabled_at(now: DateTime<Utc>) -> Self {
         Self {
             last_sent_at: now.to_rfc3339(),
             previous: None,
+        }
+    }
+
+    /// Re-enabling restarts the clock but keeps the last summary, so the
+    /// next digest can still say "(last week …)".
+    pub fn re_enabled(previous: Option<Self>, now: DateTime<Utc>) -> Self {
+        Self {
+            previous: previous.and_then(|state| state.previous),
+            ..Self::enabled_at(now)
         }
     }
 
@@ -117,8 +129,9 @@ struct WindowStats {
     week: WindowWeek,
     by_day: BTreeMap<NaiveDate, f64>,
     days: BTreeSet<NaiveDate>,
-    first_at: DateTime<Utc>,
-    last_at: DateTime<Utc>,
+    /// Time between consecutive readings with no gap between them; a
+    /// compacted flat run counts in full.
+    observed: Duration,
 }
 
 fn timestamp(value: &str) -> Option<DateTime<Utc>> {
@@ -175,10 +188,8 @@ fn analyze<Tz: TimeZone>(
             },
             by_day: BTreeMap::new(),
             days: BTreeSet::new(),
-            first_at: at,
-            last_at: at,
+            observed: Duration::zero(),
         });
-        current.last_at = at;
         current.week.peak_used = current.week.peak_used.max(used);
         let starts_period = previous.is_none_or(|(earlier, _)| new_period(earlier, point));
         if starts_period {
@@ -192,16 +203,20 @@ fn analyze<Tz: TimeZone>(
         }
         if let Some((earlier, earlier_at)) = previous {
             if !point.gap_before {
+                current.observed += at - earlier_at;
                 let mut date = earlier_at.with_timezone(zone).date_naive();
                 while date < day {
                     current.days.insert(date);
                     date = date.succ_opt()?;
                 }
-                if !starts_period {
-                    let delta = (used - earlier.used_percent).max(0.0);
-                    current.week.consumed += delta;
-                    *current.by_day.entry(day).or_insert(0.0) += delta;
-                }
+                // A confirmed reset starts the new period at `used`, all of it spent.
+                let delta = if starts_period {
+                    used
+                } else {
+                    (used - earlier.used_percent).max(0.0)
+                };
+                current.week.consumed += delta;
+                *current.by_day.entry(day).or_insert(0.0) += delta;
             }
         }
         current.days.insert(day);
@@ -229,7 +244,7 @@ pub fn digest<Tz: TimeZone>(
         let coverage_hours = [&session, &weekly]
             .into_iter()
             .flatten()
-            .map(|stats| hours(stats.last_at - stats.first_at))
+            .map(|stats| hours(stats.observed))
             .fold(0.0, f64::max);
         if coverage_hours < MIN_COVERAGE_HOURS {
             continue;
@@ -365,16 +380,23 @@ impl Digest {
                     None => "weekly limit reached".to_string(),
                 });
             } else {
-                let mut part = format!("weekly peak {}%", percent(weekly.peak_used));
-                let last_week = self.previous.as_ref().and_then(|previous| {
-                    previous
-                        .accounts
-                        .iter()
-                        .find(|row| row.id == account.id)
-                        .and_then(|row| row.weekly_peak)
-                });
+                let mut part = format!("weekly low {}% left", percent(100.0 - weekly.peak_used));
+                let last_week = self
+                    .previous
+                    .as_ref()
+                    .filter(|previous| self.follows(previous))
+                    .and_then(|previous| {
+                        previous
+                            .accounts
+                            .iter()
+                            .find(|row| row.id == account.id)
+                            .and_then(|row| row.weekly_peak)
+                    });
                 if let Some(last_week) = last_week {
-                    part.push_str(&format!(" (last week {}%)", percent(last_week)));
+                    part.push_str(&format!(
+                        " (last week {}% left)",
+                        percent(100.0 - last_week)
+                    ));
                 }
                 parts.push(part);
             }
@@ -383,7 +405,7 @@ impl Digest {
             let count = session.periods;
             let noun = if count == 1 { "session" } else { "sessions" };
             parts.push(if session.limit_hits > 0 {
-                format!("{} of {count} {noun} at 100%", session.limit_hits)
+                format!("{} of {count} {noun} hit 0%", session.limit_hits)
             } else {
                 format!("{count} {noun}")
             });
@@ -398,6 +420,12 @@ impl Digest {
             line.push_str(&format!(" ({days} {noun} of data)"));
         }
         line
+    }
+
+    /// A stored summary only reads as "last week" when it ended just before this span.
+    fn follows(&self, previous: &WeeklySummary) -> bool {
+        timestamp(&previous.to)
+            .is_some_and(|ended| self.to - ended <= Duration::days(COMPARISON_MAX_AGE_DAYS))
     }
 
     pub fn summary(&self) -> WeeklySummary {
@@ -451,14 +479,31 @@ pub fn due_at<Tz: TimeZone>(now: DateTime<Utc>, zone: &Tz) -> DateTime<Utc> {
     }
 }
 
-/// Some(due) once per Monday 09:00 slot the last send predates; a long sleep yields one.
+/// Some(due) once per Monday 09:00 slot at least six days after the last send;
+/// a long sleep yields one. The floor keeps a westward clock change from
+/// reopening a sent slot and makes enabling just before 09:00 wait a week.
 pub fn should_send<Tz: TimeZone>(
     last_sent_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
     zone: &Tz,
 ) -> Option<DateTime<Utc>> {
     let due = due_at(now, zone);
-    last_sent_at.is_none_or(|last| last < due).then_some(due)
+    last_sent_at
+        .is_none_or(|last| due - last >= Duration::days(MIN_SEND_GAP_DAYS))
+        .then_some(due)
+}
+
+/// Marks `next` as the sent slot through `persist` before anything is shown, so
+/// a restart never repeats a digest. A failed save restores the old state and
+/// leaves the slot for the next tick.
+fn mark_sent(
+    runtime: &crate::runtime::Runtime,
+    next: DigestState,
+    persist: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let before = runtime.digest_state();
+    runtime.set_digest_state(Some(next));
+    persist().inspect_err(|_| runtime.set_digest_state(before))
 }
 
 /// Sends the digest when a Monday 09:00 slot is due, after every account's first poll.
@@ -506,19 +551,28 @@ pub async fn deliver(app: &tauri::AppHandle, runtime: &crate::runtime::Runtime) 
         .collect();
     let previous = state.and_then(|state| state.previous);
     let digest = digest(&inputs, previous.as_ref(), now, &chrono::Local);
-    runtime.set_digest_state(Some(DigestState {
+    let next = DigestState {
         last_sent_at: due.to_rfc3339(),
         previous: digest.as_ref().map(Digest::summary),
-    }));
-    inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+    };
+    let persisted = mark_sent(runtime, next, || {
+        runtime.persist(&inner.view, &inner.alerts)
+    });
+    inner.view.notice = persisted.clone().err();
     drop(inner);
+    if persisted.is_err() {
+        return;
+    }
     if let Some(digest) = digest {
-        let _ = app
+        if let Err(error) = app
             .notification()
             .builder()
             .title(digest.title())
             .body(digest.body())
-            .show();
+            .show()
+        {
+            eprintln!("weekly digest could not be shown: {error}");
+        }
     }
 }
 
@@ -657,8 +711,42 @@ mod tests {
         let session = week(&digest, 0).session.as_ref().unwrap();
         assert_eq!(session.periods, 2);
         assert_eq!(session.limit_hits, 0);
-        assert_eq!(session.consumed, 10.0);
+        assert_eq!(session.consumed, 13.0, "5 before the reset, then 3 and 5");
         assert_eq!(session.peak_used, 95.0);
+    }
+
+    #[test]
+    fn an_unobserved_reset_counts_nothing() {
+        let mut gapped = vec![
+            session(0, 90.0, "2026-10-21T15:00:00Z"),
+            session(20, 3.0, "2026-10-21T20:00:00Z"),
+            session(30, 8.0, "2026-10-21T20:00:00Z"),
+        ];
+        gapped[1].gap_before = true;
+        let digest = only(&with_floor(gapped));
+        let stats = week(&digest, 0).session.as_ref().unwrap();
+        assert_eq!(stats.consumed, 5.0);
+        assert_eq!(stats.periods, 2);
+    }
+
+    #[test]
+    fn coverage_counts_only_observed_intervals() {
+        const RESET: &str = "2026-10-29T00:00:00Z";
+        let mut points = vec![
+            point(WEEKLY, at("2026-10-19T10:00:00Z"), 10.0, RESET, false),
+            point(WEEKLY, at("2026-10-25T10:00:00Z"), 12.0, RESET, true),
+        ];
+        assert!(
+            super::digest(&[input("a", &points)], None, now(), &Utc).is_none(),
+            "two readings across a gap are not six days of data"
+        );
+        points.insert(
+            1,
+            point(WEEKLY, at("2026-10-20T10:00:00Z"), 11.0, RESET, false),
+        );
+        let digest = only(&points);
+        assert_eq!(week(&digest, 0).coverage_hours, 24.0);
+        assert_eq!(digest.body(), "a: weekly low 88% left (1 day of data)");
     }
 
     #[test]
@@ -713,7 +801,7 @@ mod tests {
         assert_eq!(weekly.limit_hits, 0);
         assert_eq!(weekly.periods, 2);
         assert!(week(&digest, 0).session.is_none());
-        assert_eq!(digest.body(), "a: weekly peak 88% (5 days of data)");
+        assert_eq!(digest.body(), "a: weekly low 12% left (5 days of data)");
     }
 
     #[test]
@@ -737,7 +825,7 @@ mod tests {
         assert_eq!(digest.accounts.len(), 1);
         assert_eq!(week(&digest, 0).id, "thu");
         assert_eq!(week(&digest, 0).coverage_hours, 72.0);
-        assert_eq!(digest.body(), "thu: weekly peak 41% (3 days of data)");
+        assert_eq!(digest.body(), "thu: weekly low 59% left (3 days of data)");
         assert!(super::digest(&[input("fresh", &fresh)], None, now(), &Utc).is_none());
         assert!(super::digest(&[], None, now(), &Utc).is_none());
     }
@@ -800,9 +888,21 @@ mod tests {
             }],
         };
         let digest = super::digest(&[input("a", &points)], Some(&previous), now(), &Utc).unwrap();
-        assert_eq!(digest.body(), "a: weekly peak 86% (last week 71%)");
+        assert_eq!(digest.body(), "a: weekly low 14% left (last week 29% left)");
         let renamed = super::digest(&[input("b", &points)], Some(&previous), now(), &Utc).unwrap();
-        assert_eq!(renamed.body(), "b: weekly peak 86%");
+        assert_eq!(renamed.body(), "b: weekly low 14% left");
+        let mut stale = previous.clone();
+        stale.to = "2026-10-05T09:00:00+00:00".into();
+        let stale = super::digest(&[input("a", &points)], Some(&stale), now(), &Utc).unwrap();
+        assert_eq!(
+            stale.body(),
+            "a: weekly low 14% left",
+            "a summary from weeks ago is not last week"
+        );
+        let mut edge = previous.clone();
+        edge.to = "2026-10-18T09:00:00+00:00".into();
+        let edge = super::digest(&[input("a", &points)], Some(&edge), now(), &Utc).unwrap();
+        assert!(edge.body().contains("(last week 29% left)"));
         let summary = digest.summary();
         assert_eq!(summary.accounts[0].weekly_peak, Some(86.0));
         assert_eq!(summary.from, digest.from.to_rfc3339());
@@ -911,8 +1011,80 @@ mod tests {
         );
         assert_eq!(
             should_send(enabled.last_sent_at(), at("2026-11-02T09:00:00Z"), &Utc),
+            None,
+            "fewer than six days of data"
+        );
+        assert_eq!(
+            should_send(enabled.last_sent_at(), at("2026-11-09T09:00:00Z"), &Utc),
+            Some(at("2026-11-09T09:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn enabling_just_before_nine_waits_a_week() {
+        let enabled = DigestState::enabled_at(at("2026-10-26T08:59:00Z"));
+        let monday = at("2026-10-26T09:00:00Z");
+        assert_eq!(should_send(enabled.last_sent_at(), monday, &Utc), None);
+        assert_eq!(
+            should_send(enabled.last_sent_at(), at("2026-10-27T09:00:00Z"), &Utc),
+            None
+        );
+        assert_eq!(
+            should_send(enabled.last_sent_at(), at("2026-11-02T09:00:00Z"), &Utc),
             Some(at("2026-11-02T09:00:00Z"))
         );
+    }
+
+    #[test]
+    fn a_westward_clock_change_does_not_reopen_a_sent_slot() {
+        let east = FixedOffset::east_opt(5 * 3600).unwrap();
+        let west = FixedOffset::west_opt(5 * 3600).unwrap();
+        let sent = should_send(None, at("2026-10-26T04:00:00Z"), &east).unwrap();
+        assert_eq!(sent, at("2026-10-26T04:00:00Z"));
+        let later_that_monday = at("2026-10-26T15:00:00Z");
+        assert_eq!(due_at(later_that_monday, &west), at("2026-10-26T14:00:00Z"));
+        assert_eq!(should_send(Some(sent), later_that_monday, &west), None);
+        assert_eq!(
+            should_send(Some(sent), at("2026-11-02T14:00:00Z"), &west),
+            Some(at("2026-11-02T14:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn re_enabling_keeps_the_last_summary() {
+        let summary = WeeklySummary {
+            from: "2026-10-12T09:00:00+00:00".into(),
+            to: "2026-10-19T09:00:00+00:00".into(),
+            accounts: vec![],
+        };
+        let before = DigestState {
+            last_sent_at: "2026-10-19T09:00:00+00:00".into(),
+            previous: Some(summary.clone()),
+        };
+        let again = DigestState::re_enabled(Some(before), now());
+        assert_eq!(again.last_sent_at, now().to_rfc3339());
+        assert_eq!(again.previous, Some(summary));
+        assert_eq!(
+            DigestState::re_enabled(None, now()),
+            DigestState::enabled_at(now())
+        );
+    }
+
+    #[test]
+    fn a_failed_save_leaves_the_slot_unsent() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = crate::runtime::Runtime::new(directory.path().join("state.json")).unwrap();
+        let next = DigestState::enabled_at(now());
+        let mut attempted = false;
+        let result = mark_sent(&runtime, next.clone(), || {
+            attempted = true;
+            Err("disk full".into())
+        });
+        assert_eq!(result, Err("disk full".into()));
+        assert!(attempted);
+        assert_eq!(runtime.digest_state(), None, "retried next tick");
+        assert_eq!(mark_sent(&runtime, next.clone(), || Ok(())), Ok(()));
+        assert_eq!(runtime.digest_state(), Some(next));
     }
 
     #[test]
@@ -1011,12 +1183,12 @@ mod tests {
     fn copy_stays_within_notification_limits() {
         let quiet = sample(vec![account_week("Personal", 38.0, 0, 11, 0)]);
         assert_eq!(quiet.title(), "Last 7 days · no limits hit");
-        assert_eq!(quiet.body(), "Personal: weekly peak 38%, 11 sessions");
+        assert_eq!(quiet.body(), "Personal: weekly low 62% left, 11 sessions");
         let one = sample(vec![account_week("Personal", 86.0, 0, 14, 1)]);
         assert_eq!(one.title(), "Last 7 days · 1 session hit the limit");
         assert_eq!(
             one.body(),
-            "Personal: weekly peak 86%, 1 of 14 sessions at 100%"
+            "Personal: weekly low 14% left, 1 of 14 sessions hit 0%"
         );
         let mut many = sample(vec![
             account_week("Personal", 86.0, 0, 14, 2),
@@ -1024,8 +1196,8 @@ mod tests {
         ]);
         many.accounts[1].busiest_day = Some(Weekday::Wed);
         many.previous = Some(WeeklySummary {
-            from: String::new(),
-            to: String::new(),
+            from: (now() - Duration::days(14)).to_rfc3339(),
+            to: (now() - Duration::days(7)).to_rfc3339(),
             accounts: vec![SummaryRow {
                 id: "Personal".into(),
                 weekly_peak: Some(71.0),
@@ -1036,7 +1208,7 @@ mod tests {
         assert_eq!(many.title(), "Last 7 days · 3 sessions hit the limit");
         assert_eq!(
             many.body(),
-            "Personal: weekly peak 86% (last week 71%), 2 of 14 sessions at 100%\nCodex: weekly peak 60%, 1 of 9 sessions at 100%, busiest Wed"
+            "Personal: weekly low 14% left (last week 29% left), 2 of 14 sessions hit 0%\nCodex: weekly low 40% left, 1 of 9 sessions hit 0%, busiest Wed"
         );
         let weekly = sample(vec![
             account_week("Personal", 100.0, 1, 19, 4),
@@ -1045,7 +1217,7 @@ mod tests {
         assert_eq!(weekly.title(), "Last 7 days · Personal weekly limit hit");
         assert_eq!(
             weekly.body(),
-            "Personal: weekly limit reached Thu, 4 of 19 sessions at 100%\nWork: weekly peak 54%, 7 sessions"
+            "Personal: weekly limit reached Thu, 4 of 19 sessions hit 0%\nWork: weekly low 46% left, 7 sessions"
         );
         let long = sample(vec![account_week(
             "Client work for Northwind Studio",
@@ -1057,7 +1229,7 @@ mod tests {
         assert_eq!(long.title(), "Last 7 days · weekly limit hit");
         assert_eq!(
             long.body(),
-            "Client work for Northwind Studio: weekly limit reached Thu, 1 of 1 session at 100%"
+            "Client work for Northwind Studio: weekly limit reached Thu, 1 of 1 session hit 0%"
         );
         let two_weekly = sample(vec![
             account_week("A", 100.0, 1, 1, 0),
@@ -1075,7 +1247,7 @@ mod tests {
         assert_eq!(five.title(), "Last 7 days · 1 session hit the limit");
         assert_eq!(
             five.body(),
-            "Acct 0: weekly peak 90%, 1 of 10 sessions at 100%\nAcct 1: weekly peak 89%, 10 sessions · +3 more in Margin"
+            "Acct 0: weekly low 10% left, 1 of 10 sessions hit 0%\nAcct 1: weekly low 11% left, 10 sessions · +3 more in Margin"
         );
         let huge = sample(vec![account_week("A", 10.0, 0, 9999, 999)]);
         for digest in [
