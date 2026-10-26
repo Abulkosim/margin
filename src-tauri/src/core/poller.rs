@@ -514,6 +514,7 @@ mod tests {
             recovery: false,
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
+            switching: Default::default(),
         };
         let mut schedules = HashMap::new();
         let mut schedule = Schedule::new(Duration::from_secs(600));

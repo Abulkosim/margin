@@ -1328,6 +1328,7 @@ fn only_the_switch_module_writes_cli_files() {
     ];
     let mut checked = 0;
     for (path, source) in found {
+        let source = source.replace("\r\n", "\n");
         if path == root.join("core").join("switch.rs") || path.starts_with(&switch) {
             continue;
         }

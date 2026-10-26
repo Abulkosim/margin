@@ -1084,6 +1084,31 @@ pub fn verify(store: &dyn CredentialStore, record: &SwitchRecord) -> bool {
     })
 }
 
+/// What Settings shows when a switch failed verification or didn't finish.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreOffer {
+    pub id: String,
+    pub provider: Provider,
+    pub reason: &'static str,
+    pub created_at: String,
+}
+
+impl RestoreOffer {
+    pub fn new(record: &SwitchRecord) -> Self {
+        Self {
+            id: record.id.clone(),
+            provider: record.provider,
+            reason: match record.state {
+                RecordState::VerifyFailed => "verifyFailed",
+                RecordState::RollbackFailed => "rollbackFailed",
+                _ => "unfinished",
+            },
+            created_at: record.created_at.clone(),
+        }
+    }
+}
+
 pub struct Recovery {
     pub offer: Option<SwitchRecord>,
     pub apply: Vec<SwitchRecord>,

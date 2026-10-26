@@ -6,7 +6,7 @@ use crate::core::{
     providers,
     settings::Settings,
     store::{self, StoredState},
-    tray,
+    switch, tray,
 };
 use serde::Serialize;
 use std::{
@@ -28,6 +28,14 @@ pub struct AppState {
     pub recovery: bool,
     pub recovered: Vec<String>,
     pub ignored_sources: Vec<String>,
+    pub switching: SwitchView,
+}
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchView {
+    pub active_account_ids: Vec<String>,
+    pub restore: Option<switch::RestoreOffer>,
 }
 
 impl AppState {
@@ -55,6 +63,7 @@ pub struct Runtime {
     recovery_error: std::sync::Mutex<Option<String>>,
     backup_pending: AtomicBool,
     last_update_check_at: std::sync::Mutex<Option<String>>,
+    pub switching: AtomicBool,
 }
 
 impl Runtime {
@@ -70,22 +79,28 @@ impl Runtime {
                 Some(format!("{error} Settings file: {}.", store_path.display())),
             ),
         };
+        let mut state = RuntimeState {
+            view: AppState {
+                revision: 0,
+                accounts: saved.accounts,
+                settings: saved.settings,
+                refreshing: false,
+                notice: recovery_error.clone(),
+                recovery: recovery_error.is_some(),
+                recovered: saved.recovered.clone(),
+                ignored_sources: saved.ignored_sources,
+                switching: SwitchView::default(),
+            },
+            alerts: saved.alerts,
+            schedules: HashMap::new(),
+            history: HistoryStore::new(store_path.with_file_name("history")),
+        };
+        if recovery_error.is_none() {
+            crate::make_active::recover(&mut state, &mut journal(&store_path));
+        }
+        state.view.switching.active_account_ids = switch::active_ids(&state.view.accounts);
         Ok(Self {
-            inner: Mutex::new(RuntimeState {
-                view: AppState {
-                    revision: 0,
-                    accounts: saved.accounts,
-                    settings: saved.settings,
-                    refreshing: false,
-                    notice: recovery_error.clone(),
-                    recovery: recovery_error.is_some(),
-                    recovered: saved.recovered.clone(),
-                    ignored_sources: saved.ignored_sources,
-                },
-                alerts: saved.alerts,
-                schedules: HashMap::new(),
-                history: HistoryStore::new(store_path.with_file_name("history")),
-            }),
+            inner: Mutex::new(state),
             client: providers::http_client().map_err(|error| error.message)?,
             profiles: Default::default(),
             resets: Default::default(),
@@ -96,7 +111,12 @@ impl Runtime {
             recovery_error: std::sync::Mutex::new(recovery_error),
             backup_pending: AtomicBool::new(!saved.recovered.is_empty()),
             last_update_check_at: std::sync::Mutex::new(saved.last_update_check_at),
+            switching: AtomicBool::new(false),
         })
+    }
+
+    pub fn journal(&self) -> switch::DiskJournal {
+        journal(&self.store_path)
     }
 
     pub fn ensure_store_available(&self) -> Result<(), String> {
@@ -124,6 +144,7 @@ impl Runtime {
             recovery: false,
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
+            switching: SwitchView::default(),
         };
         next.changed();
         store::reset(
@@ -190,6 +211,7 @@ impl Runtime {
         let mut inner = self.inner.lock().await;
         let mut next = inner.view.clone();
         change(&mut next)?;
+        next.switching.active_account_ids = switch::active_ids(&next.accounts);
         next.refreshing = next.accounts.iter().any(|account| account.refreshing);
         next.notice = None;
         next.changed();
@@ -225,6 +247,16 @@ impl Runtime {
         publish(app, &next);
         self.wake.notify_one();
         Ok(next)
+    }
+}
+
+fn journal(store_path: &std::path::Path) -> switch::DiskJournal {
+    switch::DiskJournal {
+        dir: store_path
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default(),
+        keychain: cfg!(target_os = "macos"),
     }
 }
 
