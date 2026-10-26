@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const providerSchema = z.enum(['claude', 'codex'])
 export const accountIdSchema = z.string().min(1).brand<'AccountId'>()
+export const burnThresholds = [10, 20, 30] as const
 export const settingsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']),
   overviewLayout: z.enum(['cards', 'compact']).default('cards'),
@@ -12,6 +13,8 @@ export const settingsSchema = z.object({
   thresholds: z.array(z.number().int().min(1).max(100)).min(1).max(10)
     .refine(values => values.every((value, index) => index === 0 || value > (values[index - 1] ?? 0)), 'Thresholds must be distinct and increasing'),
   notifyOnReset: z.boolean().default(false),
+  burnAlerts: z.boolean().default(false),
+  burnThreshold: z.literal(burnThresholds).default(20),
   notificationPermission: z.enum(['unasked', 'granted', 'denied']).default('unasked'),
   trayMode: z.enum(['pinned', 'lowest']),
   trayMetric: z.enum(['core', 'all', 'session', 'weekly']).default('core'),
@@ -94,6 +97,8 @@ export const defaultSettings: Settings = {
   notifications: true,
   thresholds: [80, 95, 100],
   notifyOnReset: false,
+  burnAlerts: false,
+  burnThreshold: 20,
   notificationPermission: 'unasked',
   trayMode: 'lowest',
   trayMetric: 'core',

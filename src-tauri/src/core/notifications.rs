@@ -1,4 +1,7 @@
-use super::model::{Snapshot, UsageWindow};
+use super::{
+    burn::BurnState,
+    model::{Snapshot, UsageWindow},
+};
 use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -12,6 +15,12 @@ const RESET_JITTER_SECONDS: i64 = 60;
 pub struct WindowAlerts {
     reset: Option<String>,
     sent: BTreeSet<u8>,
+    #[serde(
+        default,
+        deserialize_with = "super::burn::lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) burn: Option<BurnState>,
 }
 
 impl WindowAlerts {
@@ -33,10 +42,15 @@ impl WindowAlerts {
 pub enum AlertKind {
     Threshold(u8),
     Reset,
+    Burn {
+        increase: u8,
+        runs_out: Option<DateTime<Utc>>,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub struct Alert {
+    pub window_id: String,
     pub window_label: String,
     pub kind: AlertKind,
     pub resets_at: Option<String>,
@@ -55,6 +69,9 @@ impl Alert {
                 format!("{account_label} · {window} {left}% left")
             }
             AlertKind::Reset => format!("{account_label} · {window} limit reset"),
+            AlertKind::Burn { increase, .. } => {
+                format!("{account_label} · {window}: {increase}% used in the last hour")
+            }
         }
     }
 
@@ -66,6 +83,18 @@ impl Alert {
     where
         Tz::Offset: std::fmt::Display,
     {
+        if let AlertKind::Burn {
+            runs_out: Some(out),
+            ..
+        } = self.kind
+        {
+            if out > now {
+                return Some(format!(
+                    "At this rate it runs out around {}",
+                    clock_in(zone, out, now)
+                ));
+            }
+        }
         let reset = parse(self.resets_at.as_ref())?;
         let milliseconds = (reset - now).num_milliseconds();
         (milliseconds > 0).then(|| {
@@ -127,7 +156,7 @@ fn same_period(previous: Option<&String>, current: Option<&String>) -> bool {
     }
 }
 
-fn tracked(window: &UsageWindow) -> bool {
+pub(super) fn tracked(window: &UsageWindow) -> bool {
     matches!(window.label.as_str(), "Session" | "Weekly")
 }
 
@@ -167,6 +196,7 @@ pub fn observe(
             .filter(|threshold| window.used_percent >= f64::from(*threshold))
             .collect();
         let alert = |kind| Alert {
+            window_id: window.id.clone(),
             window_label: window.label.clone(),
             kind,
             resets_at: window.resets_at.clone(),
@@ -185,6 +215,7 @@ pub fn observe(
                 }
             }
             previous => {
+                let burn = previous.as_ref().and_then(|previous| previous.burn.clone());
                 let reset = previous.is_some_and(|previous| {
                     !previous.sent.is_empty()
                         && tracked(window)
@@ -201,6 +232,7 @@ pub fn observe(
                     WindowAlerts {
                         reset: window.resets_at.clone(),
                         sent: reached,
+                        burn,
                     },
                 );
             }
@@ -266,6 +298,7 @@ mod tests {
             WindowAlerts {
                 reset: Some(RESET.into()),
                 sent: BTreeSet::from([95]),
+                burn: None,
             },
         );
         assert!(check(&mut memory, &reading(97.0, RESET)).is_empty());
@@ -339,6 +372,7 @@ mod tests {
     #[test]
     fn copy_is_terse() {
         let alert = Alert {
+            window_id: "session".into(),
             window_label: "Session".into(),
             kind: AlertKind::Threshold(95),
             resets_at: Some(RESET.into()),
@@ -378,6 +412,51 @@ mod tests {
     }
 
     #[test]
+    fn fast_usage_copy_names_the_run_out_time_or_the_reset() {
+        let reset: DateTime<Utc> = RESET.parse().unwrap();
+        let alert = Alert {
+            window_id: "five_hour".into(),
+            window_label: "Session".into(),
+            kind: AlertKind::Burn {
+                increase: 20,
+                runs_out: Some(reset - chrono::Duration::minutes(30)),
+            },
+            resets_at: Some(RESET.into()),
+            used_percent: 64.0,
+        };
+        assert_eq!(
+            alert.title("Personal"),
+            "Personal · Session: 20% used in the last hour"
+        );
+        assert_eq!(
+            alert.body_in(&Utc, now()).as_deref(),
+            Some("At this rate it runs out around 23:30")
+        );
+        let steady = Alert {
+            kind: AlertKind::Burn {
+                increase: 20,
+                runs_out: None,
+            },
+            ..alert.clone()
+        };
+        assert_eq!(
+            steady.body_in(&Utc, now()).as_deref(),
+            Some("Resets in 1h 20m · Fri 00:00")
+        );
+        let passed = Alert {
+            kind: AlertKind::Burn {
+                increase: 20,
+                runs_out: Some(now() - chrono::Duration::minutes(1)),
+            },
+            ..alert
+        };
+        assert_eq!(
+            passed.body_in(&Utc, now()).as_deref(),
+            Some("Resets in 1h 20m · Fri 00:00")
+        );
+    }
+
+    #[test]
     fn reset_clock_names_the_day_only_when_needed() {
         let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
         let now = at("2099-12-31T10:00:00Z");
@@ -413,11 +492,13 @@ mod tests {
         let valid = WindowAlerts {
             reset: Some(RESET.into()),
             sent: BTreeSet::from([80, 100]),
+            burn: None,
         };
         assert!(valid.validate().is_ok());
         assert!(WindowAlerts {
             reset: None,
-            sent: BTreeSet::new()
+            sent: BTreeSet::new(),
+            burn: None,
         }
         .validate()
         .is_ok());
@@ -463,6 +544,7 @@ mod tests {
             WindowAlerts {
                 reset: Some("2000-01-01T00:00:00Z".into()),
                 sent: BTreeSet::new(),
+                burn: None,
             },
         );
         assert!(observe(

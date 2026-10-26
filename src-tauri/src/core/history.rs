@@ -114,6 +114,34 @@ impl HistoryStore {
         self.entry(account).gap = true;
     }
 
+    /// One window's readings since `since`, plus the last one before it, oldest first.
+    pub fn recent(
+        &mut self,
+        account: &Account,
+        window_id: &str,
+        since: DateTime<Utc>,
+    ) -> Vec<HistoryPoint> {
+        let entry = self.entry(account);
+        if !reconcile(entry, account) || entry.unreadable {
+            return Vec::new();
+        }
+        let mut points = Vec::new();
+        for point in entry
+            .saved
+            .points
+            .iter()
+            .rev()
+            .filter(|point| point.window_id == window_id)
+        {
+            points.push(point.clone());
+            if timestamp(&point.at).is_none_or(|at| at < since) {
+                break;
+            }
+        }
+        points.reverse();
+        points
+    }
+
     pub fn record(&mut self, account: &Account, interval: u64, now: DateTime<Utc>) {
         let path = self.directory.join(format!("{}.json", account.id));
         let entry = self.entry(account);
@@ -556,6 +584,38 @@ mod tests {
         assert!(json.get("accountId").is_some());
         assert!(json.get("identity").is_none());
         assert!(json["points"][0].get("gapBefore").is_some());
+    }
+
+    #[test]
+    fn recent_readings_of_a_run_length_series_give_the_hourly_increase() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let used = |minute: i64| {
+            if minute < 80 {
+                10.0
+            } else {
+                10.0 + (minute - 80) as f64
+            }
+        };
+        for minute in 0..=120 {
+            store.record(&account(minute * 60, used(minute)), 60, at(minute * 60));
+        }
+        let latest = account(7200, used(120));
+        let all = store.get(&latest, at(7200)).points;
+        assert!(all.len() < 50);
+        let recent = store.recent(&latest, "session", at(3600));
+        assert_eq!(
+            recent.first().map(|point| point.at.clone()),
+            Some(at(0).to_rfc3339())
+        );
+        assert_eq!(recent.len(), all.len());
+        let later = store.recent(&latest, "session", at(6000));
+        assert_eq!(later.len(), 22);
+        assert_eq!(later[0].at, at(5940).to_rfc3339());
+        let window = &latest.snapshot.as_ref().unwrap().windows[0];
+        let burn = crate::core::burn::hourly_increase(&recent, window, at(7200)).unwrap();
+        assert_eq!(burn.increase, 40.0);
+        assert!(store.recent(&latest, "weekly", at(3600)).is_empty());
     }
 
     #[test]

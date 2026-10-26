@@ -1,4 +1,5 @@
 use super::{
+    burn,
     model::UsageError,
     notifications::{self, AlertKind},
     providers,
@@ -7,7 +8,7 @@ use super::{
 };
 use crate::runtime::{publish, AppState, Runtime};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -344,9 +345,26 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     if error.is_some() {
                         inner.history.failed(&observed);
                     } else {
-                        inner
-                            .history
-                            .record(&observed, interval + 7, chrono::Utc::now());
+                        let now = chrono::Utc::now();
+                        inner.history.record(&observed, interval + 7, now);
+                        let settings = &inner.view.settings;
+                        if let Some(snapshot) =
+                            observed.snapshot.as_ref().filter(|_| settings.burn_alerts)
+                        {
+                            let threshold = settings.burn_threshold;
+                            let suppressed: HashSet<String> =
+                                alerts.iter().map(|alert| alert.window_id.clone()).collect();
+                            let state = &mut *inner;
+                            alerts.extend(burn::observe(
+                                &mut state.alerts,
+                                &account.id,
+                                snapshot,
+                                threshold,
+                                &suppressed,
+                                |window, since| state.history.recent(&observed, window, since),
+                                now,
+                            ));
+                        }
                     }
                     inner.view.accounts[index].refreshing = false;
                     let jitter = account
