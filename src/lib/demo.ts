@@ -25,10 +25,11 @@ export function createDemoState(scenario: string | null): AppState {
         id: 'demo-codex-work', provider: 'codex', label: 'Work', color: '#b8d1bf',
         source: { kind: 'configDir', path: '~/.codex-work' },
         identity: { email: 'alex@studio.example', plan: 'Pro' }, error: null, refreshing: false,
-        snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, windows: [
+        snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, balance: { credits: { amount: 1250, unlimited: false }, spendLimit: { used: 320, limit: 500, usedPercent: 64, resetsAt: future(9 * 24 + 4), reached: false } }, windows: [
           { id: 'primary_window', label: 'Session', usedPercent: 9, resetsAt: future(3.68), windowSeconds: 18_000 },
           { id: 'secondary_window', label: 'Weekly', usedPercent: 32, resetsAt: future(122), windowSeconds: 604_800 },
           { id: 'extra_8f14e45fceea167a_primary_window', label: 'Spark · session', usedPercent: 12, resetsAt: future(3.68), windowSeconds: 18_000, scope: 'other' },
+          { id: 'extra_8f14e45fceea167a_secondary_window', label: 'Spark', usedPercent: 19, resetsAt: future(122), windowSeconds: 604_800, scope: 'model' },
         ] },
       },
       {

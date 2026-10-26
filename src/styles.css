@@ -569,21 +569,34 @@ button:disabled:hover {
 .details-toggle .rotated {
   transform: rotate(180deg);
 }
-.extra-usage {
+.balance-lines {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
   font-size: 13px;
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
-.extra-usage>span:last-child {
+.balance-line {
+  margin: 0;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+.balance-label {
+  color: var(--secondary);
   white-space: nowrap;
 }
-.extra-usage>span>.muted {
-  margin-left: 3px;
+.balance-value {
+  text-align: right;
+  min-width: 0;
+}
+.balance-warn .balance-value {
+  color: var(--warning);
+  font-weight: 500;
 }
 .stale-badge {
   color: var(--warning);

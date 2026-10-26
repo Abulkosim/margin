@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, formatMoney, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, retryingMessage, signedOutMessage } from '../lib/format'
+import { accountIsStale, balanceLines, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, retryingMessage, signedOutMessage } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { fitPace, paceWindowIds, projectPace } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
@@ -31,7 +31,13 @@ const groups = computed(() => groupWindows(props.account.snapshot?.windows ?? []
 const extraWindows = computed(() => groups.value.more)
 const spokenReset = (window: UsageWindow): string => resetCountdown(window.resetsAt, props.now).toLowerCase()
 const resetGrants = computed(() => resetGrantsText(props.account.snapshot?.resetGrants, props.now))
-const hasDetails = computed(() => extraWindows.value.length > 0 || props.account.snapshot?.extraUsage)
+const balances = computed(() => balanceLines(props.account.snapshot, props.now))
+const hasDetails = computed(() => extraWindows.value.length > 0 || balances.value.length > 0)
+const detailsLabel = computed(() => {
+  const count = extraWindows.value.length
+  if (count) return `${count} more ${count === 1 ? 'window' : 'windows'}`
+  return props.account.snapshot?.balance ? 'Balance' : 'Extra usage'
+})
 const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 </script>
 
@@ -65,12 +71,11 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
       </div>
       <p v-else class="inline-empty">No usage windows reported by {{ providerName(account.provider) }}.</p>
       <p v-if="resetGrants" class="reset-grants">{{ resetGrants }}</p>
-      <div v-if="expanded && account.snapshot.extraUsage" class="extra-usage">
-        <span>Extra usage <span class="muted">this month</span></span>
-        <span>{{ formatMoney(account.snapshot.extraUsage.spent, account.snapshot.extraUsage.currency) }}<span v-if="account.snapshot.extraUsage.limit !== null" class="muted"> / {{ formatMoney(account.snapshot.extraUsage.limit, account.snapshot.extraUsage.currency) }}</span></span>
+      <div v-if="expanded && balances.length" class="balance-lines">
+        <p v-for="line in balances" :key="line.label" class="balance-line" :class="{ 'balance-warn': line.warn }"><span class="balance-label">{{ line.label }}</span> <span class="balance-value">{{ line.value }}</span></p>
       </div>
       <button v-if="hasDetails" class="details-toggle" :aria-expanded="expanded" @click="expanded = !expanded">
-        <span>{{ expanded ? 'Show less' : extraWindows.length ? `${extraWindows.length} more ${extraWindows.length === 1 ? 'window' : 'windows'}` : 'Extra usage' }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: expanded }" />
+        <span>{{ expanded ? 'Show less' : detailsLabel }}</span><AppIcon name="chevron" :size="12" :class="{ rotated: expanded }" />
       </button>
       <p v-if="retrying" class="retry-note" role="status"><AppIcon name="refresh" :size="12" />{{ retrying }}</p>
       <div v-if="stale" class="stale-note"><AppIcon name="alert" :size="13" /><p><span v-if="showUpdated">Updated {{ relativeAge(account.snapshot.fetchedAt, now) }}. </span><span v-if="signedOut">{{ signedOut }}</span><template v-else>{{ errorMessage ?? 'Waiting for a fresh reading.' }}</template></p></div>
