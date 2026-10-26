@@ -147,6 +147,19 @@ impl Journal for FakeJournal {
         Ok(())
     }
 
+    fn fail(
+        &mut self,
+        id: &str,
+        state: RecordState,
+        live: Vec<Option<String>>,
+    ) -> Result<(), SwitchError> {
+        self.mark(id, state)?;
+        if let Some(record) = self.records.iter_mut().find(|record| record.id == id) {
+            record.live = Some(live);
+        }
+        Ok(())
+    }
+
     fn backup(&self, id: &str) -> Result<Option<Vec<u8>>, SwitchError> {
         Ok(self.backups.get(id).cloned())
     }
@@ -160,10 +173,18 @@ fn work_dir() -> String {
     home().join(".claude-work").to_string_lossy().into_owned()
 }
 
+/// Compact JSON with sorted keys, the form Margin writes to Keychain.
 fn credential(tag: &str) -> String {
-    format!(
-        r#"{{"claudeAiOauth":{{"accessToken":"secret-access-{tag}","refreshToken":"secret-refresh-{tag}","expiresAt":1,"scopes":["user:profile"]}},"mcpOAuth":{{}}}}"#
-    )
+    serde_json::json!({
+        "claudeAiOauth": {
+            "accessToken": format!("secret-access-{tag}"),
+            "refreshToken": format!("secret-refresh-{tag}"),
+            "expiresAt": 1,
+            "scopes": ["user:profile"]
+        },
+        "mcpOAuth": {}
+    })
+    .to_string()
 }
 
 fn config(tag: &str) -> String {
@@ -960,7 +981,7 @@ fn journal_recovery_detects_unfinished_switches() {
         .begin(&record, &backup_blob(&record.id, &pending).unwrap())
         .unwrap();
 
-    let recovery = recover(&fixture.store, &mut journal);
+    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
     assert!(recovery.offer.is_none() && recovery.apply.is_empty());
     assert_eq!(journal.records()[0].state, RecordState::Abandoned);
 
@@ -969,7 +990,7 @@ fn journal_recovery_detects_unfinished_switches() {
         .store
         .write(&pending[0].location, pending[0].after.as_ref().unwrap())
         .unwrap();
-    let recovery = recover(&fixture.store, &mut journal);
+    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
     assert_eq!(
         recovery.offer.map(|record| record.id),
         Some(record.id.clone())
@@ -981,14 +1002,29 @@ fn journal_recovery_detects_unfinished_switches() {
             None => fixture.store.clear(&write.location).unwrap(),
         }
     }
-    let recovery = recover(&fixture.store, &mut journal);
+    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
     assert!(recovery.offer.is_none());
     assert_eq!(recovery.apply.len(), 1);
     assert_eq!(journal.records()[0].state, RecordState::Written);
 }
 
+/// A switch whose last write is followed by a CLI writing the default slot.
+fn verify_failed(fixture: &Fixture, journal: &mut dyn Journal) -> String {
+    let target = key(&fixture.default.credentials[0]);
+    *fixture.store.hook.borrow_mut() = Some(Box::new(move |index, values| {
+        if index == 3 {
+            values.insert(target.clone(), credential("cli-wrote").into_bytes());
+        }
+    }));
+    let Err(SwitchError::VerifyFailed { id }) = fixture.execute(journal) else {
+        panic!("verify should fail");
+    };
+    *fixture.store.hook.borrow_mut() = None;
+    id
+}
+
 #[test]
-fn restore_writes_the_backup_back_under_a_new_record() {
+fn restore_writes_the_backup_back_while_the_stores_are_unchanged() {
     let directory = tempfile::tempdir().unwrap();
     let fixture = Fixture::default_claude();
     let before = fixture.store.snapshot();
@@ -996,10 +1032,18 @@ fn restore_writes_the_backup_back_under_a_new_record() {
         dir: directory.path().into(),
         keychain: false,
     };
-    let outcome = fixture.execute(&mut journal).unwrap();
-    assert_ne!(fixture.store.snapshot(), before);
+    let id = verify_failed(&fixture, &mut journal);
+    let failed = journal.records()[0].clone();
+    assert_eq!(failed.state, RecordState::VerifyFailed);
+    assert_eq!(
+        failed.live.as_deref(),
+        Some(&fingerprints(&fixture.store, &failed.items)[..])
+    );
+    let now = chrono::Utc::now();
+    assert!(RestoreOffer::new(&failed, now).is_some());
     let record = restore(
-        &outcome.record.id,
+        &id,
+        now,
         &fixture.store,
         &FakeLocks::default(),
         &mut journal,
@@ -1010,6 +1054,223 @@ fn restore_writes_the_backup_back_under_a_new_record() {
     let records = journal.records();
     assert_eq!(records[0].state, RecordState::Restored);
     assert_eq!(records[1].state, RecordState::Written);
+}
+
+#[test]
+fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
+    let fixture = Fixture::default_claude();
+    let mut journal = FakeJournal::default();
+    let id = verify_failed(&fixture, &mut journal);
+    let now = chrono::Utc::now();
+    fixture.store.set(
+        &fixture.source.credentials[0],
+        &credential("refreshed-later"),
+    );
+    let changed = fixture.store.snapshot();
+    let error = restore(
+        &id,
+        now,
+        &fixture.store,
+        &FakeLocks::default(),
+        &mut journal,
+    )
+    .unwrap_err();
+    assert_eq!(error, SwitchError::Refused(Refusal::RestoreStale));
+    assert_eq!(
+        message(&error, Provider::Claude, "Claude", Path::new("")),
+        "The sign-ins changed since then. Restore is no longer safe."
+    );
+    assert_eq!(fixture.store.snapshot(), changed);
+
+    let fixture = Fixture::default_claude();
+    let mut journal = FakeJournal::default();
+    let id = verify_failed(&fixture, &mut journal);
+    let later = chrono::Utc::now() + chrono::Duration::minutes(31);
+    let before = fixture.store.snapshot();
+    assert!(RestoreOffer::new(&journal.records[0], later).is_none());
+    assert_eq!(
+        restore(
+            &id,
+            later,
+            &fixture.store,
+            &FakeLocks::default(),
+            &mut journal
+        )
+        .err(),
+        Some(SwitchError::Refused(Refusal::RestoreExpired))
+    );
+    assert_eq!(fixture.store.snapshot(), before);
+
+    let fixture = Fixture::default_claude();
+    let mut journal = FakeJournal::default();
+    let outcome = fixture.execute(&mut journal).unwrap();
+    assert_eq!(
+        restore(
+            &outcome.record.id,
+            chrono::Utc::now(),
+            &fixture.store,
+            &FakeLocks::default(),
+            &mut journal
+        )
+        .err(),
+        Some(SwitchError::Refused(Refusal::RestoreExpired)),
+        "a finished switch has no restore"
+    );
+}
+
+#[test]
+fn a_running_codex_is_refused_and_claude_only_warned() {
+    assert_eq!(
+        check_running(Provider::Codex, true),
+        Err(Refusal::CodexRunning)
+    );
+    assert_eq!(check_running(Provider::Codex, false), Ok(()));
+    assert_eq!(check_running(Provider::Claude, true), Ok(()));
+    assert_eq!(
+        message(
+            &SwitchError::Refused(Refusal::CodexRunning),
+            Provider::Codex,
+            "Work",
+            Path::new("/x")
+        ),
+        "Quit Codex first. It could undo the switch."
+    );
+}
+
+#[test]
+fn move_clears_every_copy_in_the_source_folder() {
+    let fixture = Fixture::default_claude();
+    fixture
+        .store
+        .values
+        .borrow_mut()
+        .remove(&key(&fixture.default.credentials[0]));
+    fixture
+        .store
+        .set(&fixture.source.credentials[1], &credential("work"));
+    fixture.execute(&mut FakeJournal::default()).unwrap();
+    assert_eq!(
+        family_locations(&fixture),
+        [Some(credential("work")), None, None, None]
+    );
+}
+
+#[test]
+fn swap_clears_stale_copies_so_each_family_lives_once() {
+    let fixture = Fixture::default_claude();
+    fixture
+        .store
+        .set(&fixture.default.credentials[1], &credential("personal"));
+    fixture.execute(&mut FakeJournal::default()).unwrap();
+    assert_eq!(
+        family_locations(&fixture),
+        [
+            Some(credential("work")),
+            None,
+            Some(credential("personal")),
+            None
+        ]
+    );
+}
+
+#[test]
+fn only_locations_with_an_access_token_count_as_logins() {
+    let fixture = Fixture::default_claude();
+    fixture
+        .store
+        .set(&fixture.source.credentials[0], r#"{"mcpOAuth":{"x":{}}}"#);
+    fixture
+        .store
+        .set(&fixture.source.credentials[1], &credential("work"));
+    let (_, source) = fixture.states();
+    assert_eq!(
+        source.credential.as_ref().map(|(location, _)| location),
+        Some(&fixture.source.credentials[1])
+    );
+    assert_eq!(fixture.plan().unwrap().kind, PlanKind::Swap);
+    fixture.execute(&mut FakeJournal::default()).unwrap();
+    assert_eq!(
+        fixture.store.get(&fixture.source.credentials[0]),
+        Some(credential("personal")),
+        "the incoming sign-in goes where the CLI reads first"
+    );
+    assert_eq!(fixture.store.get(&fixture.source.credentials[1]), None);
+
+    let fixture = Fixture::default_claude();
+    fixture
+        .store
+        .set(&fixture.source.credentials[1], &credential("other"));
+    assert_eq!(fixture.plan(), Err(Refusal::TwoSignIns));
+    assert_eq!(
+        message(
+            &SwitchError::Refused(Refusal::TwoSignIns),
+            Provider::Claude,
+            "Work",
+            Path::new("/x")
+        ),
+        "This folder has two different sign-ins. Sign in again with claude first."
+    );
+
+    let fixture = Fixture::default_claude();
+    fixture
+        .store
+        .set(&fixture.default.credentials[0], "7b22636c61756465");
+    assert_eq!(
+        fixture.plan(),
+        Err(Refusal::Unreadable(home().join(".claude")))
+    );
+}
+
+#[test]
+fn keychain_values_are_written_compact_and_compared_as_json() {
+    let fixture = Fixture::default_claude();
+    let pretty =
+        serde_json::to_string_pretty(&serde_json::from_str::<Value>(&credential("work")).unwrap())
+            .unwrap();
+    assert!(pretty.contains('\n'));
+    fixture.store.set(&fixture.source.credentials[0], &pretty);
+    let (default, source) = fixture.states();
+    let plan = plan(&default, &source).unwrap();
+    let pending = writes(&plan, &default, &source).unwrap();
+    let written = String::from_utf8(pending[0].after.clone().unwrap()).unwrap();
+    assert!(!written.contains('\n'));
+    let location = &fixture.default.credentials[0];
+    assert_eq!(
+        location.fingerprint(Some(written.as_bytes())),
+        location.fingerprint(Some(pretty.as_bytes()))
+    );
+    let file = &fixture.default.credentials[1];
+    assert_eq!(file.stored(pretty.as_bytes()), pretty.as_bytes());
+    fixture.execute(&mut FakeJournal::default()).unwrap();
+}
+
+#[test]
+fn undo_accounts_reverses_the_move() {
+    let default = AccountSource::Keychain;
+    let work = AccountSource::ConfigDir {
+        path: work_dir(),
+        keychain_suffix: None,
+    };
+    let original = vec![
+        person(
+            "claude-k",
+            "Claude",
+            default.clone(),
+            "personal@example.com",
+        ),
+        person("claude-w", "Work", work.clone(), "work@example.com"),
+    ];
+    let moved = RecordAccounts {
+        target: "claude-w".into(),
+        previous: Some("claude-k".into()),
+        target_source: work,
+        default_source: default,
+    };
+    let mut accounts = original.clone();
+    assert!(apply_to_accounts(&mut accounts, &moved));
+    assert!(undo_accounts(&mut accounts, &moved));
+    assert_eq!(accounts, original);
+    assert!(!undo_accounts(&mut accounts, &moved));
 }
 
 #[test]
@@ -1036,10 +1297,27 @@ fn disk_journal_keeps_five_recent_records_and_private_backups() {
         .map(|record| record.id)
         .collect();
     assert_eq!(kept, ids[1..]);
+
+    journal
+        .fail("codex-1", RecordState::VerifyFailed, vec![None])
+        .unwrap();
+    for index in 6..12 {
+        let mut record = new_record(Provider::Codex, false, &[], Vec::new());
+        record.id = format!("codex-{index}");
+        journal.begin(&record, b"secret-backup").unwrap();
+    }
+    let records = journal.records();
+    assert!(
+        records.iter().any(|record| record.id == "codex-1"),
+        "a live restore offer is never pruned"
+    );
+    assert_eq!(records.len(), 6);
+    assert!(journal.backup("codex-1").unwrap().is_some());
+    assert!(journal.backup("codex-2").unwrap().is_none());
     assert!(journal.backup("codex-old").unwrap().is_none());
     assert!(journal.backup("codex-0").unwrap().is_none());
     assert_eq!(
-        journal.backup("codex-5").unwrap().as_deref(),
+        journal.backup("codex-11").unwrap().as_deref(),
         Some(&b"secret-backup"[..])
     );
     let index = std::fs::read_to_string(directory.path().join("switches.json")).unwrap();
@@ -1049,7 +1327,7 @@ fn disk_journal_keeps_five_recent_records_and_private_backups() {
         use std::os::unix::fs::PermissionsExt;
         let mode = |path: PathBuf| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(directory.path().join("backups")), 0o700);
-        assert_eq!(mode(directory.path().join("backups/codex-5.json")), 0o600);
+        assert_eq!(mode(directory.path().join("backups/codex-11.json")), 0o600);
         assert_eq!(mode(directory.path().join("switches.json")), 0o600);
     }
 }
@@ -1336,12 +1614,20 @@ fn only_the_switch_module_writes_cli_files() {
     sources(&root, &mut found);
     assert!(found.len() > 10);
     let switch = root.join("core").join("switch");
+    // Margin's own files are written only by these; nothing else writes files.
+    let own_writers = [
+        root.join("core").join("store.rs"),
+        root.join("core").join("history.rs"),
+    ];
     let writers = [
         "fs::write",
+        "fs::copy",
+        "fs::rename",
         "File::create",
         "OpenOptions",
-        ".persist(",
-        "fs::rename",
+        "NamedTempFile",
+        "tempfile::",
+        ".persist(path",
         "remove_file",
         "set_permissions",
         "set_len",
@@ -1374,10 +1660,12 @@ fn only_the_switch_module_writes_cli_files() {
         .any(|name| production.contains(name));
         if names_cli_file {
             checked += 1;
+        }
+        if names_cli_file || !own_writers.contains(&path) {
             for writer in writers {
                 assert!(
                     !production.contains(writer),
-                    "{} names a CLI file and uses {writer}",
+                    "{} writes files with {writer}; only switch.rs, store.rs and history.rs may",
                     path.display()
                 );
             }

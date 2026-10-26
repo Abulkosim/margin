@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createDemoState, demoActivate, demoPreview } from '../../src/lib/demo.ts'
-import { accountIdSchema, activatedSchema, appStateSchema, makeActivePreviewSchema } from '../../src/lib/model.ts'
+import { accountIdSchema, activatedSchema, appStateSchema, liveRestoreOffer, makeActivePreviewSchema } from '../../src/lib/model.ts'
 
 test('state from older builds parses without switch fields', () => {
   const state = appStateSchema.parse({ ...createDemoState(null), switching: undefined })
@@ -37,9 +37,17 @@ test('demo refuses signed-out folders and moves into an empty slot', () => {
   const work = accountIdSchema.parse('demo-codex-work')
   const signedOut = demoPreview(createDemoState('signed-out'), work, false)
   assert.equal(signedOut, 'Work is signed out. Run CODEX_HOME=~/.codex-work codex login, then try again.')
-  const move = demoPreview(createDemoState(null), work, true)
+  const move = demoPreview(createDemoState(null), work, false)
   assert.ok(typeof move !== 'string')
   assert.equal(move.kind, 'move')
   assert.equal(move.displaced, null)
-  assert.equal(move.running, true)
+  assert.equal(demoPreview(createDemoState(null), work, true), 'Quit Codex first. It could undo the switch.')
+})
+
+test('restore offers expire after 30 minutes', () => {
+  const now = Date.parse('2026-10-26T12:00:00Z')
+  const offer = { id: 'claude-1', provider: 'claude' as const, reason: 'verifyFailed' as const, createdAt: '2026-10-26T11:45:00Z' }
+  assert.equal(liveRestoreOffer(offer, now), offer)
+  assert.equal(liveRestoreOffer({ ...offer, createdAt: '2026-10-26T11:29:00Z' }, now), null)
+  assert.equal(liveRestoreOffer(null, now), null)
 })

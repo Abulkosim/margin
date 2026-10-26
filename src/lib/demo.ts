@@ -139,6 +139,7 @@ export function demoPreview(state: AppState, id: AccountId, running: boolean): M
   if (!account || account.source.kind !== 'configDir') return 'Account no longer exists.'
   const active = state.switching.activeAccountIds
   if (active.includes(id)) return 'This account is already active.'
+  if (account.provider === 'codex' && running) return 'Quit Codex first. It could undo the switch.'
   if (account.error?.kind === 'signedOut') return `${account.label} is signed out. Run ${account.error.signInCommand ?? account.provider}, then try again.`
   const previous = state.accounts.find(item => item.provider === account.provider && active.includes(item.id))
   if (previous?.identity.email && previous.identity.email === account.identity.email) return 'Both folders hold the same account. Sign out of one first.'

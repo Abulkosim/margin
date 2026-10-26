@@ -113,6 +113,13 @@ export type ResetGrants = z.infer<typeof resetGrantsSchema>
 export type WindowScope = NonNullable<UsageWindow['scope']>
 export type AppState = z.infer<typeof appStateSchema>
 export type RestoreOffer = z.infer<typeof restoreOfferSchema>
+
+/** Restores are offered for 30 minutes; older backups may hold used tokens. */
+export function liveRestoreOffer(offer: RestoreOffer | null, now: number): RestoreOffer | null {
+  if (!offer) return null
+  const age = now - Date.parse(offer.createdAt)
+  return age >= 0 && age < 30 * 60_000 ? offer : null
+}
 export type MakeActivePreview = z.infer<typeof makeActivePreviewSchema>
 export type PopoverShown = z.infer<typeof popoverShownSchema>
 
