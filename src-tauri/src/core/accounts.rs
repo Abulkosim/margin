@@ -272,7 +272,7 @@ fn expand_path(path: &str) -> Result<PathBuf, String> {
     Ok(PathBuf::from(path))
 }
 
-fn default_label(provider: Provider, path: &Path) -> String {
+pub(crate) fn default_label(provider: Provider, path: &Path) -> String {
     let folder = path
         .file_name()
         .and_then(|value| value.to_str())

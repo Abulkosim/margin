@@ -210,6 +210,30 @@ impl HistoryStore {
         }
     }
 
+    /// Moves saved history to the account's new source when the identity still
+    /// matches, so "Make active" doesn't read as a source change and wipe it.
+    pub fn relocate(&mut self, account: &Account) {
+        let path = self.directory.join(format!("{}.json", account.id));
+        let entry = self.entry(account);
+        let saved = &entry.saved.identity;
+        let same_identity = match (&saved.history_key, &account.identity.history_key) {
+            (Some(before), Some(now)) => before == now,
+            (None, None) => saved.email.is_some() && saved.email == account.identity.email,
+            _ => false,
+        };
+        if entry.unreadable
+            || !same_identity
+            || entry.saved.provider != account.provider
+            || entry.saved.source == account.source
+        {
+            return;
+        }
+        entry.saved.source = account.source.clone();
+        entry.gap = true;
+        entry.error = save(&path, &entry.saved).err();
+        entry.dirty = entry.error.is_some();
+    }
+
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
         self.entries.remove(id);
         if !valid_id(id) {
@@ -779,6 +803,36 @@ mod tests {
         assert_eq!(store.get(&folder, at(60)).points.len(), 2);
         folder.source = AccountSource::Keychain;
         assert!(store.get(&folder, at(60)).points.is_empty());
+    }
+
+    #[test]
+    fn relocating_keeps_history_only_for_the_same_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let mut person = account(0, 10.0);
+        store.record(&person, 60, at(0));
+        let moved = AccountSource::ConfigDir {
+            path: directory
+                .path()
+                .join(".codex")
+                .to_string_lossy()
+                .into_owned(),
+            keychain_suffix: None,
+        };
+        person.source = moved.clone();
+        store.relocate(&person);
+        assert_eq!(store.get(&person, at(0)).points.len(), 1);
+        drop(store);
+        let mut store = HistoryStore::new(directory.path().into());
+        assert_eq!(store.get(&person, at(0)).points.len(), 1);
+
+        let mut stranger = account(0, 10.0);
+        stranger.id = "codex-other".into();
+        store.record(&stranger, 60, at(0));
+        stranger.source = moved;
+        stranger.identity.email = Some("someone@example.test".into());
+        store.relocate(&stranger);
+        assert!(store.get(&stranger, at(0)).points.is_empty());
     }
 
     #[test]

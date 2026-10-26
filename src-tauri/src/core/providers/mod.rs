@@ -161,7 +161,7 @@ fn signed_out(provider: Provider, directory: Option<&Path>, since: Option<String
     }
 }
 
-fn sign_in_command(provider: Provider, directory: Option<&Path>) -> String {
+pub(crate) fn sign_in_command(provider: Provider, directory: Option<&Path>) -> String {
     let (variable, program, default) = match provider {
         Provider::Claude => ("CLAUDE_CONFIG_DIR", "claude", ".claude"),
         Provider::Codex => ("CODEX_HOME", "codex login", ".codex"),
