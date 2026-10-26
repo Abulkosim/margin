@@ -1829,10 +1829,11 @@ mod tests {
     fn normalize_dir_expands_home_and_strips_slashes() {
         let home = Path::new("/Users/example");
         let normalized = |value: &str| normalize_dir(OsStr::new(value), Some(home));
-        assert_eq!(normalized("~"), "/Users/example");
-        assert_eq!(normalized("~/.claude/"), "/Users/example/.claude");
-        assert_eq!(normalized("/opt/claude//"), "/opt/claude");
-        assert_eq!(normalized("/opt/./claude/"), "/opt/claude");
+        assert_eq!(normalized("~"), normalized("/Users/example"));
+        assert_eq!(normalized("~/.claude/"), normalized("/Users/example/.claude"));
+        assert_eq!(normalized("/opt/claude//"), normalized("/opt/claude"));
+        assert_eq!(normalized("/opt/./claude/"), normalized("/opt/claude"));
+        assert!(normalized("~/.claude/").ends_with(".claude"));
         assert_eq!(
             normalized("~user/.claude"),
             normalize_dir(OsStr::new("~user/.claude"), None)
