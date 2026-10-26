@@ -38,3 +38,16 @@ test('new installs follow the lowest account and order by urgency', () => {
   assert.equal(defaultSettings.accountOrder, 'urgency')
   assert.equal(settingsSchema.parse({ ...defaultSettings, accountOrder: 'added' }).accountOrder, 'added')
 })
+
+test('fast usage alerts default off at 20% and accept only 10, 20, or 30', () => {
+  assert.equal(defaultSettings.burnAlerts, false)
+  assert.equal(defaultSettings.burnThreshold, 20)
+  const { burnAlerts: _, burnThreshold: __, ...legacy } = defaultSettings
+  const parsed = settingsSchema.parse(legacy)
+  assert.equal(parsed.burnAlerts, false)
+  assert.equal(parsed.burnThreshold, 20)
+  assert.equal(settingsSchema.parse({ ...defaultSettings, burnAlerts: true, burnThreshold: 30 }).burnThreshold, 30)
+  for (const burnThreshold of [0, 15, 25, '20']) {
+    assert.equal(settingsSchema.safeParse({ ...defaultSettings, burnThreshold }).success, false)
+  }
+})
