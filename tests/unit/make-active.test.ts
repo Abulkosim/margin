@@ -41,7 +41,7 @@ test('demo refuses signed-out folders and moves into an empty slot', () => {
   assert.ok(typeof move !== 'string')
   assert.equal(move.kind, 'move')
   assert.equal(move.displaced, null)
-  assert.equal(demoPreview(createDemoState(null), work, true), 'Quit Codex first. It could undo the switch.')
+  assert.equal(demoPreview(createDemoState(null), work, true), 'Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.')
 })
 
 test('restore offers expire after 30 minutes', () => {

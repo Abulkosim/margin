@@ -141,7 +141,7 @@ fn preview(target: &Target) -> Result<Preview, String> {
         folder: switch::display_path(&source.dir, &target.home),
         kind: plan.kind,
         fingerprint: plan.fingerprint,
-        running,
+        running: running.any(),
     })
 }
 

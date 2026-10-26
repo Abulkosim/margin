@@ -246,7 +246,7 @@ export function useMargin() {
     }
     if (activated.data.state.revision >= state.value.revision) state.value = activated.data.state
     const previous = activated.data.previousAccountId
-    notify(`${activated.data.target} is active.`, 'success', undo && previous ? { label: 'Undo', run: () => { void switchBack(previous) } } : undefined)
+    notify(`${activated.data.target} is active.${preview.provider === 'codex' ? ' Reopen the Codex app to use it.' : ''}`, 'success', undo && previous ? { label: 'Undo', run: () => { void switchBack(previous) } } : undefined)
     return true
   }
 

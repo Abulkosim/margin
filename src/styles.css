@@ -993,6 +993,7 @@ button:disabled:hover {
   flex-shrink: 0;
 }
 .toast-message>span {
+  white-space: pre-line;
   flex: 1;
   overflow-wrap: anywhere;
 }
