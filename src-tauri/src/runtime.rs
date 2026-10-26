@@ -1,4 +1,5 @@
 use crate::core::{
+    digest::DigestState,
     history::HistoryStore,
     model::Account,
     notifications::AlertMemory,
@@ -63,6 +64,7 @@ pub struct Runtime {
     recovery_error: std::sync::Mutex<Option<String>>,
     backup_pending: AtomicBool,
     last_update_check_at: std::sync::Mutex<Option<String>>,
+    digest: std::sync::Mutex<Option<DigestState>>,
     pub switching: AtomicBool,
 }
 
@@ -111,6 +113,7 @@ impl Runtime {
             recovery_error: std::sync::Mutex::new(recovery_error),
             backup_pending: AtomicBool::new(!saved.recovered.is_empty()),
             last_update_check_at: std::sync::Mutex::new(saved.last_update_check_at),
+            digest: std::sync::Mutex::new(saved.digest),
             switching: AtomicBool::new(false),
         })
     }
@@ -163,6 +166,7 @@ impl Runtime {
         inner.view = next.clone();
         inner.alerts.clear();
         inner.schedules.clear();
+        self.set_digest_state(None);
         Ok(next)
     }
 
@@ -183,9 +187,20 @@ impl Runtime {
                 alerts: alerts.clone(),
                 ignored_sources: view.ignored_sources.clone(),
                 last_update_check_at: self.last_update_check_at(),
+                digest: self.digest_state(),
                 ..StoredState::default()
             },
         )
+    }
+
+    pub fn digest_state(&self) -> Option<DigestState> {
+        self.digest.lock().ok().and_then(|value| value.clone())
+    }
+
+    pub fn set_digest_state(&self, state: Option<DigestState>) {
+        if let Ok(mut digest) = self.digest.lock() {
+            *digest = state;
+        }
     }
 
     pub fn last_update_check_at(&self) -> Option<String> {
