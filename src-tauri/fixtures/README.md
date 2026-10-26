@@ -7,6 +7,7 @@ Observed cases covered by regression tests:
 - Codex's primary window can be weekly (`604800` seconds), with a null secondary window. No session window is invented. The response supplies authoritative email and plan, with JWT claims as fallback.
 - Claude returned session, weekly, and scoped weekly windows. The scoped row had no model ID, so its display name supplies the stable identity. Null extra-usage measurements remain absent.
 - Claude profile returned email under `account.email` and the plan hint under `organization.rate_limit_tier`. An explicit subscription type retains precedence.
+- `codex-live-2026-10-26.json` is a redacted business-plan response captured 2026-10-26: one weekly window, `credits.has_credits` true with a null balance (workspace-funded), a `spend_control.individual_limit` of 1 credit per month, and a `model_usage` entry. The older `codex-live-schema.json` keeps `has_credits: false` with a reached spend limit; its limit strings are synthetic. `codex-credits-unlimited.json` is constructed: unlimited credits, a null `individual_limit`, a named limit without `limit_name`, and a duplicated `metered_feature`.
 
 `claude-credentials-expired.json` is a constructed CLI credential file whose `expiresAt` (ms epoch) is in the past; it must never reach the network.
 

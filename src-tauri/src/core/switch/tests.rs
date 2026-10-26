@@ -1121,20 +1121,33 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
 #[test]
 fn a_running_codex_is_refused_and_claude_only_warned() {
     assert_eq!(
-        check_running(Provider::Codex, true),
-        Err(Refusal::CodexRunning)
+        check_running(Provider::Codex, Running::Cli),
+        Err(Refusal::CodexRunning { helper: false })
     );
-    assert_eq!(check_running(Provider::Codex, false), Ok(()));
-    assert_eq!(check_running(Provider::Claude, true), Ok(()));
     assert_eq!(
+        check_running(Provider::Codex, Running::Helper),
+        Err(Refusal::CodexRunning { helper: true })
+    );
+    assert_eq!(check_running(Provider::Codex, Running::No), Ok(()));
+    assert_eq!(check_running(Provider::Claude, Running::Cli), Ok(()));
+    assert_eq!(check_running(Provider::Claude, Running::Helper), Ok(()));
+    let refused = |helper| {
         message(
-            &SwitchError::Refused(Refusal::CodexRunning),
+            &SwitchError::Refused(Refusal::CodexRunning { helper }),
             Provider::Codex,
             "Work",
-            Path::new("/x")
-        ),
-        "Quit Codex first. It could undo the switch."
+            Path::new("/x"),
+        )
+    };
+    assert_eq!(
+        refused(false),
+        "Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again."
     );
+    assert_eq!(
+        refused(true),
+        "Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.\nA Codex background helper is still running. It stops a few minutes after the app quits."
+    );
+    assert!(!refused(true).contains("pkill"));
 }
 
 #[test]
@@ -1403,6 +1416,7 @@ fn person(id: &str, label: &str, source: AccountSource, email: &str) -> Account 
             fetched_at: chrono::Utc::now().to_rfc3339(),
             extra_usage: None,
             reset_grants: None,
+            balance: None,
         }),
         error: None,
         refreshing: false,

@@ -4,7 +4,8 @@ use super::{
     timestamp, token,
 };
 use crate::core::model::{
-    Account, AccountSource, Identity, Provider, ResetGrants, Snapshot, UsageError, UsageWindow,
+    Account, AccountSource, Balance, Credits, Identity, Provider, ResetGrants, Snapshot,
+    SpendLimit, UsageError, UsageWindow,
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -444,7 +445,9 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
                 continue;
             };
             let name = nonempty_string(entry.get("limit_name"))
-                .or_else(|| nonempty_string(entry.get("metered_feature")))
+                .or_else(|| {
+                    nonempty_string(entry.get("metered_feature")).map(|feature| humanize(&feature))
+                })
                 .ok_or_else(malformed_response)?;
             if name.len() > 512 {
                 return Err(malformed_response());
@@ -477,7 +480,112 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         fetched_at: now(),
         extra_usage: None,
         reset_grants: inline_reset_credits(value),
+        balance: parse_balance(value)?,
     })
+}
+
+fn humanize(feature: &str) -> String {
+    let base = feature.strip_prefix("codex-").unwrap_or(feature);
+    base.split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_balance(value: &Value) -> Result<Option<Balance>, UsageError> {
+    let balance = Balance {
+        credits: parse_credits(value.get("credits"))?,
+        spend_limit: parse_spend_limit(value.get("spend_control"))?,
+    };
+    Ok((!balance.is_empty()).then_some(balance))
+}
+
+fn flag(block: &Value, key: &str) -> Result<bool, UsageError> {
+    match block.get(key).filter(|value| !value.is_null()) {
+        None => Ok(false),
+        Some(value) => value.as_bool().ok_or_else(malformed_response),
+    }
+}
+
+/// Credit amounts arrive as decimal strings (the billing unit, not money).
+fn amount(value: Option<&Value>) -> Result<Option<f64>, UsageError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let parsed = match value {
+        Value::String(text) => text
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| malformed_response())?,
+        Value::Number(number) => number.as_f64().ok_or_else(malformed_response)?,
+        _ => return Err(malformed_response()),
+    };
+    if !parsed.is_finite() || parsed < 0.0 {
+        return Err(malformed_response());
+    }
+    Ok(Some(parsed))
+}
+
+fn parse_credits(value: Option<&Value>) -> Result<Option<Credits>, UsageError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    if !value.is_object() {
+        return Err(malformed_response());
+    }
+    let unlimited = flag(value, "unlimited")?;
+    if !flag(value, "has_credits")? && !unlimited {
+        return Ok(None);
+    }
+    Ok(Some(Credits {
+        amount: if unlimited {
+            None
+        } else {
+            amount(value.get("balance"))?
+        },
+        unlimited,
+    }))
+}
+
+fn parse_spend_limit(value: Option<&Value>) -> Result<Option<SpendLimit>, UsageError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    if !value.is_object() {
+        return Err(malformed_response());
+    }
+    let reached = flag(value, "reached")?;
+    let Some(limit) = value
+        .get("individual_limit")
+        .filter(|value| !value.is_null())
+    else {
+        return Ok(None);
+    };
+    if !limit.is_object() {
+        return Err(malformed_response());
+    }
+    let (Some(used), Some(cap)) = (amount(limit.get("used"))?, amount(limit.get("limit"))?) else {
+        return Ok(None);
+    };
+    let used_percent = match limit.get("used_percent").filter(|value| !value.is_null()) {
+        Some(value) => percent(value)?,
+        None if cap > 0.0 => (used / cap * 100.0).min(100.0),
+        None => 0.0,
+    };
+    Ok(Some(SpendLimit {
+        used,
+        limit: cap,
+        used_percent,
+        resets_at: timestamp(limit.get("reset_at"))?,
+        reached,
+    }))
 }
 
 fn append_windows(
@@ -531,10 +639,11 @@ fn append_windows(
         };
         windows.push(UsageWindow {
             id: format!("{prefix}{slot}"),
-            label: name.map_or_else(
-                || period.clone(),
-                |name| format!("{name} · {}", period.to_lowercase()),
-            ),
+            label: match name {
+                None => period.clone(),
+                Some(name) if slot == "secondary_window" => name.to_owned(),
+                Some(name) => format!("{name} · {}", period.to_lowercase()),
+            },
             used_percent: percent(utilization)?,
             resets_at: timestamp(window.get("reset_at"))?,
             window_seconds: duration,
@@ -594,6 +703,144 @@ mod tests {
         assert_eq!(snapshot.windows[0].used_percent, 34.0);
         assert!(snapshot.windows[0].resets_at.is_some());
         assert!(snapshot.extra_usage.is_none());
+        let balance = snapshot.balance.unwrap();
+        assert!(balance.credits.is_none(), "no credits without has_credits");
+        let limit = balance.spend_limit.unwrap();
+        assert!(limit.reached);
+        assert_eq!(
+            (limit.used, limit.limit, limit.used_percent),
+            (99.0, 100.0, 99.0)
+        );
+    }
+
+    #[test]
+    fn live_business_shape_reports_available_credits_and_a_monthly_limit() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-live-2026-10-26.json"))
+                .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Weekly");
+        assert!(snapshot.reset_grants.is_none());
+        let balance = snapshot.balance.unwrap();
+        assert_eq!(
+            balance.credits,
+            Some(Credits {
+                amount: None,
+                unlimited: false
+            })
+        );
+        assert_eq!(
+            balance.spend_limit,
+            Some(SpendLimit {
+                used: 0.0,
+                limit: 1.0,
+                used_percent: 0.0,
+                resets_at: Some("2026-11-01T00:00:01Z".into()),
+                reached: false,
+            })
+        );
+    }
+
+    #[test]
+    fn credit_balances_are_numbers_in_credits_and_unlimited_has_no_amount() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-all-windows.json")).unwrap();
+        let balance = parse_usage(&value).unwrap().balance.unwrap();
+        assert_eq!(balance.credits.unwrap().amount, Some(12.5));
+        assert!(balance.spend_limit.is_none());
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-credits-unlimited.json"
+        ))
+        .unwrap();
+        let balance = parse_usage(&value).unwrap().balance.unwrap();
+        assert_eq!(
+            balance.credits,
+            Some(Credits {
+                amount: None,
+                unlimited: true
+            })
+        );
+        assert!(
+            balance.spend_limit.is_none(),
+            "a null individual_limit shows nothing"
+        );
+    }
+
+    #[test]
+    fn absent_or_empty_balances_stay_absent_and_bad_values_fail_closed() {
+        let windows = json!({"primary_window": {"used_percent": 0}});
+        let parse = |extra: Value| {
+            let mut value = json!({"rate_limit": windows});
+            for (key, item) in extra.as_object().unwrap() {
+                value[key] = item.clone();
+            }
+            parse_usage(&value)
+        };
+        assert!(parse(json!({})).unwrap().balance.is_none());
+        assert!(parse(json!({"credits": null, "spend_control": null}))
+            .unwrap()
+            .balance
+            .is_none());
+        assert!(parse(
+            json!({"credits": {"has_credits": false, "unlimited": false, "balance": "5"}})
+        )
+        .unwrap()
+        .balance
+        .is_none());
+        assert!(parse(json!({"spend_control": {"reached": true}}))
+            .unwrap()
+            .balance
+            .is_none());
+        let derived = parse(json!({"spend_control": {"reached": false, "individual_limit": {"limit": "4", "used": "1", "reset_at": null}}}))
+            .unwrap()
+            .balance
+            .unwrap()
+            .spend_limit
+            .unwrap();
+        assert_eq!((derived.used_percent, derived.resets_at), (25.0, None));
+        let number = parse(json!({"credits": {"has_credits": true, "balance": 1250}}))
+            .unwrap()
+            .balance
+            .unwrap();
+        assert_eq!(number.credits.unwrap().amount, Some(1250.0));
+        for bad in [
+            json!({"credits": "none"}),
+            json!({"credits": {"has_credits": "yes"}}),
+            json!({"credits": {"has_credits": true, "balance": "lots"}}),
+            json!({"credits": {"has_credits": true, "balance": "-1"}}),
+            json!({"spend_control": {"individual_limit": {"limit": "1", "used": "0", "used_percent": -5}}}),
+            json!({"spend_control": {"individual_limit": {"limit": "1", "used": "0", "reset_at": "soon"}}}),
+        ] {
+            assert!(parse(bad).is_err());
+        }
+    }
+
+    #[test]
+    fn named_limits_become_weekly_chips_with_human_names_and_dedupe() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-credits-unlimited.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        let summary: Vec<(&str, WindowScope)> = snapshot
+            .windows
+            .iter()
+            .map(|window| (window.label.as_str(), window.scope()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("Session", WindowScope::Core),
+                ("Weekly", WindowScope::Core),
+                ("Spark · session", WindowScope::Other),
+                ("Spark", WindowScope::Model),
+                ("Cloud Review", WindowScope::Model),
+            ]
+        );
+        assert_eq!(snapshot.windows[4].used_percent, 100.0);
+        assert_eq!(humanize("codex-spark"), "Spark");
+        assert_eq!(humanize("spark_fast-mode"), "Spark Fast Mode");
     }
 
     #[test]
@@ -621,11 +868,9 @@ mod tests {
         assert_eq!(snapshot.windows[1].label, "Weekly");
         assert_eq!(snapshot.windows[2].label, "Spark · session");
         assert_eq!(snapshot.windows[0].scope(), WindowScope::Core);
-        assert!(snapshot
-            .windows
-            .iter()
-            .skip(2)
-            .all(|window| window.scope() == WindowScope::Other));
+        assert_eq!(snapshot.windows[2].scope(), WindowScope::Other);
+        assert_eq!(snapshot.windows[3].label, "Spark");
+        assert_eq!(snapshot.windows[3].scope(), WindowScope::Model);
         assert_eq!(snapshot.windows[3].window_seconds, Some(604_800));
     }
 

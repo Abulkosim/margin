@@ -8,7 +8,7 @@ mod process;
 mod splice;
 
 pub use lock::{LockError, LockSet, ProperLockfile};
-pub use process::running;
+pub use process::{running, Running};
 
 use super::accounts;
 use super::model::{Account, AccountSource, Provider};
@@ -462,16 +462,18 @@ fn login_family(provider: Provider, value: &Value) -> Option<String> {
 
 /// Codex has no lock: an in-flight refresh could write the displaced tokens
 /// back after the switch, so a running Codex is refused, not warned about.
-pub fn check_running(provider: Provider, running: bool) -> Result<(), Refusal> {
-    if provider == Provider::Codex && running {
-        return Err(Refusal::CodexRunning);
+pub fn check_running(provider: Provider, running: Running) -> Result<(), Refusal> {
+    if provider == Provider::Codex && running.any() {
+        return Err(Refusal::CodexRunning {
+            helper: running == Running::Helper,
+        });
     }
     Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    CodexRunning,
+    CodexRunning { helper: bool },
     TwoSignIns,
     RestoreStale,
     RestoreExpired,
@@ -936,7 +938,13 @@ pub fn message(error: &SwitchError, provider: Provider, label: &str, folder: &Pa
     match error {
         SwitchError::Refused(refusal) => match refusal {
             Refusal::NotOffered => "Only another folder of the same CLI can be made active.".into(),
-            Refusal::CodexRunning => "Quit Codex first. It could undo the switch.".into(),
+            Refusal::CodexRunning { helper } => {
+                let mut text = String::from("Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.");
+                if *helper {
+                    text.push_str("\nA Codex background helper is still running. It stops a few minutes after the app quits.");
+                }
+                text
+            }
             Refusal::TwoSignIns => format!(
                 "This folder has two different sign-ins. Sign in again with {} first.",
                 provider.key()

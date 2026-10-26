@@ -491,6 +491,7 @@ mod tests {
                 fetched_at: "2026-10-16T10:00:00Z".into(),
                 extra_usage: None,
                 reset_grants: None,
+                balance: None,
             }),
             error: None,
             refreshing: true,

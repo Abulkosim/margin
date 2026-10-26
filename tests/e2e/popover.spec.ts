@@ -62,8 +62,42 @@ test('model limits show as chips under the weekly row', async ({ page }) => {
   await expect(page.getByRole('tooltip')).toHaveText(/^Fable weekly · resets in 4d \d+h$/)
   const studio = page.getByRole('article', { name: 'Studio, Claude' })
   await expect(studio.locator('.model-chip-name')).toHaveText(['Sonnet'])
-  await expect(page.getByRole('article', { name: 'Work, Codex' }).locator('.model-chips')).toHaveCount(0)
+  const work = page.getByRole('article', { name: 'Work, Codex' })
+  await expect(work.locator('.model-chip-name')).toHaveText(['Spark'])
+  await expect(work.locator('.model-chip-value')).toHaveText(['81%'])
+  await expect(work.getByText('Spark · session', { exact: true })).toHaveCount(0)
 })
+
+test('balances sit under the details toggle, credits as a unit and money only for Claude', async ({ page }) => {
+  await page.goto('/?demo=1&order=added')
+  const work = page.getByRole('article', { name: 'Work, Codex' })
+  await expect(work.locator('.balance-lines')).toHaveCount(0)
+  await work.getByRole('button', { name: '1 more window' }).click()
+  const workLines = work.locator('.balance-line')
+  await expect(workLines).toHaveText(['Credits 1,250 left', /^Monthly credit limit 320 of 500 used · resets \w{3} \d{1,2}$/])
+  await expect(work.locator('.balance-lines')).not.toContainText('$')
+  const studio = page.getByRole('article', { name: 'Studio, Claude' })
+  await expect(studio.getByRole('button', { name: 'Extra usage' })).toHaveAttribute('aria-expanded', 'false')
+  await studio.getByRole('button', { name: 'Extra usage' }).click()
+  await expect(studio.locator('.balance-line')).toHaveText(['Extra usage $4.28 of $20 this month'])
+  const personal = page.getByRole('article', { name: 'Personal, Claude' })
+  await expect(personal.locator('.details-toggle:not(.history-toggle)')).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`${theme} balance screenshots`, async ({ page }, info) => {
+    await page.goto(`/?demo=1&theme=${theme}&order=added`)
+    const work = page.getByRole('article', { name: 'Work, Codex' })
+    await work.getByRole('button', { name: '1 more window' }).click()
+    await expect(work.locator('.balance-line')).toHaveCount(2)
+    await work.screenshot({ path: info.outputPath(`balance-codex-${theme}.png`) })
+    const studio = page.getByRole('article', { name: 'Studio, Claude' })
+    await studio.getByRole('button', { name: 'Extra usage' }).click()
+    await expect(studio.locator('.balance-line')).toHaveCount(1)
+    await studio.screenshot({ path: info.outputPath(`balance-claude-${theme}.png`) })
+  })
+}
 
 test('limit resets are listed read-only before history', async ({ page }) => {
   await page.goto('/?demo=1')

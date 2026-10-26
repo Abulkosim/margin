@@ -26,7 +26,8 @@ const modelWindowIds = new Set(['seven_day_sonnet', 'seven_day_opus'])
 export function windowScope(window: UsageWindow): WindowScope {
   if (window.scope) return window.scope
   if (coreWindowIds.has(window.id)) return 'core'
-  return modelWindowIds.has(window.id) || window.id.startsWith('weekly_scoped_') ? 'model' : 'other'
+  if (modelWindowIds.has(window.id) || window.id.startsWith('weekly_scoped_')) return 'model'
+  return window.id.startsWith('extra_') && window.id.endsWith('_secondary_window') ? 'model' : 'other'
 }
 
 export function groupWindows(windows: UsageWindow[]): { rows: UsageWindow[]; models: UsageWindow[]; more: UsageWindow[] } {
@@ -110,11 +111,42 @@ export function retryingMessage(account: Account, settings: Settings, now: numbe
 }
 
 export function formatMoney(amount: number, currency: string): string {
+  const fraction = Number.isInteger(amount) ? 0 : 2
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount)
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: fraction, maximumFractionDigits: 2 }).format(amount)
   } catch {
-    return `${amount.toFixed(2)} ${currency}`
+    return `${amount.toFixed(fraction)} ${currency}`
   }
+}
+
+function formatCount(amount: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(amount)
+}
+
+export type BalanceLine = { label: string; value: string; warn: boolean }
+
+/** Money for Claude extra usage; credits (a unit, never money) for Codex. */
+export function balanceLines(snapshot: Account['snapshot'], now: number): BalanceLine[] {
+  if (!snapshot) return []
+  const lines: BalanceLine[] = []
+  const extra = snapshot.extraUsage
+  if (extra) {
+    const cap = extra.limit !== null ? ` of ${formatMoney(extra.limit, extra.currency)}` : ''
+    lines.push({ label: 'Extra usage', value: `${formatMoney(extra.spent, extra.currency)}${cap} this month`, warn: false })
+  }
+  const credits = snapshot.balance?.credits
+  if (credits) {
+    const value = credits.unlimited ? 'unlimited' : credits.amount !== null ? `${formatCount(credits.amount)} left` : 'available'
+    lines.push({ label: 'Credits', value, warn: false })
+  }
+  const limit = snapshot.balance?.spendLimit
+  if (limit) {
+    const day = resetDay(limit.resetsAt, now)
+    const reset = day ? ` · resets ${day}` : ''
+    const value = limit.reached ? `reached${reset}` : `${formatCount(limit.used)} of ${formatCount(limit.limit)} used${reset}`
+    lines.push({ label: 'Monthly credit limit', value, warn: limit.reached })
+  }
+  return lines
 }
 
 export function providerName(provider: Account['provider']): string {
@@ -157,6 +189,18 @@ export function resetClock(resetsAt: string | null, now: number): string | null 
   const time = Date.parse(resetsAt)
   if (!Number.isFinite(time) || time <= now) return null
   return clockTime(new Date(time), now)
+}
+
+/** Like resetClock, but a far-off reset shows only its day. */
+export function resetDay(resetsAt: string | null, now: number): string | null {
+  if (!resetsAt) return null
+  const time = Date.parse(resetsAt)
+  if (!Number.isFinite(time) || time <= now) return null
+  const date = new Date(time)
+  const today = new Date(now)
+  if (date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate()) return clockTime(date, now)
+  const withinWeek = time - now < 6 * 86_400_000
+  return date.toLocaleDateString(undefined, withinWeek ? { weekday: 'short' } : { month: 'short', day: 'numeric' })
 }
 
 export function resetGrantsText(grants: ResetGrants | null | undefined, now: number): string | null {

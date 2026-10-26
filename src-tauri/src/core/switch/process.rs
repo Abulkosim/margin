@@ -3,12 +3,27 @@
 
 use crate::core::model::Provider;
 
-pub fn running(provider: Provider) -> bool {
-    detect(provider).unwrap_or(true)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Running {
+    No,
+    Cli,
+    /// Only the Codex desktop app's `codex app-server` helper, which outlives
+    /// the app window and still refreshes `auth.json`.
+    Helper,
+}
+
+impl Running {
+    pub fn any(self) -> bool {
+        self != Self::No
+    }
+}
+
+pub fn running(provider: Provider) -> Running {
+    detect(provider).unwrap_or(Running::Cli)
 }
 
 #[cfg(windows)]
-fn detect(provider: Provider) -> Option<bool> {
+fn detect(provider: Provider) -> Option<Running> {
     use std::os::windows::process::CommandExt;
     let output = std::process::Command::new("tasklist")
         .args(["/FO", "CSV", "/NH"])
@@ -18,10 +33,13 @@ fn detect(provider: Provider) -> Option<bool> {
     if !output.status.success() {
         return None;
     }
-    Some(tasklist_has(
-        &String::from_utf8_lossy(&output.stdout),
-        provider,
-    ))
+    Some(
+        if tasklist_has(&String::from_utf8_lossy(&output.stdout), provider) {
+            Running::Cli
+        } else {
+            Running::No
+        },
+    )
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -39,32 +57,64 @@ fn tasklist_has(listing: &str, provider: Provider) -> bool {
 }
 
 #[cfg(not(windows))]
-fn detect(provider: Provider) -> Option<bool> {
-    let queries: &[&[&str]] = match provider {
-        Provider::Claude => &[&["-x", "claude"], &["-f", "@anthropic-ai/claude-code"]],
-        Provider::Codex => &[&["-x", "codex"], &["-x", "Codex"]],
-    };
+fn detect(provider: Provider) -> Option<Running> {
+    match provider {
+        Provider::Claude => {
+            let mut found = pgrep(&["-x", "claude"])?;
+            found.extend(pgrep(&["-f", "@anthropic-ai/claude-code"])?);
+            Some(if found.is_empty() {
+                Running::No
+            } else {
+                Running::Cli
+            })
+        }
+        Provider::Codex => {
+            let mut named = pgrep(&["-x", "codex"])?;
+            named.extend(pgrep(&["-x", "Codex"])?);
+            let helpers = pgrep(&["-f", "codex app-server"])?;
+            Some(classify_codex(&named, &helpers))
+        }
+    }
+}
+
+/// `named` are processes called `codex`; `helpers` are those whose command
+/// line is `codex app-server`, the desktop app's daemon. The helper is also
+/// named `codex`, so only when every named process is a helper is nothing
+/// else running.
+#[cfg_attr(windows, allow(dead_code))]
+fn classify_codex(named: &[u32], helpers: &[u32]) -> Running {
+    if named.is_empty() && helpers.is_empty() {
+        Running::No
+    } else if named.iter().all(|pid| helpers.contains(pid)) {
+        Running::Helper
+    } else {
+        Running::Cli
+    }
+}
+
+#[cfg(not(windows))]
+fn pgrep(query: &[&str]) -> Option<Vec<u32>> {
     let program = if cfg!(target_os = "macos") {
         "/usr/bin/pgrep"
     } else {
         "pgrep"
     };
-    let mut found = false;
-    for query in queries {
-        let status = std::process::Command::new(program)
-            .args(*query)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .ok()?;
-        match status.code() {
-            Some(0) => found = true,
-            Some(1) => {}
-            _ => return None,
-        }
+    let output = std::process::Command::new(program)
+        .args(query)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    match output.status.code() {
+        Some(0) => Some(
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|line| line.trim().parse().ok())
+                .collect(),
+        ),
+        Some(1) => Some(Vec::new()),
+        _ => None,
     }
-    Some(found)
 }
 
 #[cfg(test)]
@@ -81,5 +131,16 @@ mod tests {
             Provider::Claude
         ));
         assert!(!tasklist_has("", Provider::Codex));
+    }
+
+    #[test]
+    fn the_desktop_helper_alone_is_told_apart_from_a_cli_session() {
+        assert_eq!(classify_codex(&[], &[]), Running::No);
+        assert_eq!(classify_codex(&[41], &[]), Running::Cli);
+        assert_eq!(classify_codex(&[41], &[41]), Running::Helper);
+        assert_eq!(classify_codex(&[41, 42], &[41]), Running::Cli);
+        assert_eq!(classify_codex(&[], &[43]), Running::Helper);
+        assert_eq!(classify_codex(&[41, 43], &[41, 43]), Running::Helper);
+        assert!(Running::Helper.any() && Running::Cli.any() && !Running::No.any());
     }
 }
