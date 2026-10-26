@@ -64,6 +64,8 @@ pub struct Settings {
     pub notifications: bool,
     pub thresholds: Vec<u8>,
     pub notify_on_reset: bool,
+    pub burn_alerts: bool,
+    pub burn_threshold: u8,
     pub notification_permission: NotificationPermission,
     pub tray_mode: TrayMode,
     pub tray_metric: TrayMetric,
@@ -84,6 +86,8 @@ impl Default for Settings {
             notifications: true,
             thresholds: vec![80, 95, 100],
             notify_on_reset: false,
+            burn_alerts: false,
+            burn_threshold: 20,
             notification_permission: NotificationPermission::Unasked,
             tray_mode: TrayMode::Lowest,
             tray_metric: TrayMetric::Core,
@@ -114,6 +118,9 @@ impl Settings {
             || self.thresholds.windows(2).any(|pair| pair[0] >= pair[1])
         {
             return Err("Choose distinct, increasing thresholds between 1 and 100%.".into());
+        }
+        if !super::burn::THRESHOLDS.contains(&self.burn_threshold) {
+            return Err("Choose a fast usage threshold of 10, 20, or 30%.".into());
         }
         Ok(())
     }
@@ -179,6 +186,20 @@ impl Settings {
                 "Reset alerts",
                 notes,
             ),
+            burn_alerts: field(
+                &map,
+                "burnAlerts",
+                defaults.burn_alerts,
+                "Fast usage alerts",
+                notes,
+            ),
+            burn_threshold: field(
+                &map,
+                "burnThreshold",
+                defaults.burn_threshold,
+                "Fast usage threshold",
+                notes,
+            ),
             notification_permission: field(
                 &map,
                 "notificationPermission",
@@ -233,6 +254,10 @@ impl Settings {
                 .idle_poll_interval_seconds
                 .max(settings.poll_interval_seconds);
             reset_note("Background refresh", notes);
+        }
+        if !super::burn::THRESHOLDS.contains(&settings.burn_threshold) {
+            settings.burn_threshold = defaults.burn_threshold;
+            reset_note("Fast usage threshold", notes);
         }
         if settings.validate().is_err() {
             settings.thresholds = defaults.thresholds;
@@ -530,5 +555,49 @@ mod tests {
         );
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["autoCheckUpdates"], true);
+    }
+
+    #[test]
+    fn fast_usage_alerts_default_off_and_recover_bad_values() {
+        let mut notes = Vec::new();
+        let settings = Settings::recover(Some(serde_json::json!({})), &mut notes);
+        assert!(!settings.burn_alerts);
+        assert_eq!(settings.burn_threshold, 20);
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "burnAlerts": true, "burnThreshold": 10 })),
+            &mut notes,
+        );
+        assert!(settings.burn_alerts);
+        assert_eq!(settings.burn_threshold, 10);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({
+                "burnAlerts": "yes",
+                "burnThreshold": 25,
+                "thresholds": [50, 90]
+            })),
+            &mut notes,
+        );
+        assert!(!settings.burn_alerts);
+        assert_eq!(settings.burn_threshold, 20);
+        assert_eq!(settings.thresholds, vec![50, 90]);
+        assert_eq!(
+            notes,
+            vec![
+                "Fast usage alerts was reset to its default.",
+                "Fast usage threshold was reset to its default."
+            ]
+        );
+        for threshold in [0, 15, 100] {
+            assert!(Settings {
+                burn_threshold: threshold,
+                ..Settings::default()
+            }
+            .validate()
+            .is_err());
+        }
+        let saved = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(saved["burnAlerts"], false);
+        assert_eq!(saved["burnThreshold"], 20);
     }
 }

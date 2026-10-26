@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod burn;
 pub mod history;
 pub mod model;
 pub mod notifications;

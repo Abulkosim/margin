@@ -636,6 +636,34 @@ mod tests {
     }
 
     #[test]
+    fn burn_alert_memory_survives_a_restart_and_damage_drops_only_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let burn = serde_json::json!({
+            "reset": "2100-01-01T00:00:00Z",
+            "alertedAt": "2099-12-31T22:00:00Z",
+            "quietSince": "2099-12-31T22:30:00Z"
+        });
+        for (stored, kept) in [
+            (burn.clone(), Some(burn)),
+            (serde_json::json!({"alertedAt": "soon"}), None),
+            (serde_json::json!(7), None),
+        ] {
+            let mut value = serde_json::to_value(sample_state()).unwrap();
+            value["alerts"] = serde_json::json!({"codex-example/primary_window": {
+                "reset": "2100-01-01T00:00:00Z", "sent": [80], "burn": stored
+            }});
+            fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            let state = load(&path).unwrap();
+            assert!(state.recovered.is_empty());
+            let saved = serde_json::to_value(&state.alerts).unwrap();
+            let entry = &saved["codex-example/primary_window"];
+            assert_eq!(entry["sent"], serde_json::json!([80]));
+            assert_eq!(entry.get("burn").cloned(), kept);
+        }
+    }
+
+    #[test]
     fn one_corrupt_account_keeps_the_others() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.json");
