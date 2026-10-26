@@ -43,6 +43,7 @@ function setBurnThreshold(burnThreshold: Settings['burnThreshold']): void {
     <div class="setting-row reset-row" :class="{ 'is-disabled': !settings.notifications }"><div><span id="reset-alert-label" class="setting-label">Notify when limits reset</span><p>Session and weekly, after a usage alert.</p></div><AppSwitch :model-value="settings.notifyOnReset" aria-labelledby="reset-alert-label" :disabled="busy || !settings.notifications" @update:model-value="emit('change', { notifyOnReset: $event })"/></div>
     <div class="setting-row burn-row" :class="{ 'is-disabled': !settings.notifications }"><div><span id="burn-alert-label" class="setting-label">Fast usage alerts</span><p>When a limit uses {{ settings.burnThreshold }}% or more within an hour.</p></div><AppSwitch :model-value="settings.burnAlerts" aria-labelledby="burn-alert-label" :disabled="busy || !settings.notifications" @update:model-value="emit('change', { burnAlerts: $event })"/></div>
     <div v-if="settings.burnAlerts" class="threshold-options burn-options" :class="{ 'is-disabled': !settings.notifications }" role="group" aria-label="Fast usage threshold"><button v-for="value in burnThresholds" :key="value" class="threshold-chip" :class="{ selected: settings.burnThreshold === value }" :aria-pressed="settings.burnThreshold === value" :aria-label="`${value}% within an hour`" :disabled="busy || !settings.notifications" @click="setBurnThreshold(value)"><AppIcon v-if="settings.burnThreshold === value" name="check" :size="11"/>{{ value }}%</button></div>
+    <div class="setting-row digest-row" :class="{ 'is-disabled': !settings.notifications }"><div><span id="digest-label" class="setting-label">Weekly digest</span><p>Mondays at 09:00: last week's peaks and limit hits.</p></div><AppSwitch :model-value="settings.weeklyDigest" aria-labelledby="digest-label" :disabled="busy || !settings.notifications" @update:model-value="emit('change', { weeklyDigest: $event })"/></div>
   </section>
 </template>
 
@@ -50,7 +51,7 @@ function setBurnThreshold(burnThreshold: Settings['burnThreshold']): void {
 .notification-blocked { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 13px; color: var(--secondary); }
 .notification-blocked>svg { flex-shrink: 0; color: var(--warning); }
 .threshold-chip:disabled { cursor: default; }
-.reset-row,.burn-row { margin-top: 13px; transition: opacity .18s; }
-.reset-row.is-disabled,.burn-row.is-disabled { opacity: .5; }
+.reset-row,.burn-row,.digest-row { margin-top: 13px; transition: opacity .18s; }
+.reset-row.is-disabled,.burn-row.is-disabled,.digest-row.is-disabled { opacity: .5; }
 .burn-options { margin-top: 10px; }
 </style>
