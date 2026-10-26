@@ -26,6 +26,8 @@ const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const BACKUP_SERVICE: &str = "Margin backup";
 const KEEP_RECORDS: usize = 5;
 const KEEP_DAYS: i64 = 7;
+const BACKUP_CHUNK: usize = 1_800;
+const MAX_BACKUP_CHUNKS: usize = 64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -1221,7 +1223,16 @@ impl DiskJournal {
 
     fn store_backup(&self, id: &str, bytes: &[u8]) -> Result<(), SwitchError> {
         if self.keychain {
-            return write_keychain(BACKUP_SERVICE, id, bytes).map_err(|_| SwitchError::Journal);
+            let chunks = backup_chunks(bytes).ok_or(SwitchError::Journal)?;
+            for (index, chunk) in chunks.iter().enumerate() {
+                if write_keychain(BACKUP_SERVICE, &format!("{id}.{index}"), chunk.as_bytes())
+                    .is_err()
+                {
+                    self.drop_backup(id);
+                    return Err(SwitchError::Journal);
+                }
+            }
+            return Ok(());
         }
         let path = self.backup_file(id);
         let folder = path.parent().ok_or(SwitchError::Journal)?;
@@ -1237,7 +1248,17 @@ impl DiskJournal {
 
     fn drop_backup(&self, id: &str) {
         if self.keychain {
-            let _ = remove_keychain(BACKUP_SERVICE, id);
+            for index in 0..MAX_BACKUP_CHUNKS {
+                let account = format!("{id}.{index}");
+                if read_keychain_account(BACKUP_SERVICE, &account)
+                    .ok()
+                    .flatten()
+                    .is_none()
+                {
+                    break;
+                }
+                let _ = remove_keychain(BACKUP_SERVICE, &account);
+            }
         } else {
             let _ = std::fs::remove_file(self.backup_file(id));
         }
@@ -1289,10 +1310,33 @@ impl Journal for DiskJournal {
 
     fn backup(&self, id: &str) -> Result<Option<Vec<u8>>, SwitchError> {
         if self.keychain {
-            return read_keychain_account(BACKUP_SERVICE, id);
+            let mut chunks = Vec::new();
+            for index in 0..MAX_BACKUP_CHUNKS {
+                match read_keychain_account(BACKUP_SERVICE, &format!("{id}.{index}"))? {
+                    Some(chunk) => chunks.push(chunk),
+                    None => break,
+                }
+            }
+            return Ok((!chunks.is_empty()).then(|| join_chunks(&chunks)).flatten());
         }
         read_file(&self.backup_file(id)).map_err(|_| SwitchError::Journal)
     }
+}
+
+/// Keychain backups are base64 in chunks that fit one `security -i` line, so the
+/// secret never needs argv and survives `-w` printing only plain text.
+fn backup_chunks(bytes: &[u8]) -> Option<Vec<String>> {
+    let encoded = STANDARD.encode(bytes);
+    let chunks: Vec<String> = encoded
+        .as_bytes()
+        .chunks(BACKUP_CHUNK)
+        .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+        .collect();
+    (chunks.len() <= MAX_BACKUP_CHUNKS).then_some(chunks)
+}
+
+fn join_chunks(chunks: &[Vec<u8>]) -> Option<Vec<u8>> {
+    STANDARD.decode(chunks.concat()).ok()
 }
 
 fn read_keychain_account(service: &str, account: &str) -> Result<Option<Vec<u8>>, SwitchError> {

@@ -1055,6 +1055,26 @@ fn disk_journal_keeps_five_recent_records_and_private_backups() {
 }
 
 #[test]
+fn keychain_backups_split_into_stdin_sized_ascii_chunks() {
+    let blob: Vec<u8> = (0..20_000u32).map(|n| (n % 251) as u8).collect();
+    let chunks = backup_chunks(&blob).unwrap();
+    assert!(chunks.len() > 1);
+    for chunk in &chunks {
+        assert!(chunk.is_ascii());
+        let keychain::AddCommand::Stdin(_) = keychain::add_command(
+            "claude-20261026T101010Z-0123abcd.63",
+            BACKUP_SERVICE,
+            chunk.as_bytes(),
+        ) else {
+            panic!("backup chunks must stay off argv");
+        };
+    }
+    let stored: Vec<Vec<u8>> = chunks.into_iter().map(String::into_bytes).collect();
+    assert_eq!(join_chunks(&stored).unwrap(), blob);
+    assert!(backup_chunks(&vec![0; BACKUP_CHUNK * MAX_BACKUP_CHUNKS]).is_none());
+}
+
+#[test]
 fn file_store_replaces_atomically_with_private_mode_and_spots_symlinks() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("auth.json");
