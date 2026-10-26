@@ -2,7 +2,20 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Current release: v0.7.0
+## Current release: v0.8.0
+
+**[v0.8.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.8.0).** Published 2026-10-26 14:14 UTC; verified on 2026-10-26 on macOS 26.6.2. Adds the two-provider statusline, the weekly digest, Codex balances and chips, Codex desktop-app detection for Make active, and the duration-based Codex window mapping.
+
+- `pnpm typecheck`, 88 frontend unit tests, 224 Chromium/WebKit browser cases, 309 Rust tests (302 library, 7 CLI), formatting, strict Clippy, `cargo deny`, and 14 release-script tests passed on `3c1a2a7`. [Main CI](https://github.com/Abulkosim/margin/actions/runs/40328216322) passed after one re-run of the frontend job, which hit the known apt mirror stall; the [release build](https://github.com/Abulkosim/margin/actions/runs/40335902433) passed first time, including Windows x64.
+- Research first: the Codex usage response was fetched once read-only and saved redacted as `fixtures/codex-live-2026-10-26.json`; its `credits` and `spend_control` shapes were checked against the Codex CLI 0.164 source. The Codex desktop app (`ChatGPT.app`, bundle `com.openai.codex`) has no sign-in store of its own and reads `$CODEX_HOME/auth.json`, so the existing swap covers it; its `codex app-server` helper is detected and named in the refusal.
+- Found during the work: the owner's Codex plan reports a single 7-day window as `primary_window`, which four places treated as the 5-hour session. Window ids are now chosen by `limit_window_seconds`; stored snapshots, history and alert keys from v0.7 are migrated on load. The owner's live state shows the Codex window as Weekly after the upgrade.
+- Two independent reviews of the diff, one by Claude and one by the Codex CLI, found 17 issues and no ship-blockers; all were fixed with tests: duplicate window ids, soft-failing balance parsing, "not tracked" instead of a wrong account in the statusline, helper detection without bystander matches, digest coverage and reset accounting, persist-before-send, remaining-based digest copy, a six-day minimum between digests, width in terminal cells with a hard `COLUMNS` bound, and the v0.7 migration.
+- `margin --line` against the owner's live state: `Claude Team 17%·14m     53%·3d21h  │ Codex –           82%·6d17h`; `--all` lists three accounts including one signed out. The statusline example in the README and the `CLAUDE_CONFIG_DIR` match were not exercised inside Claude Code's own statusline (owner).
+- All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.8.0 installed for x86_64 and arm64. `latest.json` reports 0.8.0; the public latest endpoint serves it. Release notes match `changelogs/v0.8.0.md`.
+- Installed on the owner's Mac over v0.7.0 from the verified archive (backup under `.cache/`). All accounts refreshed within 25 seconds; settings were kept and the new fields added with defaults.
+- Pending, owner: the statusline inside Claude Code, a real weekly digest next Monday, a real Make active switch (see v0.7.0), Windows.
+
+## Previous release: v0.7.0
 
 **[v0.7.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.7.0).** Published 2026-10-26 04:38 UTC; verified on 2026-10-26 on macOS 26.6.2. Adds Make active, fast usage alerts, and `margin --json` / `--line`.
 
