@@ -226,6 +226,7 @@ fn decode(value: Value) -> Result<StoredState, String> {
     if dropped_alerts {
         recovered.push("Some alert history couldn’t be read and was cleared.".into());
     }
+    migrate_codex_weekly(&mut accounts, &mut alerts);
     let mut ignored_sources: Vec<String> = Vec::new();
     let mut dropped_ignored = false;
     match root.remove("ignoredSources") {
@@ -275,6 +276,43 @@ fn decode(value: Value) -> Result<StoredState, String> {
         digest,
         recovered,
     })
+}
+
+/// v0.7 stored a weekly-only Codex account's one window as `primary_window`;
+/// v0.8 names windows by duration. Renaming the cached window and its alert
+/// memory keeps the chart and alert history and avoids a repeat alert.
+pub(super) fn migrate_codex_weekly(accounts: &mut [Account], alerts: &mut AlertMemory) {
+    for account in accounts
+        .iter_mut()
+        .filter(|account| account.provider == super::model::Provider::Codex)
+    {
+        let Some(snapshot) = account.snapshot.as_mut() else {
+            continue;
+        };
+        if snapshot
+            .windows
+            .iter()
+            .any(|window| window.id == "secondary_window")
+        {
+            continue;
+        }
+        let Some(window) = snapshot
+            .windows
+            .iter_mut()
+            .find(|window| window.id == "primary_window" && window.window_seconds == Some(604_800))
+        else {
+            continue;
+        };
+        window.id = "secondary_window".into();
+        if window.label == "Session" {
+            window.label = "Weekly".into();
+        }
+        if let Some(memory) = alerts.remove(&format!("{}/primary_window", account.id)) {
+            alerts
+                .entry(format!("{}/secondary_window", account.id))
+                .or_insert(memory);
+        }
+    }
 }
 
 fn newer_store() -> String {
@@ -683,6 +721,62 @@ mod tests {
             assert_eq!(entry["sent"], serde_json::json!([80]));
             assert_eq!(entry.get("burn").cloned(), kept);
         }
+    }
+
+    #[test]
+    fn v07_weekly_only_codex_window_is_renamed_with_its_alert_memory() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut state = sample_state();
+        let mut weekly_only = sample_account();
+        weekly_only.id = "codex-weekly".into();
+        weekly_only.snapshot.as_mut().unwrap().windows[0].window_seconds = Some(604_800);
+        let mut both = sample_account();
+        both.id = "codex-both".into();
+        let mut weekly = both.snapshot.as_ref().unwrap().windows[0].clone();
+        weekly.id = "secondary_window".into();
+        weekly.window_seconds = Some(604_800);
+        both.snapshot.as_mut().unwrap().windows.push(weekly);
+        state.accounts.extend([weekly_only, both]);
+        let mut value = serde_json::to_value(&state).unwrap();
+        let memory = serde_json::json!({ "reset": "2100-01-01T00:00:00Z", "sent": [80] });
+        value["alerts"] = serde_json::json!({
+            "codex-example/primary_window": memory,
+            "codex-weekly/primary_window": memory,
+            "codex-both/primary_window": memory,
+        });
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let state = load(&path).unwrap();
+        assert!(state.recovered.is_empty());
+        let ids = |index: usize| -> Vec<(String, String)> {
+            state.accounts[index]
+                .snapshot
+                .as_ref()
+                .unwrap()
+                .windows
+                .iter()
+                .map(|window| (window.id.clone(), window.label.clone()))
+                .collect()
+        };
+        assert_eq!(ids(0), [("primary_window".into(), "Session".into())]);
+        assert_eq!(ids(1), [("secondary_window".into(), "Weekly".into())]);
+        assert_eq!(
+            ids(2),
+            [
+                ("primary_window".into(), "Session".into()),
+                ("secondary_window".into(), "Session".into())
+            ]
+        );
+        let mut keys: Vec<&String> = state.alerts.keys().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "codex-both/primary_window",
+                "codex-example/primary_window",
+                "codex-weekly/secondary_window"
+            ]
+        );
     }
 
     #[test]

@@ -77,7 +77,8 @@ impl HistoryStore {
                 Ok(None) => (empty(account), None),
                 Err(error) => (empty(account), Some(error)),
             };
-            let dirty = compact(&mut saved.points);
+            let dirty =
+                compact(&mut saved.points) | migrate_codex_weekly(&mut saved.points, account);
             Entry {
                 saved,
                 unreadable: error.is_some(),
@@ -357,6 +358,43 @@ fn latest_two(points: &[HistoryPoint], window_id: &str) -> (Option<usize>, Optio
         .map(|(index, _)| index);
     let latest = found.next();
     (found.next(), latest)
+}
+
+/// v0.7 recorded a weekly-only Codex window as `primary_window`. A point with
+/// a weekly duration under that id can only be that naming; one without a
+/// duration is renamed only when the account's current snapshot shows its
+/// weekly window alone. The rest is left as it is.
+fn migrate_codex_weekly(points: &mut [HistoryPoint], account: &Account) -> bool {
+    if account.provider != Provider::Codex {
+        return false;
+    }
+    let had_weekly = points
+        .iter()
+        .any(|point| point.window_id == "secondary_window");
+    let weekly_only =
+        account.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.windows.iter().any(|window| {
+                window.id == "secondary_window" && window.window_seconds == Some(604_800)
+            }) && !snapshot
+                .windows
+                .iter()
+                .any(|window| window.id == "primary_window")
+        });
+    let mut changed = false;
+    for point in points
+        .iter_mut()
+        .filter(|point| point.window_id == "primary_window")
+    {
+        let weekly = match point.window_seconds {
+            Some(seconds) => seconds == 604_800,
+            None => weekly_only && !had_weekly,
+        };
+        if weekly {
+            point.window_id = "secondary_window".into();
+            changed = true;
+        }
+    }
+    changed
 }
 
 pub(super) fn compact(points: &mut Vec<HistoryPoint>) -> bool {
@@ -786,6 +824,55 @@ mod tests {
         assert!(!path.exists());
         store.record(&account(100, 11.0), 60, at(100));
         assert_eq!(load(&path).unwrap().unwrap().points.len(), 2);
+    }
+
+    #[test]
+    fn v07_weekly_only_codex_points_are_renamed_on_load() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("codex-test.json");
+        let point = |seconds: i64, duration: Option<u64>| HistoryPoint {
+            window_id: "primary_window".into(),
+            at: at(seconds).to_rfc3339(),
+            used_percent: 10.0,
+            resets_at: Some(at(604_800).to_rfc3339()),
+            window_seconds: duration,
+            gap_before: seconds == 0,
+        };
+        let mut weekly = account(300, 11.0);
+        let window = &mut weekly.snapshot.as_mut().unwrap().windows[0];
+        window.id = "secondary_window".into();
+        window.window_seconds = Some(604_800);
+        let mut saved = empty(&weekly);
+        saved.points = vec![
+            point(0, Some(604_800)),
+            point(60, None),
+            point(120, Some(18_000)),
+        ];
+        save(&path, &saved).unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let ids = |points: Vec<HistoryPoint>| -> Vec<String> {
+            points.into_iter().map(|point| point.window_id).collect()
+        };
+        assert_eq!(
+            ids(store.get(&weekly, at(300)).points),
+            ["secondary_window", "secondary_window", "primary_window"]
+        );
+        store.record(&weekly, 60, at(300));
+        assert_eq!(
+            ids(load(&path).unwrap().unwrap().points)[..3],
+            ["secondary_window", "secondary_window", "primary_window"],
+            "the rename is written back"
+        );
+        let unknown = account(300, 11.0);
+        let mut saved = empty(&unknown);
+        saved.points = vec![point(0, None), point(60, Some(604_800))];
+        save(&path, &saved).unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        assert_eq!(
+            ids(store.get(&unknown, at(300)).points),
+            ["primary_window", "secondary_window"],
+            "without a duration or a weekly-only snapshot the point stays"
+        );
     }
 
     #[test]
