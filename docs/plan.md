@@ -106,11 +106,11 @@ From a performance and usability audit on 2026-10-25: buffered settings/history 
 
 Owner asked for these on 2026-10-26. Research first, then build; use Codex CLI as a second reviewer where useful.
 
-- [ ] **5.1 Balances on the card.** Claude `extra_usage` (already parsed) and Codex `credits` / `spend_control` from the usage response: show "Extra usage $4.28 of $20" / "Credits $12.40 left" compactly, only when present. Promote Codex `additional_rate_limits` to chips like Claude's model chips. Verify: fixture tests for every shape incl. absent/zero; e2e renders; screenshot.
-- [ ] **5.2 Make active for the Codex desktop app.** Research where the app stores its sign-in and whether it shares `~/.codex/auth.json`; extend or refuse accordingly. Verify: design note + tests with fakes; no real switch in tests.
-- [ ] **5.3 Statusline.** `margin --line` shows both providers, session and weekly each, compact: e.g. `C 42%·2h18m 86%·2d │ X 95%·45m –`. Research Claude Code statusline width/ANSI; add `--format` flags only if needed. Verify: unit tests for layouts; tried in the owner's real statusline.
-- [ ] **5.4 Weekly digest notification.** One Monday-morning notification per week from recorded history: per account, weekly peak used and how many sessions hit a limit. Off by default; Settings → Notifications. Verify: pure digest computation tests on run-length history; scheduling tests (missed Monday fires on next launch, never twice).
-- [ ] **5.5 Release v0.8.0** — changelog, screenshots, verification, install on the owner's Mac.
+- [x] **5.1 Balances on the card.** Claude `extra_usage` (already parsed) and Codex `credits` / `spend_control` from the usage response: show "Extra usage $4.28 of $20" / "Credits $12.40 left" compactly, only when present. Promote Codex `additional_rate_limits` to chips like Claude's model chips. Verify: fixture tests for every shape incl. absent/zero; e2e renders; screenshot.
+- [x] **5.2 Make active for the Codex desktop app.** Research where the app stores its sign-in and whether it shares `~/.codex/auth.json`; extend or refuse accordingly. Verify: design note + tests with fakes; no real switch in tests.
+- [x] **5.3 Statusline.** `margin --line` shows both providers, session and weekly each, compact: e.g. `C 42%·2h18m 86%·2d │ X 95%·45m –`. Research Claude Code statusline width/ANSI; add `--format` flags only if needed. Verify: unit tests for layouts; tried in the owner's real statusline.
+- [x] **5.4 Weekly digest notification.** One Monday-morning notification per week from recorded history: per account, weekly peak used and how many sessions hit a limit. Off by default; Settings → Notifications. Verify: pure digest computation tests on run-length history; scheduling tests (missed Monday fires on next launch, never twice).
+- [x] **5.5 Release v0.8.0.** Published 2026-10-26; see `docs/verification.md`.
 
 ## Explicitly not doing
 

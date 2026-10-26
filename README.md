@@ -43,12 +43,12 @@ CodexBar supports about 100 providers; pick it if you need more than Claude and 
 
 ## Install
 
-Download **v0.7.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). It adds Make active to switch CLI accounts, fast usage alerts, and `margin --line` for statuslines. Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
+Download **v0.8.0** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). It adds a two-provider statusline, a weekly digest, and Codex credits on the card. Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
 
 | Platform | Download |
 | --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.7.0/Margin_0.7.0_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.7.0/Margin_0.7.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.7.0/Margin_0.7.0_x64_en-US.msi) |
+| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.8.0/Margin_0.8.0_universal.dmg) |
+| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.8.0/Margin_0.8.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.8.0/Margin_0.8.0_x64_en-US.msi) |
 
 Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning. Updates are signed and verified in the app.
 
