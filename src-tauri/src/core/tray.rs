@@ -3,7 +3,7 @@ use super::{
     notifications::reset_clock,
     poller,
     ring::{ring_rgba, IconStyle},
-    settings::{TrayMetric, TrayMode},
+    settings::{Settings, TrayMetric, TrayMode},
 };
 use crate::runtime::{AppState, Runtime};
 use chrono::Utc;
@@ -266,7 +266,7 @@ fn counts(window: &UsageWindow, metric: TrayMetric, now: chrono::DateTime<Utc>) 
     }
 }
 
-fn limiting_window(
+pub fn limiting_window(
     account: &Account,
     metric: TrayMetric,
     now: chrono::DateTime<Utc>,
@@ -281,11 +281,11 @@ fn limiting_window(
     most_used(metric).or_else(|| most_used(TrayMetric::All))
 }
 
-fn remaining(account: &Account, metric: TrayMetric) -> Option<f64> {
-    limiting_window(account, metric, Utc::now()).map(|window| 100.0 - window.used_percent)
+fn remaining(account: &Account, metric: TrayMetric, now: chrono::DateTime<Utc>) -> Option<f64> {
+    limiting_window(account, metric, now).map(|window| 100.0 - window.used_percent)
 }
 
-fn stale(account: &Account, state: &AppState) -> bool {
+pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>) -> bool {
     if account.error.as_ref().is_some_and(|error| {
         account.snapshot.is_none()
             || !matches!(error.kind.as_str(), "rateLimited" | "credentialsChanged")
@@ -293,11 +293,10 @@ fn stale(account: &Account, state: &AppState) -> bool {
         return true;
     }
     account.snapshot.as_ref().is_some_and(|snapshot| {
-        let now = Utc::now();
         let old =
             chrono::DateTime::parse_from_rfc3339(&snapshot.fetched_at).map_or(true, |fetched| {
                 (now - fetched.with_timezone(&Utc)).num_seconds()
-                    > (state.settings.idle_poll_interval_seconds * 2).max(180) as i64
+                    > (settings.idle_poll_interval_seconds * 2).max(180) as i64
             });
         old || snapshot.windows.iter().any(|window| {
             window.resets_at.as_ref().is_some_and(|reset| {
@@ -307,27 +306,29 @@ fn stale(account: &Account, state: &AppState) -> bool {
     })
 }
 
-fn selected(state: &AppState) -> Option<&Account> {
-    if state.settings.tray_mode == TrayMode::Pinned {
-        if let Some(account) = state
-            .settings
+pub fn selected<'a>(
+    accounts: &'a [Account],
+    settings: &Settings,
+    now: chrono::DateTime<Utc>,
+) -> Option<&'a Account> {
+    if settings.tray_mode == TrayMode::Pinned {
+        if let Some(account) = settings
             .pinned_account_id
             .as_ref()
-            .and_then(|id| state.accounts.iter().find(|account| &account.id == id))
+            .and_then(|id| accounts.iter().find(|account| &account.id == id))
         {
             return Some(account);
         }
     }
-    state
-        .accounts
+    accounts
         .iter()
-        .filter(|account| !stale(account, state))
+        .filter(|account| !stale(account, settings, now))
         .filter_map(|account| {
-            remaining(account, state.settings.tray_metric).map(|value| (account, value))
+            remaining(account, settings.tray_metric, now).map(|value| (account, value))
         })
         .min_by(|left, right| left.1.total_cmp(&right.1))
         .map(|(account, _)| account)
-        .or_else(|| state.accounts.first())
+        .or_else(|| accounts.first())
 }
 
 fn icon_style() -> IconStyle {
@@ -368,7 +369,7 @@ fn icon_size(app: &AppHandle) -> u32 {
     (16.0 * scale).round().clamp(16.0, 64.0) as u32
 }
 
-fn percent_label(amount: f64) -> String {
+pub fn percent_label(amount: f64) -> String {
     if amount > 0.0 && amount < 1.0 {
         "<1".into()
     } else {
@@ -426,11 +427,12 @@ fn tooltip(
 }
 
 pub fn update(app: &AppHandle, state: &AppState) {
-    let account = selected(state);
-    let window = account
-        .and_then(|account| limiting_window(account, state.settings.tray_metric, Utc::now()));
+    let now = Utc::now();
+    let account = selected(&state.accounts, &state.settings, now);
+    let window =
+        account.and_then(|account| limiting_window(account, state.settings.tray_metric, now));
     let amount = window.map(|window| 100.0 - window.used_percent);
-    let is_stale = account.is_some_and(|account| stale(account, state));
+    let is_stale = account.is_some_and(|account| stale(account, &state.settings, now));
     let size = icon_size(app);
     let key = RingKey::new(size, amount, is_stale, icon_style());
     let pixels = match app.state::<Visibility>().ring.lock() {
@@ -441,7 +443,7 @@ pub fn update(app: &AppHandle, state: &AppState) {
     let title = amount
         .filter(|_| state.settings.tray_show_percent)
         .map(|amount| format!("{}%", percent_label(amount)));
-    let tooltip = tooltip(account, window, is_stale, Utc::now());
+    let tooltip = tooltip(account, window, is_stale, now);
     let revision = state.revision;
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -765,14 +767,24 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
         };
-        assert_eq!(selected(&state).unwrap().id, "a");
+        assert_eq!(
+            selected(&state.accounts, &state.settings, Utc::now())
+                .unwrap()
+                .id,
+            "a"
+        );
         state.accounts[0].error = Some(UsageError::new("network", "Offline"));
-        assert_eq!(selected(&state).unwrap().id, "b");
+        assert_eq!(
+            selected(&state.accounts, &state.settings, Utc::now())
+                .unwrap()
+                .id,
+            "b"
+        );
         state.settings.tray_mode = TrayMode::Pinned;
         state.settings.pinned_account_id = Some("a".into());
-        let pinned = selected(&state).unwrap();
+        let pinned = selected(&state.accounts, &state.settings, Utc::now()).unwrap();
         assert_eq!(pinned.id, "a");
-        assert!(stale(pinned, &state));
+        assert!(stale(pinned, &state.settings, Utc::now()));
     }
 
     #[test]
@@ -789,13 +801,13 @@ mod tests {
         };
         for kind in ["rateLimited", "credentialsChanged"] {
             state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
-            assert!(!stale(&state.accounts[0], &state));
+            assert!(!stale(&state.accounts[0], &state.settings, Utc::now()));
             if let Some(snapshot) = state.accounts[0].snapshot.as_mut() {
                 snapshot.fetched_at = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
             }
-            assert!(stale(&state.accounts[0], &state));
+            assert!(stale(&state.accounts[0], &state.settings, Utc::now()));
             state.accounts[0].snapshot = None;
-            assert!(stale(&state.accounts[0], &state));
+            assert!(stale(&state.accounts[0], &state.settings, Utc::now()));
             state.accounts[0] = account("a", &[10.0]);
         }
     }
@@ -935,11 +947,26 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
         };
-        assert_eq!(selected(&state).unwrap().id, "b");
+        assert_eq!(
+            selected(&state.accounts, &state.settings, Utc::now())
+                .unwrap()
+                .id,
+            "b"
+        );
         state.settings.tray_metric = TrayMetric::All;
-        assert_eq!(selected(&state).unwrap().id, "a");
+        assert_eq!(
+            selected(&state.accounts, &state.settings, Utc::now())
+                .unwrap()
+                .id,
+            "a"
+        );
         state.settings.tray_metric = TrayMetric::Weekly;
-        assert_eq!(selected(&state).unwrap().id, "a");
+        assert_eq!(
+            selected(&state.accounts, &state.settings, Utc::now())
+                .unwrap()
+                .id,
+            "a"
+        );
     }
 
     #[test]

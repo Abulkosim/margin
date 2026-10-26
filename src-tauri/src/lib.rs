@@ -1,3 +1,4 @@
+pub mod cli;
 mod commands;
 pub mod core;
 mod runtime;

@@ -35,6 +35,20 @@ pub struct StoredState {
 }
 
 pub fn load(path: &Path) -> Result<StoredState, String> {
+    let mut state = read(path)?;
+    for account in &mut state.accounts {
+        account.refreshing = false;
+        if account.snapshot.is_some() {
+            account.error = Some(super::model::UsageError::new(
+                "stale",
+                "Last saved reading. Waiting for a fresh update.",
+            ));
+        }
+    }
+    Ok(state)
+}
+
+pub fn read(path: &Path) -> Result<StoredState, String> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -63,17 +77,7 @@ pub fn load(path: &Path) -> Result<StoredState, String> {
         return Err(invalid_store());
     }
     let value: Value = serde_json::from_slice(&bytes).map_err(|_| invalid_store())?;
-    let mut state = decode(value)?;
-    for account in &mut state.accounts {
-        account.refreshing = false;
-        if account.snapshot.is_some() {
-            account.error = Some(super::model::UsageError::new(
-                "stale",
-                "Last saved reading. Waiting for a fresh update.",
-            ));
-        }
-    }
-    Ok(state)
+    decode(value)
 }
 
 pub fn save(path: &Path, state: &StoredState) -> Result<(), String> {
