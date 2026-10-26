@@ -200,26 +200,25 @@ async fn load_credentials(source: &AccountSource) -> Result<Credentials, UsageEr
         } => {
             let file = Path::new(path).join(".credentials.json");
             #[cfg(target_os = "macos")]
-            if keychain_suffix.is_some() && !file.exists() {
-                return read_keychain(keychain_service(keychain_suffix.as_deref())).await;
-            }
-            let result = read_credentials(&file, parse_credentials, 2).await;
-            #[cfg(target_os = "macos")]
-            if result
-                .as_ref()
-                .err()
-                .is_some_and(|error| error.kind == "credentials")
             {
-                if keychain_suffix.is_some() {
-                    return read_keychain(keychain_service(keychain_suffix.as_deref())).await;
-                }
-                if is_default_directory(Path::new(path)) {
-                    return read_keychain(keychain_service(None)).await;
+                let service = if keychain_suffix.is_some() {
+                    Some(keychain_service(keychain_suffix.as_deref()))
+                } else if is_default_directory(Path::new(path)) {
+                    Some(keychain_service(None))
+                } else {
+                    None
+                };
+                if let Some(service) = service {
+                    match read_keychain_item(service).await {
+                        Ok(bytes) => return parse_credentials(&bytes),
+                        Err(error) if !file.exists() => return Err(error),
+                        Err(_) => {}
+                    }
                 }
             }
             #[cfg(not(target_os = "macos"))]
             let _ = keychain_suffix;
-            result
+            read_credentials(&file, parse_credentials, 2).await
         }
         AccountSource::Keychain => read_keychain(keychain_service(None)).await,
     }
@@ -233,8 +232,18 @@ pub(crate) fn keychain_service(suffix: Option<&str>) -> String {
 }
 
 pub fn keychain_suffix(config_dir: &str) -> String {
-    let digest = Sha256::digest(config_dir.as_bytes());
+    let digest = Sha256::digest(nfc(config_dir).as_bytes());
     format!("{digest:x}")[..8].to_owned()
+}
+
+fn nfc(value: &str) -> String {
+    #[cfg(target_os = "macos")]
+    if !value.is_ascii() {
+        return objc2_foundation::NSString::from_str(value)
+            .precomposedStringWithCanonicalMapping()
+            .to_string();
+    }
+    value.to_owned()
 }
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -303,17 +312,22 @@ fn is_default_directory(path: &Path) -> bool {
 async fn read_keychain(service: String) -> Result<Credentials, UsageError> {
     #[cfg(target_os = "macos")]
     {
-        tokio::task::spawn_blocking(move || {
-            read_keychain_bytes(&service).and_then(|bytes| parse_credentials(&bytes))
-        })
-        .await
-        .map_err(|_| keychain_error())?
+        read_keychain_item(service)
+            .await
+            .and_then(|bytes| parse_credentials(&bytes))
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = service;
         Err(UsageError::new("credentials", "Keychain accounts are only available on macOS. Add this account's configuration folder."))
     }
+}
+
+#[cfg(target_os = "macos")]
+async fn read_keychain_item(service: String) -> Result<Vec<u8>, UsageError> {
+    tokio::task::spawn_blocking(move || read_keychain_bytes(&service))
+        .await
+        .map_err(|_| keychain_error())?
 }
 
 #[cfg(target_os = "macos")]
@@ -987,6 +1001,16 @@ mod tests {
             "Claude Code-credentials-96e73013"
         );
         assert_eq!(keychain_service(None), "Claude Code-credentials");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_suffix_hashes_the_nfc_path_like_claude_code() {
+        let composed = "/Users/example/.claude-caf\u{e9}";
+        let decomposed = "/Users/example/.claude-cafe\u{301}";
+        let digest = Sha256::digest(composed.as_bytes());
+        assert_eq!(keychain_suffix(composed), format!("{digest:x}")[..8]);
+        assert_eq!(keychain_suffix(decomposed), keychain_suffix(composed));
     }
 
     #[test]
