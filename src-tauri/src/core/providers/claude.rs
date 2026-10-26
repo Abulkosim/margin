@@ -236,7 +236,7 @@ pub fn keychain_suffix(config_dir: &str) -> String {
     format!("{digest:x}")[..8].to_owned()
 }
 
-fn nfc(value: &str) -> String {
+pub(crate) fn nfc(value: &str) -> String {
     #[cfg(target_os = "macos")]
     if !value.is_ascii() {
         return objc2_foundation::NSString::from_str(value)
