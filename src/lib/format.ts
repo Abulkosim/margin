@@ -144,9 +144,16 @@ export function balanceLines(snapshot: Account['snapshot'], now: number): Balanc
     const day = resetDay(limit.resetsAt, now)
     const reset = day ? ` · resets ${day}` : ''
     const value = limit.reached ? `reached${reset}` : `${formatCount(limit.used)} of ${formatCount(limit.limit)} used${reset}`
-    lines.push({ label: 'Monthly credit limit', value, warn: limit.reached })
+    lines.push({ label: spendLimitLabel(limit.unit), value, warn: limit.reached })
   }
   return lines
+}
+
+/** The API names the unit; only a literal `credit` earns the word, anything else is shown as sent. */
+export function spendLimitLabel(unit: string | null): string {
+  if (unit === 'credit') return 'Monthly credit limit'
+  const word = unit?.trim().toLowerCase()
+  return word ? `Monthly ${word} limit` : 'Monthly limit'
 }
 
 export function providerName(provider: Account['provider']): string {

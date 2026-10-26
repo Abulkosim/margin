@@ -45,6 +45,7 @@ export const balanceSchema = z.object({
     usedPercent: z.number().min(0).max(100),
     resetsAt: z.string().datetime({ offset: true }).nullable(),
     reached: z.boolean(),
+    unit: z.string().nullable().default(null),
   }).nullable().default(null),
 })
 export const accountSchema = z.object({

@@ -480,7 +480,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         fetched_at: now(),
         extra_usage: None,
         reset_grants: inline_reset_credits(value),
-        balance: parse_balance(value)?,
+        balance: parse_balance(value),
     })
 }
 
@@ -499,12 +499,13 @@ fn humanize(feature: &str) -> String {
         .join(" ")
 }
 
-fn parse_balance(value: &Value) -> Result<Option<Balance>, UsageError> {
+/// Balances are decorative: a malformed block drops that line, not the windows.
+fn parse_balance(value: &Value) -> Option<Balance> {
     let balance = Balance {
-        credits: parse_credits(value.get("credits"))?,
-        spend_limit: parse_spend_limit(value.get("spend_control"))?,
+        credits: parse_credits(value.get("credits")).ok().flatten(),
+        spend_limit: parse_spend_limit(value.get("spend_control")).ok().flatten(),
     };
-    Ok((!balance.is_empty()).then_some(balance))
+    (!balance.is_empty()).then_some(balance)
 }
 
 fn flag(block: &Value, key: &str) -> Result<bool, UsageError> {
@@ -585,6 +586,7 @@ fn parse_spend_limit(value: Option<&Value>) -> Result<Option<SpendLimit>, UsageE
         used_percent,
         resets_at: timestamp(limit.get("reset_at"))?,
         reached,
+        unit: nonempty_string(limit.get("unit")).filter(|unit| unit.len() <= 32),
     }))
 }
 
@@ -597,6 +599,7 @@ fn append_windows(
     if !rate_limit.is_object() {
         return Err(malformed_response());
     }
+    let mut taken: Vec<&str> = Vec::new();
     for (key, default_label) in [
         ("primary_window", "Session"),
         ("secondary_window", "Weekly"),
@@ -632,11 +635,16 @@ fn append_windows(
             Some(seconds) if seconds % 60 == 0 => format!("{} minutes", seconds / 60),
             Some(seconds) => format!("{seconds} seconds"),
         };
-        let slot = match duration {
+        let preferred = match duration {
             Some(18_000) => "primary_window",
             Some(604_800) => "secondary_window",
             _ => key,
         };
+        let slot = [preferred, key, "primary_window", "secondary_window"]
+            .into_iter()
+            .find(|candidate| !taken.contains(candidate))
+            .unwrap_or(key);
+        taken.push(slot);
         windows.push(UsageWindow {
             id: format!("{prefix}{slot}"),
             label: match name {
@@ -738,6 +746,7 @@ mod tests {
                 used_percent: 0.0,
                 resets_at: Some("2026-11-01T00:00:01Z".into()),
                 reached: false,
+                unit: Some("credit".into()),
             })
         );
     }
@@ -768,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn absent_or_empty_balances_stay_absent_and_bad_values_fail_closed() {
+    fn absent_or_empty_balances_stay_absent_and_bad_values_drop_the_line() {
         let windows = json!({"primary_window": {"used_percent": 0}});
         let parse = |extra: Value| {
             let mut value = json!({"rate_limit": windows});
@@ -798,7 +807,10 @@ mod tests {
             .unwrap()
             .spend_limit
             .unwrap();
-        assert_eq!((derived.used_percent, derived.resets_at), (25.0, None));
+        assert_eq!(
+            (derived.used_percent, derived.resets_at, derived.unit),
+            (25.0, None, None)
+        );
         let number = parse(json!({"credits": {"has_credits": true, "balance": 1250}}))
             .unwrap()
             .balance
@@ -812,8 +824,45 @@ mod tests {
             json!({"spend_control": {"individual_limit": {"limit": "1", "used": "0", "used_percent": -5}}}),
             json!({"spend_control": {"individual_limit": {"limit": "1", "used": "0", "reset_at": "soon"}}}),
         ] {
-            assert!(parse(bad).is_err());
+            let snapshot = parse(bad).unwrap();
+            assert!(snapshot.balance.is_none());
+            assert_eq!(snapshot.windows.len(), 1);
         }
+    }
+
+    #[test]
+    fn a_malformed_balance_block_keeps_the_windows() {
+        let value = json!({
+            "rate_limit": {"primary_window": {"used_percent": 12, "reset_at": 1793491201}},
+            "credits": {"has_credits": "yes", "balance": "1,250.00"},
+            "spend_control": {"individual_limit": {"limit": "1", "used": "0", "used_percent": "99"}}
+        });
+        let snapshot = parse_usage(&value).unwrap();
+        assert_eq!(snapshot.windows[0].used_percent, 12.0);
+        assert!(snapshot.balance.is_none());
+        let value = json!({
+            "rate_limit": {"primary_window": {"used_percent": 12}},
+            "credits": "none",
+            "spend_control": {"individual_limit": {"limit": "1", "used": "0", "unit": "token"}}
+        });
+        let balance = parse_usage(&value).unwrap().balance.unwrap();
+        assert!(balance.credits.is_none(), "only the bad block is dropped");
+        assert_eq!(balance.spend_limit.unwrap().unit.as_deref(), Some("token"));
+    }
+
+    #[test]
+    fn two_weekly_shaped_windows_keep_distinct_ids() {
+        let value = json!({"rate_limit": {
+            "primary_window": {"used_percent": 10, "limit_window_seconds": 604_800},
+            "secondary_window": {"used_percent": 20, "limit_window_seconds": 604_800}
+        }});
+        let ids: Vec<String> = parse_usage(&value)
+            .unwrap()
+            .windows
+            .into_iter()
+            .map(|window| window.id)
+            .collect();
+        assert_eq!(ids, ["secondary_window", "primary_window"]);
     }
 
     #[test]

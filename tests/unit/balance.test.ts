@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { balanceLines, formatMoney, groupWindows, resetDay, windowScope } from '../../src/lib/format.ts'
+import { balanceLines, formatMoney, groupWindows, resetDay, spendLimitLabel, windowScope } from '../../src/lib/format.ts'
 import { accountSchema, usageWindowSchema, type Account } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -43,7 +43,7 @@ test('codex credits are a unit, never money', () => {
 })
 
 test('a monthly credit limit shows used of limit and turns to a warning when reached', () => {
-  const limit = (spendLimit: Record<string, unknown>) => balanceLines(snapshot({ balance: { spendLimit } }), now)[0]
+  const limit = (spendLimit: Record<string, unknown>) => balanceLines(snapshot({ balance: { spendLimit: { unit: 'credit', ...spendLimit } } }), now)[0]
   const open = limit({ used: 0, limit: 1, usedPercent: 0, resetsAt: '2026-11-01T00:00:01Z', reached: false })
   assert.equal(open?.label, 'Monthly credit limit')
   assert.equal(open?.value, '0 of 1 used · resets Nov 1')
@@ -53,6 +53,16 @@ test('a monthly credit limit shows used of limit and turns to a warning when rea
   assert.equal(reached?.warn, true)
   assert.deepEqual(limit({ used: 320, limit: 500, usedPercent: 64, resetsAt: null, reached: false }), { label: 'Monthly credit limit', value: '320 of 500 used', warn: false })
   assert.deepEqual(limit({ used: 1, limit: 1, usedPercent: 100, resetsAt: '2026-10-16T09:00:00Z', reached: true }), { label: 'Monthly credit limit', value: 'reached', warn: true })
+})
+
+test('the limit is only called credits when the API says so', () => {
+  const label = (unit: string | null) => balanceLines(snapshot({ balance: { spendLimit: { used: 1, limit: 2, usedPercent: 50, resetsAt: null, reached: false, unit } } }), now)[0]?.label
+  assert.equal(label('credit'), 'Monthly credit limit')
+  assert.equal(label('token'), 'Monthly token limit')
+  assert.equal(label(null), 'Monthly limit')
+  assert.equal(spendLimitLabel(' Credit '), 'Monthly credit limit')
+  const older = snapshot({ balance: { spendLimit: { used: 1, limit: 2, usedPercent: 50, resetsAt: null, reached: false } } })
+  assert.equal(older?.balance?.spendLimit?.unit, null)
 })
 
 test('a reset day shows the time today, the weekday this week, and the date beyond', () => {
@@ -66,7 +76,7 @@ test('a reset day shows the time today, the weekday this week, and the date beyo
 test('credits come before the limit and extra usage stays first', () => {
   const lines = balanceLines(snapshot({
     extraUsage: { spent: 1, limit: null, currency: 'USD' },
-    balance: { credits: { amount: 5, unlimited: false }, spendLimit: { used: 1, limit: 2, usedPercent: 50, resetsAt: null, reached: false } },
+    balance: { credits: { amount: 5, unlimited: false }, spendLimit: { used: 1, limit: 2, usedPercent: 50, resetsAt: null, reached: false, unit: 'credit' } },
   }), now)
   assert.deepEqual(lines.map(line => line.label), ['Extra usage', 'Credits', 'Monthly credit limit'])
 })
