@@ -1,0 +1,54 @@
+{
+  "user_id": "<redacted>",
+  "account_id": "<redacted>",
+  "email": "<redacted>",
+  "plan_type": "self_serve_business_prolite",
+  "rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {
+      "used_percent": 16,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 587103,
+      "reset_at": 1793603850
+    },
+    "secondary_window": null
+  },
+  "code_review_rate_limit": null,
+  "additional_rate_limits": null,
+  "model_usage": {
+    "gpt-6-astra": {
+      "available": true,
+      "available_at": null,
+      "credits_would_enable": false
+    }
+  },
+  "credits": {
+    "has_credits": true,
+    "unlimited": false,
+    "overage_limit_reached": false,
+    "balance": null,
+    "approx_local_messages": null,
+    "approx_cloud_messages": null
+  },
+  "spend_control": {
+    "reached": false,
+    "individual_limit": {
+      "source": "account_user_spend_controls",
+      "unit": "credit",
+      "limit": "1",
+      "used": "0.0",
+      "remaining": "1.0",
+      "used_percent": 0,
+      "remaining_percent": 100,
+      "reset_after_seconds": 474453,
+      "reset_at": 1793491201
+    }
+  },
+  "rate_limit_reached_type": null,
+  "promo": null,
+  "rate_limit_reset_credits": {
+    "available_count": 0,
+    "applicable_available_count": 0
+  }
+}

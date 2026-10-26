@@ -95,6 +95,7 @@ impl WindowScope {
             "five_hour" | "seven_day" | "primary_window" | "secondary_window" => Self::Core,
             "seven_day_sonnet" | "seven_day_opus" => Self::Model,
             id if id.starts_with("weekly_scoped_") => Self::Model,
+            id if id.starts_with("extra_") && id.ends_with("_secondary_window") => Self::Model,
             _ => Self::Other,
         }
     }
@@ -167,6 +168,40 @@ pub struct ExtraUsage {
     pub currency: String,
 }
 
+/// Prepaid credits; present only when the provider reports some.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Credits {
+    pub amount: Option<f64>,
+    pub unlimited: bool,
+}
+
+/// A per-person credit cap set by a workspace, with its own reset.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpendLimit {
+    pub used: f64,
+    pub limit: f64,
+    pub used_percent: f64,
+    pub resets_at: Option<String>,
+    pub reached: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Balance {
+    #[serde(default)]
+    pub credits: Option<Credits>,
+    #[serde(default)]
+    pub spend_limit: Option<SpendLimit>,
+}
+
+impl Balance {
+    pub fn is_empty(&self) -> bool {
+        self.credits.is_none() && self.spend_limit.is_none()
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -175,6 +210,8 @@ pub struct Snapshot {
     pub extra_usage: Option<ExtraUsage>,
     #[serde(default)]
     pub reset_grants: Option<ResetGrants>,
+    #[serde(default)]
+    pub balance: Option<Balance>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -253,6 +290,7 @@ mod tests {
                 fetched_at: "2026-10-16T10:00:00Z".into(),
                 extra_usage: None,
                 reset_grants: None,
+                balance: None,
             }),
             error: None,
             refreshing: false,
@@ -266,6 +304,39 @@ mod tests {
         assert!(value.get("accessToken").is_none());
         assert!(value.get("refreshToken").is_none());
         assert!(value["snapshot"]["resetGrants"].is_null());
+        assert!(value["snapshot"]["balance"].is_null());
+    }
+
+    #[test]
+    fn stored_snapshots_without_a_balance_still_parse_and_balances_round_trip() {
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "windows": [], "fetchedAt": "2026-10-16T10:00:00Z", "extraUsage": null, "resetGrants": null
+        }))
+        .unwrap();
+        assert!(snapshot.balance.is_none());
+        let balance = Balance {
+            credits: Some(Credits {
+                amount: Some(1250.0),
+                unlimited: false,
+            }),
+            spend_limit: Some(SpendLimit {
+                used: 0.0,
+                limit: 1.0,
+                used_percent: 0.0,
+                resets_at: Some("2026-11-01T00:00:00Z".into()),
+                reached: false,
+            }),
+        };
+        let value = serde_json::to_value(&balance).unwrap();
+        assert_eq!(value["credits"]["amount"], 1250.0);
+        assert_eq!(value["spendLimit"]["usedPercent"], 0.0);
+        assert_eq!(value["spendLimit"]["resetsAt"], "2026-11-01T00:00:00Z");
+        let restored: Balance = serde_json::from_value(value).unwrap();
+        assert_eq!(restored, balance);
+        assert!(Balance::default().is_empty());
+        let partial: Balance =
+            serde_json::from_value(serde_json::json!({"credits": null})).unwrap();
+        assert!(partial.is_empty());
     }
 
     #[test]
@@ -312,6 +383,10 @@ mod tests {
         assert_eq!(
             window("extra_0123456789abcdef_primary_window", "Spark · session").scope(),
             WindowScope::Other
+        );
+        assert_eq!(
+            window("extra_0123456789abcdef_secondary_window", "Spark").scope(),
+            WindowScope::Model
         );
         let restored: UsageWindow =
             serde_json::from_value(serde_json::to_value(scoped.clone()).unwrap()).unwrap();

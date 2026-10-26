@@ -1403,6 +1403,7 @@ fn person(id: &str, label: &str, source: AccountSource, email: &str) -> Account 
             fetched_at: chrono::Utc::now().to_rfc3339(),
             extra_usage: None,
             reset_grants: None,
+            balance: None,
         }),
         error: None,
         refreshing: false,

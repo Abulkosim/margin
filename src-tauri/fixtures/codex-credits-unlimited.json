@@ -1,0 +1,79 @@
+{
+  "plan_type": "team",
+  "rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {
+      "used_percent": 41,
+      "limit_window_seconds": 18000,
+      "reset_after_seconds": 3600,
+      "reset_at": 1792152000
+    },
+    "secondary_window": {
+      "used_percent": 73,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 259200,
+      "reset_at": 1792404000
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "Spark",
+      "metered_feature": "codex-spark",
+      "rate_limit": {
+        "allowed": true,
+        "limit_reached": false,
+        "primary_window": {
+          "used_percent": 7,
+          "limit_window_seconds": 18000,
+          "reset_at": 1792152000
+        },
+        "secondary_window": {
+          "used_percent": 19,
+          "limit_window_seconds": 604800,
+          "reset_at": 1792404000
+        }
+      }
+    },
+    {
+      "limit_name": null,
+      "metered_feature": "codex-cloud_review",
+      "rate_limit": {
+        "allowed": true,
+        "limit_reached": true,
+        "secondary_window": {
+          "used_percent": 100,
+          "limit_window_seconds": 604800,
+          "reset_at": 1792404000
+        }
+      }
+    },
+    {
+      "limit_name": "Spark",
+      "metered_feature": "codex-spark",
+      "rate_limit": {
+        "allowed": true,
+        "limit_reached": false,
+        "primary_window": {
+          "used_percent": 99,
+          "limit_window_seconds": 18000,
+          "reset_at": 1792152000
+        }
+      }
+    }
+  ],
+  "credits": {
+    "has_credits": true,
+    "unlimited": true,
+    "overage_limit_reached": false,
+    "balance": null
+  },
+  "spend_control": {
+    "reached": false,
+    "individual_limit": null
+  },
+  "rate_limit_reset_credits": {
+    "available_count": 0,
+    "applicable_available_count": 0
+  }
+}

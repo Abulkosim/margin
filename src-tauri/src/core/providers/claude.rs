@@ -508,6 +508,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         fetched_at: now(),
         extra_usage,
         reset_grants: parse_reset_grants(value.get("cedar_ember"), Utc::now()),
+        balance: None,
     })
 }
 

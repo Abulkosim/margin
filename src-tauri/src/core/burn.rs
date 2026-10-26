@@ -419,6 +419,7 @@ mod tests {
             fetched_at: at().to_rfc3339(),
             extra_usage: None,
             reset_grants: None,
+            balance: None,
         }
     }
 

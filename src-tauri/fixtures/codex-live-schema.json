@@ -34,12 +34,12 @@
   "spend_control": {
     "reached": true,
     "individual_limit": {
-      "source": "<redacted>",
-      "unit": "<redacted>",
-      "limit": "<redacted>",
-      "used": "<redacted>",
-      "remaining": "<redacted>",
-      "used_percent": 34.0,
+      "source": "account_user_spend_controls",
+      "unit": "credit",
+      "limit": "100",
+      "used": "99.0",
+      "remaining": "1.0",
+      "used_percent": 99,
       "remaining_percent": 1,
       "reset_after_seconds": 1,
       "reset_at": 1792144800
