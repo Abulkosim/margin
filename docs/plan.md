@@ -95,10 +95,10 @@ From a performance and usability audit on 2026-10-25: buffered settings/history 
 
 ## Phase 4 — Depth (v0.7+)
 
-- [ ] **4.1 Burn-rate alerts** ("used 20% in the last hour"), quiet by default.
+- [x] **4.1 Burn-rate alerts** ("used 20% in the last hour"), quiet by default. Done in v0.7.0 as Fast usage alerts (10/20/30% within an hour, off by default).
 - [ ] **4.2 Credits / extra-usage balance** on the card (Claude extra_usage already parsed; Codex credits if present).
-- [ ] **4.3 "Make active"** account switch: confirm, back up, then swap the default folder's sign-in with the chosen folder's (move only when the default is empty), so each refresh-token family lives in one place. Implemented in `core/switch.rs`; needs the owner's manual checks on a real Mac and Windows before ticking.
-- [ ] **4.4 Local CLI / JSON output** (`margin --json`) for statuslines and scripts.
+- [ ] **4.3 "Make active"** account switch: confirm, back up, then swap the default folder's sign-in with the chosen folder's (move only when the default is empty), so each refresh-token family lives in one place. Implemented in `core/switch.rs`; shipped in v0.7.0; needs the owner's manual checks on a real Mac and Windows before ticking 👤.
+- [x] **4.4 Local CLI / JSON output** (`margin --json`) for statuslines and scripts. Done in v0.7.0: `--json` (schema 1) and `--line [--all]`, read-only, no network.
 - [ ] **4.5 Linux build** (AppImage/deb, menu-only tray since Tauri emits no tray click on Linux) — only after a demand signal.
 - [ ] **4.6 Cost history from `~/.claude/projects/**/*.jsonl`** — low priority; ccusage shows it is fragile.
 
