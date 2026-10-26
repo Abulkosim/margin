@@ -7,7 +7,6 @@ import AppIcon from '../AppIcon.vue'
 const props = defineProps<{ preview: MakeActivePreview | null; busy: boolean }>()
 const emit = defineEmits<{ confirm: []; close: []; closed: [event: Event] }>()
 const cli = computed(() => props.preview?.provider === 'codex' ? 'codex' : 'claude')
-const codexRunning = computed(() => props.preview?.provider === 'codex' && props.preview.running)
 
 function update(open: boolean): void {
   if (!open && !props.busy) emit('close')
@@ -32,16 +31,10 @@ function escape(event: KeyboardEvent): void {
             <template v-if="preview.kind === 'swap'"> {{ preview.displaced }} moves to <code>{{ preview.folder }}</code>.</template>
             <template v-else> <code>{{ preview.folder }}</code> will be signed out.</template>
           </AlertDialogDescription>
-          <p v-if="preview.running" class="switch-warning" :class="{ strong: codexRunning }"><AppIcon name="alert" :size="14"/><span v-if="codexRunning">Codex is running. Quit it first, or it may undo the switch.</span><span v-else>Claude Code is running. Open sessions switch within a minute. Restart them to be sure.</span></p>
+          <p v-if="preview.running && preview.provider === 'claude'" class="switch-warning"><AppIcon name="alert" :size="14"/><span>Claude Code is running. Open sessions switch within a minute. Restart them to be sure.</span></p>
           <div class="dialog-actions">
-            <template v-if="codexRunning">
-              <button class="button" tabindex="0" :disabled="busy" @click="emit('confirm')">Switch anyway</button>
-              <AlertDialogCancel class="button button-primary" tabindex="0" :disabled="busy">Cancel</AlertDialogCancel>
-            </template>
-            <template v-else>
-              <AlertDialogCancel class="button" tabindex="0" :disabled="busy">Cancel</AlertDialogCancel>
-              <button class="button button-primary" tabindex="0" :disabled="busy" @click="emit('confirm')">Make active</button>
-            </template>
+            <AlertDialogCancel class="button" tabindex="0" :disabled="busy">Cancel</AlertDialogCancel>
+            <button class="button button-primary" tabindex="0" :disabled="busy" @click="emit('confirm')">Make active</button>
           </div>
         </AlertDialogContent>
       </AlertDialogOverlay>
@@ -76,12 +69,5 @@ function escape(event: KeyboardEvent): void {
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--tertiary);
-}
-.switch-warning.strong {
-  background: var(--warning-soft);
-  color: var(--ink);
-}
-.switch-warning.strong>svg {
-  color: var(--warning);
 }
 </style>

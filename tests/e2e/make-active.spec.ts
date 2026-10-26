@@ -77,17 +77,14 @@ test('moving into an empty default slot warns that the folder signs out and has 
   await expect(row(page, 'Work').locator('.active-tag')).toBeVisible()
 })
 
-test('a running Codex gets a strong warning and Switch anyway is secondary', async ({ page }) => {
+test('a running Codex is refused before any dialog', async ({ page }) => {
   await page.goto('/?demo=1&running=1')
   await openAccounts(page)
   await page.getByRole('button', { name: 'Make Work active', exact: true }).click()
-  const dialog = page.getByRole('alertdialog')
-  await expect(dialog).toContainText('Codex is running. Quit it first, or it may undo the switch.')
-  await expect(dialog.getByRole('button', { name: 'Make active', exact: true })).toHaveCount(0)
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toHaveClass(/button-primary/)
-  await dialog.getByRole('button', { name: 'Switch anyway', exact: true }).click()
-  await expect(page.getByText('alex@studio.example is active.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect(page.getByRole('alert').filter({ hasText: 'Quit Codex first. It could undo the switch.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Switch anyway' })).toHaveCount(0)
+  await expect(row(page, 'Work').locator('.active-tag')).toHaveCount(0)
 })
 
 test('a running Claude Code gets a plain warning', async ({ page }) => {
@@ -171,9 +168,9 @@ for (const theme of ['light', 'dark'] as const) {
     await page.keyboard.press('Escape')
     await page.goto(`/?demo=1&theme=${theme}&running=1`)
     await openAccounts(page)
-    await page.getByRole('button', { name: 'Make Work active', exact: true }).click()
+    await page.getByRole('button', { name: 'Make Studio active', exact: true }).click()
     await expect(page.getByRole('alertdialog')).toBeVisible()
-    await shot(page, info, `make-active-codex-running-${theme}`)
+    await shot(page, info, `make-active-claude-running-${theme}`)
     await page.goto(`/?demo=1&theme=${theme}&state=switch-restore`)
     await openAccounts(page)
     await shot(page, info, `make-active-restore-${theme}`)
