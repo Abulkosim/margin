@@ -256,7 +256,10 @@ pub async fn save_settings(
     let previous_digest = runtime.digest_state();
     let enabling_digest = next.settings.weekly_digest && !inner.view.settings.weekly_digest;
     if enabling_digest {
-        runtime.set_digest_state(Some(DigestState::enabled_at(chrono::Utc::now())));
+        runtime.set_digest_state(Some(DigestState::re_enabled(
+            previous_digest.clone(),
+            chrono::Utc::now(),
+        )));
     }
     if let Err(error) = runtime.persist(&next, &inner.alerts) {
         if enabling_digest {

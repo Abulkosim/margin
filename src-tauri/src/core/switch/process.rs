@@ -78,12 +78,13 @@ fn detect(provider: Provider) -> Option<Running> {
 }
 
 /// `named` are processes called `codex`; `helpers` are those whose command
-/// line is `codex app-server`, the desktop app's daemon. The helper is also
-/// named `codex`, so only when every named process is a helper is nothing
-/// else running.
+/// line mentions `codex app-server`, the desktop app's daemon. The helper is
+/// itself named `codex`, so a helper pid outside `named` is a bystander such
+/// as `less codex app-server.log`, and only when every named process is a
+/// helper is nothing else running.
 #[cfg_attr(windows, allow(dead_code))]
 fn classify_codex(named: &[u32], helpers: &[u32]) -> Running {
-    if named.is_empty() && helpers.is_empty() {
+    if named.is_empty() {
         Running::No
     } else if named.iter().all(|pid| helpers.contains(pid)) {
         Running::Helper
@@ -139,7 +140,12 @@ mod tests {
         assert_eq!(classify_codex(&[41], &[]), Running::Cli);
         assert_eq!(classify_codex(&[41], &[41]), Running::Helper);
         assert_eq!(classify_codex(&[41, 42], &[41]), Running::Cli);
-        assert_eq!(classify_codex(&[], &[43]), Running::Helper);
+        assert_eq!(
+            classify_codex(&[], &[43]),
+            Running::No,
+            "a bystander whose argv mentions the helper is not codex"
+        );
+        assert_eq!(classify_codex(&[41], &[41, 43]), Running::Helper);
         assert_eq!(classify_codex(&[41, 43], &[41, 43]), Running::Helper);
         assert!(Running::Helper.any() && Running::Cli.any() && !Running::No.any());
     }

@@ -185,6 +185,9 @@ pub struct SpendLimit {
     pub used_percent: f64,
     pub resets_at: Option<String>,
     pub reached: bool,
+    /// What `used` and `limit` count, e.g. `credit`; absent when the API omits it.
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -325,12 +328,14 @@ mod tests {
                 used_percent: 0.0,
                 resets_at: Some("2026-11-01T00:00:00Z".into()),
                 reached: false,
+                unit: Some("credit".into()),
             }),
         };
         let value = serde_json::to_value(&balance).unwrap();
         assert_eq!(value["credits"]["amount"], 1250.0);
         assert_eq!(value["spendLimit"]["usedPercent"], 0.0);
         assert_eq!(value["spendLimit"]["resetsAt"], "2026-11-01T00:00:00Z");
+        assert_eq!(value["spendLimit"]["unit"], "credit");
         let restored: Balance = serde_json::from_value(value).unwrap();
         assert_eq!(restored, balance);
         assert!(Balance::default().is_empty());

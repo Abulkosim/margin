@@ -482,8 +482,17 @@ fn line(
     } else {
         vec![[Provider::Claude, Provider::Codex]
             .into_iter()
-            .filter_map(|provider| chosen(accounts, provider, settings, env, now))
-            .map(|account| segment(account, settings, now))
+            .filter_map(
+                |provider| match chosen(accounts, provider, settings, env, now) {
+                    Pick::Account(account) => Some(segment(account, settings, now)),
+                    Pick::NotTracked => Some(Segment {
+                        label: provider.name().to_owned(),
+                        stale: false,
+                        body: Body::Status("not tracked"),
+                    }),
+                    Pick::None => None,
+                },
+            )
             .collect()]
     };
     let rows = fit(&rows, options.all, env.columns);
@@ -493,20 +502,29 @@ fn line(
         .join("\n")
 }
 
-/// The account this terminal is using, or the tray's pick for the provider.
+enum Pick<'a> {
+    Account(&'a Account),
+    /// The terminal points at a folder Margin does not track; showing another
+    /// account's usage here would be wrong.
+    NotTracked,
+    None,
+}
+
+/// The account this terminal is using, or the tray's pick for the provider
+/// when no folder is configured.
 fn chosen<'a>(
     accounts: &'a [Account],
     provider: Provider,
     settings: &Settings,
     env: &Env,
     now: DateTime<Utc>,
-) -> Option<&'a Account> {
+) -> Pick<'a> {
     let subset: Vec<&Account> = accounts
         .iter()
         .filter(|account| account.provider == provider)
         .collect();
     if subset.is_empty() {
-        return None;
+        return Pick::None;
     }
     let (configured, folder) = match provider {
         Provider::Claude => (&env.claude_dir, ".claude"),
@@ -527,12 +545,20 @@ fn chosen<'a>(
             AccountSource::Keychain => is_default,
         });
         if let Some(account) = matched {
-            return Some(account);
+            return Pick::Account(account);
+        }
+        if configured.is_some() {
+            return Pick::NotTracked;
         }
     }
     let owned: Vec<Account> = subset.iter().map(|account| (*account).clone()).collect();
-    let pick = tray::selected(&owned, settings, now)?;
-    subset.into_iter().find(|account| account.id == pick.id)
+    let Some(pick) = tray::selected(&owned, settings, now) else {
+        return Pick::None;
+    };
+    subset
+        .into_iter()
+        .find(|account| account.id == pick.id)
+        .map_or(Pick::None, Pick::Account)
 }
 
 /// One comparable form for a CLI folder: `~` expanded, relative to the
@@ -735,20 +761,107 @@ impl Detail {
         } else {
             LABEL_MAX
         };
-        if label.chars().count() <= limit {
+        if cells(label) <= limit {
             label.to_owned()
         } else if self.short_labels {
-            label.chars().take(limit).collect()
+            clip(label, limit).to_owned()
         } else {
-            let mut text: String = label.chars().take(limit - 1).collect();
+            let mut text = clip(label, limit - 1).to_owned();
             text.push('…');
             text
         }
     }
 }
 
+/// Terminal cells one character takes: East Asian wide forms two, combining
+/// marks and zero-width joiners none, everything else one. A local
+/// approximation that covers labels without a width table.
+fn cell_width(ch: char) -> usize {
+    let code = ch as u32;
+    let combining = matches!(
+        code,
+        0x0300..=0x036F
+            | 0x1AB0..=0x1AFF
+            | 0x1DC0..=0x1DFF
+            | 0x200B..=0x200D
+            | 0x20D0..=0x20FF
+            | 0xFE00..=0xFE0F
+            | 0xFE20..=0xFE2F
+    );
+    let wide = matches!(
+        code,
+        0x1100..=0x115F
+            | 0x2E80..=0x303E
+            | 0x3041..=0x33FF
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xA000..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE30..=0xFE4F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x1F300..=0x1F64F
+            | 0x1F900..=0x1F9FF
+            | 0x20000..=0x3FFFD
+    );
+    if combining {
+        0
+    } else if wide {
+        2
+    } else {
+        1
+    }
+}
+
+fn cells(text: &str) -> usize {
+    text.chars().map(cell_width).sum()
+}
+
+/// The longest prefix of `text` that fits `limit` cells.
+fn clip(text: &str, limit: usize) -> &str {
+    let mut used = 0;
+    for (index, ch) in text.char_indices() {
+        used += cell_width(ch);
+        if used > limit {
+            return &text[..index];
+        }
+    }
+    text
+}
+
 fn width(spans: &[Span]) -> usize {
-    spans.iter().map(|span| span.text.chars().count()).sum()
+    spans.iter().map(|span| cells(&span.text)).sum()
+}
+
+/// A row never wider than `columns`: past the narrowest layout it is cut and
+/// ends in an ellipsis.
+fn bound(spans: &mut Vec<Span>, columns: usize) {
+    if width(spans) <= columns {
+        return;
+    }
+    let room = columns.saturating_sub(1);
+    let mut kept: Vec<Span> = Vec::new();
+    let mut used = 0;
+    for span in spans.drain(..) {
+        if used >= room {
+            break;
+        }
+        let text = clip(&span.text, room - used).to_owned();
+        used += cells(&text);
+        kept.push(Span::new(text, span.tone));
+    }
+    while let Some(last) = kept.last_mut() {
+        let trimmed = last.text.trim_end().len();
+        if trimmed == 0 {
+            kept.pop();
+        } else {
+            last.text.truncate(trimmed);
+            break;
+        }
+    }
+    kept.push(Span::new("…", Tone::Plain));
+    *spans = kept;
 }
 
 fn pad(spans: &mut Vec<Span>, target: usize) {
@@ -820,7 +933,7 @@ fn layout(rows: &[Vec<Segment>], detail: Detail, pad_labels: bool) -> Vec<Vec<Sp
     let label_width = pad_labels.then(|| {
         rows.iter()
             .flatten()
-            .map(|segment| detail.label(&segment.label).chars().count())
+            .map(|segment| cells(&detail.label(&segment.label)))
             .max()
             .unwrap_or(0)
     });
@@ -855,6 +968,11 @@ fn fit(rows: &[Vec<Segment>], pad_labels: bool, columns: Option<usize>) -> Vec<V
         let widest = laid_out.iter().map(|row| width(row)).max().unwrap_or(0);
         if columns.is_none_or(|columns| widest <= columns) {
             break;
+        }
+    }
+    if let Some(columns) = columns {
+        for row in &mut laid_out {
+            bound(row, columns);
         }
     }
     laid_out
@@ -1575,7 +1693,11 @@ mod tests {
         assert_eq!(long(&state, false, &columns(30)), short_labels);
         let session_only = "Clau 42%  │ Code 95%";
         assert_eq!(long(&state, false, &columns(29)), session_only);
-        assert_eq!(long(&state, false, &columns(5)), session_only);
+        assert_eq!(long(&state, false, &columns(20)), session_only);
+        assert_eq!(long(&state, false, &columns(19)), "Clau 42%  │ Code 9…");
+        assert_eq!(long(&state, false, &columns(10)), "Clau 42%…");
+        assert_eq!(long(&state, false, &columns(5)), "Clau…");
+        assert_eq!(long(&state, false, &columns(1)), "…");
         let stale = state_of(vec![claude_stale(), codex()]);
         assert_eq!(
             long(&stale, false, &columns(40)),
@@ -1643,6 +1765,50 @@ mod tests {
             "Ünïcödé Wor… 42%·2h18m   –"
         );
         assert_eq!(long(&state, false, &columns(18)), "Ünïc 42%  –");
+    }
+
+    #[test]
+    fn wide_and_combining_characters_are_measured_in_cells() {
+        assert_eq!(cells("Ünïc"), 4);
+        assert_eq!(cells("e\u{301}"), 1, "a combining accent takes no cell");
+        assert_eq!(cells("日本語"), 6);
+        assert_eq!(cells("a\u{200d}b"), 2, "a zero-width joiner takes no cell");
+        assert_eq!(clip("日本語", 5), "日本");
+        assert_eq!(clip("日本語", 6), "日本語");
+        let state = state_of(vec![acct(
+            "claude",
+            "c",
+            "日本語アカウント",
+            json!([win("five_hour", 58.0, 138)]),
+        )]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "日本語アカ… 42%·2h18m   –",
+            "eleven cells of label, then the ellipsis"
+        );
+        assert_eq!(long(&state, false, &columns(18)), "日本語アカ… 42%  –");
+        assert_eq!(long(&state, false, &columns(17)), "日本 42%  –");
+        assert_eq!(long(&state, false, &columns(7)), "日本 4…");
+        assert_eq!(long(&state, false, &columns(3)), "日…");
+        let both = state_of(vec![
+            acct(
+                "claude",
+                "c",
+                "日本語",
+                json!([win("five_hour", 58.0, 138)]),
+            ),
+            acct("claude", "d", "Work", json!([win("five_hour", 58.0, 138)])),
+        ]);
+        assert_eq!(
+            long(&both, true, &columns(14)),
+            "日本語 42%  –\nWork   42%  –",
+            "labels pad to cells"
+        );
+        assert_eq!(
+            long(&both, true, &columns(7)),
+            "日本 4…\nWork 4…",
+            "every row is bounded"
+        );
     }
 
     #[test]
@@ -1767,19 +1933,29 @@ mod tests {
         assert!(pick(Some("~/.claude/"), None).starts_with("Personal 42%"));
         assert!(pick(None, Some("~/.codex-work")).ends_with("│ Codex Work 50%·2h18m   –"));
         let unknown = pick(Some("/nowhere/.claude"), None);
-        assert!(unknown.starts_with("Work 10%"), "{unknown}");
+        assert!(unknown.starts_with("Claude not tracked"), "{unknown}");
+        assert!(unknown.ends_with("│ Codex 95%·2h18m   –"), "{unknown}");
         let pinned = state(
             accounts,
             json!({ "trayMode": "pinned", "pinnedAccountId": "a" }),
         );
-        let pinned = long(
+        assert_eq!(
+            long(&pinned, false, &env_home(home, None, None)),
+            "Personal 42%·2h18m   –          │ Codex 95%·2h18m   –"
+        );
+        let tray_pick = long(&pinned, false, &Env::plain());
+        assert!(
+            tray_pick.starts_with("Personal 42%"),
+            "no folder at all: the tray's pick, {tray_pick}"
+        );
+        let untracked = long(
             &pinned,
             false,
             &env_home(home, Some("/nowhere/.claude"), Some("/nowhere/.codex")),
         );
         assert_eq!(
-            pinned,
-            "Personal 42%·2h18m   –          │ Codex Work 50%·2h18m   –"
+            untracked,
+            "Claude not tracked            │ Codex not tracked"
         );
     }
 
