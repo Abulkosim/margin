@@ -335,6 +335,7 @@ mod tests {
             recovery: false,
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
+            switching: Default::default(),
         }
     }
 

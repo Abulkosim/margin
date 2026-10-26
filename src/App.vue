@@ -13,7 +13,7 @@ import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
 import { popoverShownSchema, type Account, type AccountId, type Provider, type Settings } from './lib/model'
 
-const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow } = useMargin()
+const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore } = useMargin()
 const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
@@ -49,6 +49,7 @@ const showFilters = computed(() => counts.value.claude > 0 && counts.value.codex
 const filterOptions: { id: 'all' | Provider; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'claude', label: 'Claude' }, { id: 'codex', label: 'Codex' }]
 const compact = computed(() => state.value.settings.overviewLayout === 'compact')
 const expandedId = ref<AccountId | null>(null)
+const isActive = (account: Account): boolean => state.value.switching.activeAccountIds.includes(account.id)
 const isPinned = (account: Account): boolean => state.value.settings.trayMode === 'pinned' && state.value.settings.pinnedAccountId === account.id
 const fitsContent = computed(() => page.value === 'overview' && !loading.value && state.value.accounts.length > 0)
 const shell = ref<HTMLElement | null>(null)
@@ -276,7 +277,7 @@ onUnmounted(() => {
       <p class="gate-description">See account limits and reset times in the macOS menu bar or Windows system tray.</p>
       <a class="button button-primary" href="https://github.com/Abulkosim/margin/releases" target="_blank" rel="noopener noreferrer">Download Margin<AppIcon name="external" :size="14"/></a>
       <a class="preview-link" href="?demo=1">Preview <span>with sample data</span><AppIcon name="chevron" :size="12"/></a>
-      <p class="gate-footnote">Reads CLI credentials without changing them.</p>
+      <p class="gate-footnote">Reads CLI sign-ins. Changes them only when you ask.</p>
     </div>
 
     <div v-else ref="shell" class="app-shell" :class="{ 'is-preview': demo, 'fit-content': fitsContent }" :data-fit-height="fitHeight">
@@ -291,27 +292,27 @@ onUnmounted(() => {
           <main ref="scroller" class="accounts-scroll" :class="{ 'empty-scroll': !state.accounts.length }" aria-label="Account usage">
             <div v-if="loading" class="initial-loading" role="status" aria-label="Loading accounts"><div v-for="index in 2" :key="index" class="skeleton-card"><div class="skeleton skeleton-heading"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/><div class="skeleton skeleton-label"/><div class="skeleton skeleton-bar"/></div><p>Reading your accounts…</p></div>
             <div v-else-if="connectionError && !state.accounts.length" class="empty-state"><span class="load-error-symbol"><AppIcon name="alert" :size="28"/></span><h2>Couldn’t load your accounts.</h2><p>{{ connectionError }}</p><button class="button button-primary" :disabled="busy" @click="refresh"><AppIcon name="refresh" :size="14"/>Try again</button></div>
-            <div v-else-if="!state.accounts.length" class="empty-state"><div class="empty-illustration" aria-hidden="true"><div class="empty-orbit orbit-one"/><div class="empty-orbit orbit-two"/><span class="empty-provider empty-claude"><AppIcon name="claude" :size="24"/></span><span class="empty-provider empty-codex"><AppIcon name="codex" :size="23"/></span><span class="empty-center"><AppIcon name="margin" :size="27"/></span></div><h2>Add your accounts</h2><p>Connect Claude or Codex accounts already signed in on this device.</p><button class="button button-primary" :disabled="busy" @click="discover"><AppIcon name="refresh" :size="14"/>Find accounts</button><button class="text-button" @click="openSettings('accounts')">Add a config folder<AppIcon name="plus" :size="13"/></button><span class="empty-privacy">Reads CLI credentials without changing them.</span></div>
+            <div v-else-if="!state.accounts.length" class="empty-state"><div class="empty-illustration" aria-hidden="true"><div class="empty-orbit orbit-one"/><div class="empty-orbit orbit-two"/><span class="empty-provider empty-claude"><AppIcon name="claude" :size="24"/></span><span class="empty-provider empty-codex"><AppIcon name="codex" :size="23"/></span><span class="empty-center"><AppIcon name="margin" :size="27"/></span></div><h2>Add your accounts</h2><p>Connect Claude or Codex accounts already signed in on this device.</p><button class="button button-primary" :disabled="busy" @click="discover"><AppIcon name="refresh" :size="14"/>Find accounts</button><button class="text-button" @click="openSettings('accounts')">Add a config folder<AppIcon name="plus" :size="13"/></button><span class="empty-privacy">Reads CLI sign-ins. Changes them only when you ask.</span></div>
             <div v-else ref="accountList" class="account-list">
               <template v-if="compact && visibleAccounts.length">
                 <div class="compact-columns" aria-hidden="true"><span>Session</span><span>Weekly</span><span>Resets</span></div>
                 <ul class="compact-list" @keydown="moveRowFocus">
                   <li v-for="account in visibleAccounts" :key="account.id" class="compact-item" :class="{ expanded: expandedId === account.id }">
                     <AccountRow :account="account" :settings="state.settings" :now="now" :pinned="isPinned(account)" :expanded="expandedId === account.id" :connection-error="connectionError" :controls="`account-${account.id}`" @toggle="toggleExpanded(account.id)"/>
-                    <div v-if="expandedId === account.id" :id="`account-${account.id}`" class="compact-detail"><AccountCard :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></div>
+                    <div v-if="expandedId === account.id" :id="`account-${account.id}`" class="compact-detail"><AccountCard :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :active="isActive(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></div>
                   </li>
                 </ul>
               </template>
-              <template v-else-if="!compact"><AccountCard v-for="account in visibleAccounts" :key="account.id" :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></template>
+              <template v-else-if="!compact"><AccountCard v-for="account in visibleAccounts" :key="account.id" :account="account" :demo="demo" :settings="state.settings" :now="now" :pinned="isPinned(account)" :active="isActive(account)" :busy="busy" :connection-error="connectionError" @pin="togglePin(account)" @refresh="refresh"/></template>
               <div v-if="!visibleAccounts.length" class="filter-empty"><AppIcon :name="filter === 'claude' ? 'claude' : 'codex'" :size="25"/><p>No {{ filter === 'claude' ? 'Claude' : 'Codex' }} accounts yet.</p><button class="text-button" @click="openSettings('accounts')">Add an account<AppIcon name="plus" :size="13"/></button></div>
             </div>
           </main>
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/><button v-if="showsAttention" class="text-button attention-button" @click="showAttention">{{ status }}</button><template v-else>{{ status }}</template></span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
-        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
+        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" :active-ids="state.switching.activeAccountIds" :restore-offer="state.switching.restore" :preview-make-active="previewMakeActive" :make-active="makeActive" :restore-backup="restoreSwitchBackup" :dismiss-restore="dismissSwitchRestore" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
-        <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
+        <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button v-if="message.action" class="toast-action" :disabled="busy" @click="message.action.run()">{{ message.action.label }}</button><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
       </div>
     </div>
   </div>

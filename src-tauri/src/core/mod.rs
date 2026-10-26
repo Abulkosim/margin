@@ -8,4 +8,5 @@ pub mod providers;
 pub mod ring;
 pub mod settings;
 pub mod store;
+pub mod switch;
 pub mod tray;

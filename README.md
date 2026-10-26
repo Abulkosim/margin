@@ -128,7 +128,7 @@ Exit codes: `0` ok, `1` no accounts or unreadable settings, `2` bad arguments. `
 
 Credentials and provider requests stay in Rust; the interface never receives tokens. Settings, last-known usage, and up to seven days of history are stored locally and can include account emails and folder paths.
 
-Margin does not write to CLI credential files, rotate CLI tokens, read browser cookies, change active accounts, or spend reset credits. No Margin account or hosted backend. Update checks contact GitHub Releases without sending credentials, identities, or usage.
+Margin writes CLI sign-ins only when you confirm **Make active**, which swaps the default folder's sign-in with another folder's. It does not rotate CLI tokens, read browser cookies, or spend reset credits. No Margin account or hosted backend. Update checks contact GitHub Releases without sending credentials, identities, or usage.
 
 Exact files, Keychain items, and hosts: [PRIVACY.md](PRIVACY.md). Vulnerabilities: [SECURITY.md](SECURITY.md).
 

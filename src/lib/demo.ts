@@ -1,4 +1,4 @@
-import { accountIdSchema, accountSchema, appStateSchema, defaultSettings, type AppState } from './model.ts'
+import { accountIdSchema, accountSchema, appStateSchema, defaultSettings, type Account, type AccountId, type AppState, type MakeActivePreview } from './model.ts'
 import type { UpdateState } from './updater.ts'
 
 export function createDemoState(scenario: string | null): AppState {
@@ -121,7 +121,54 @@ export function createDemoState(scenario: string | null): AppState {
   }
   if (scenario === 'hidden') state.ignoredSources = ['claude:~/.claude-old', 'codex:~/.codex-old']
   if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']
+  state.switching.activeAccountIds = demoActiveIds(state.accounts)
+  if (scenario === 'switch-restore') state.switching.restore = { id: 'claude-demo-backup', provider: 'claude', reason: 'verifyFailed', createdAt: new Date(now - 4 * 60_000).toISOString() }
   return state
+}
+
+const defaultFolder = { claude: '~/.claude', codex: '~/.codex' } as const
+
+export function demoActiveIds(accounts: Account[]): string[] {
+  return accounts
+    .filter(account => account.source.kind === 'keychain' || account.source.path === defaultFolder[account.provider])
+    .map(account => account.id)
+}
+
+export function demoPreview(state: AppState, id: AccountId, running: boolean): MakeActivePreview | string {
+  const account = state.accounts.find(item => item.id === id)
+  if (!account || account.source.kind !== 'configDir') return 'Account no longer exists.'
+  const active = state.switching.activeAccountIds
+  if (active.includes(id)) return 'This account is already active.'
+  if (account.error?.kind === 'signedOut') return `${account.label} is signed out. Run ${account.error.signInCommand ?? account.provider}, then try again.`
+  const previous = state.accounts.find(item => item.provider === account.provider && active.includes(item.id))
+  if (previous?.identity.email && previous.identity.email === account.identity.email) return 'Both folders hold the same account. Sign out of one first.'
+  return {
+    accountId: account.id,
+    provider: account.provider,
+    kind: previous ? 'swap' : 'move',
+    fingerprint: `demo-${account.id}`,
+    target: account.identity.email ?? account.label,
+    displaced: previous ? previous.identity.email ?? previous.label : null,
+    folder: account.source.path,
+    running,
+  }
+}
+
+export function demoActivate(state: AppState, id: AccountId): { state: AppState; previousAccountId: AccountId | null } {
+  const target = state.accounts.find(item => item.id === id)
+  const previous = state.accounts.find(item => item.provider === target?.provider && state.switching.activeAccountIds.includes(item.id))
+  if (!target) return { state, previousAccountId: null }
+  const folder = target.source
+  const slot = previous?.source ?? { kind: 'configDir' as const, path: defaultFolder[target.provider] }
+  const accounts = state.accounts.map(account => {
+    if (account.id === target.id) return { ...account, source: slot }
+    if (account.id === previous?.id) return { ...account, source: folder }
+    return account
+  })
+  return {
+    state: { ...state, accounts, switching: { ...state.switching, activeAccountIds: demoActiveIds(accounts) } },
+    previousAccountId: previous?.id ?? null,
+  }
 }
 
 export function createDemoUpdateState(scenario: string | null): UpdateState {

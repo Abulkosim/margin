@@ -1,6 +1,7 @@
 pub mod cli;
 mod commands;
 pub mod core;
+mod make_active;
 mod runtime;
 mod updates;
 
@@ -40,6 +41,10 @@ pub fn run() {
             commands::save_settings,
             commands::reset_store,
             commands::hide_window,
+            make_active::preview_make_active,
+            make_active::make_active,
+            make_active::restore_switch_backup,
+            make_active::dismiss_switch_restore,
             updates::get_update_status,
             updates::check_for_update,
             updates::install_update,

@@ -37,8 +37,8 @@ From Claude credentials, Margin uses the `claudeAiOauth` access token, its scope
 
 On macOS only, Claude Code stores tokens in Keychain instead of `.credentials.json`. Margin lists Keychain item names with `/usr/bin/security dump-keychain`. This reads names and attributes only, never passwords. It then reads generic password items with `/usr/bin/security find-generic-password -s <service> -w`:
 
-- `Claude Code-credentials`, for `~/.claude`. Read during discovery when no `~/.claude` account is found, and at refresh when `~/.claude/.credentials.json` has no usable token.
-- `Claude Code-credentials-<suffix>`, for another Claude configuration folder Margin knows about. The suffix is the first 8 hex characters of the SHA-256 of the folder path, as Claude Code computes it. Read at refresh when that folder has no usable `.credentials.json`.
+- `Claude Code-credentials`, for `~/.claude`. Read during discovery when no `~/.claude` account is found, and at refresh before `~/.claude/.credentials.json`, the same order Claude Code uses.
+- `Claude Code-credentials-<suffix>`, for another Claude configuration folder Margin knows about. The suffix is the first 8 hex characters of the SHA-256 of the NFC-normalized folder path, as Claude Code computes it. Read at refresh before that folder's `.credentials.json`.
 
 Items that match no known folder are ignored. macOS may ask you to allow access. No other Keychain items are read.
 
@@ -83,7 +83,9 @@ Tokens are never written to these files.
 
 `margin --json` and `margin --line` only read `state.json` and print to the terminal. They make no network requests and write nothing. See [`cli.rs`](src-tauri/src/cli.rs).
 
-Other changes Margin makes, only when you turn them on:
+Other changes Margin makes, only when you turn them on or ask for them:
+
+- **Make active:** after you confirm, swaps the sign-in of the CLI's default folder (`~/.claude` or `~/.codex`) with the folder you chose. For Claude it swaps the credential (the Keychain item on macOS, else `.credentials.json`) and the `oauthAccount` entry of `~/.claude.json` and `<folder>/.claude.json`, leaving every other entry as it was. For Codex it swaps `auth.json`. It holds Claude Code's lock folders while it writes, makes no network request, and checks the result. Before writing it saves the old values: on macOS in Keychain items named `Margin backup`, on Windows in `backups/<id>.json` in its data folder. `switches.json` in the same folder lists recent switches with folder paths and hashes, never tokens. The last 5 switches from the past 7 days are kept. See [`switch.rs`](src-tauri/src/core/switch.rs).
 
 - **Launch at login:** registers Margin with the OS. On macOS this is a LaunchAgent in `~/Library/LaunchAgents`. On Windows this is a per-user startup entry.
 - **Notifications:** shown through the OS notification system.
@@ -91,10 +93,9 @@ Other changes Margin makes, only when you turn them on:
 
 ## What Margin never does
 
-- Write to, move, or delete CLI credential files or Keychain items.
+- Write to, move, or delete CLI credential files or Keychain items, except when you confirm **Make active** or **Restore backup**.
 - Refresh or rotate CLI tokens.
 - Read browser cookies or run the CLIs.
-- Change which account a CLI uses.
 - Redeem or spend reset credits.
 - Send telemetry, analytics, or crash reports.
 
