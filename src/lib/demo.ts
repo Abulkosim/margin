@@ -6,7 +6,7 @@ export function createDemoState(scenario: string | null): AppState {
   const future = (hours: number): string => new Date(now + hours * 3_600_000).toISOString()
   const state = appStateSchema.parse({
     revision: 0,
-    settings: { ...defaultSettings, notifications: false, burnAlerts: false, burnThreshold: 20 },
+    settings: { ...defaultSettings, notifications: false, burnAlerts: false, burnThreshold: 20, weeklyDigest: false },
     refreshing: false,
     accounts: [
       {

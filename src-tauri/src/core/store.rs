@@ -1,4 +1,5 @@
 use super::{
+    digest::DigestState,
     model::{Account, Snapshot},
     notifications::AlertMemory,
     settings::Settings,
@@ -30,6 +31,8 @@ pub struct StoredState {
     pub ignored_sources: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_update_check_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<DigestState>,
     #[serde(skip)]
     pub recovered: Vec<String>,
 }
@@ -252,6 +255,16 @@ fn decode(value: Value) -> Result<StoredState, String> {
         Some(Value::String(value)) if valid_timestamp(&value) => Some(value),
         _ => None,
     };
+    let digest = match root.remove("digest") {
+        None | Some(Value::Null) => None,
+        Some(value) => match serde_json::from_value::<DigestState>(value) {
+            Ok(digest) if digest.validate().is_ok() => Some(digest),
+            _ => {
+                recovered.push("Weekly digest history couldn’t be read and was cleared.".into());
+                None
+            }
+        },
+    };
     Ok(StoredState {
         version: 1,
         accounts,
@@ -259,6 +272,7 @@ fn decode(value: Value) -> Result<StoredState, String> {
         alerts,
         ignored_sources,
         last_update_check_at,
+        digest,
         recovered,
     })
 }
@@ -282,6 +296,9 @@ fn validate(state: &StoredState) -> Result<(), String> {
         .is_some_and(|value| !valid_timestamp(value))
     {
         return Err(invalid_store());
+    }
+    if let Some(digest) = &state.digest {
+        digest.validate().map_err(|_| invalid_store())?;
     }
     if state.accounts.len() > MAX_ACCOUNTS
         || state.alerts.len() > MAX_ACCOUNTS * MAX_WINDOWS
@@ -766,6 +783,59 @@ mod tests {
             assert!(loaded.recovered.is_empty());
         }
         state.last_update_check_at = Some("soon".into());
+        assert!(save(&path, &state).is_err());
+    }
+
+    #[test]
+    fn digest_state_round_trips_and_damage_clears_only_it() {
+        use crate::core::digest::{SummaryRow, WeeklySummary};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let mut state = sample_state();
+        assert!(!serde_json::to_value(&state)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("digest"));
+        state.digest = Some(DigestState {
+            last_sent_at: "2026-10-26T09:00:00+00:00".into(),
+            previous: Some(WeeklySummary {
+                from: "2026-10-19T09:00:00+00:00".into(),
+                to: "2026-10-26T09:00:00+00:00".into(),
+                accounts: vec![SummaryRow {
+                    id: "codex-example".into(),
+                    weekly_peak: Some(71.0),
+                    session_hits: 2,
+                    session_periods: 14,
+                }],
+            }),
+        });
+        save(&path, &state).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.digest, state.digest);
+        assert!(loaded.recovered.is_empty());
+        for garbage in [
+            serde_json::json!({"lastSentAt": "monday"}),
+            serde_json::json!({"lastSentAt": "2026-10-26T09:00:00Z", "previous": {"from": "x", "to": "y", "accounts": []}}),
+            serde_json::json!(7),
+        ] {
+            let mut value = serde_json::to_value(sample_state()).unwrap();
+            value["digest"] = garbage;
+            let bytes = serde_json::to_vec(&value).unwrap();
+            fs::write(&path, &bytes).unwrap();
+            let loaded = load(&path).unwrap();
+            assert!(loaded.digest.is_none());
+            assert_eq!(loaded.accounts.len(), 1);
+            assert_eq!(
+                loaded.recovered,
+                vec!["Weekly digest history couldn’t be read and was cleared."]
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+        state.digest = Some(DigestState {
+            last_sent_at: "soon".into(),
+            previous: None,
+        });
         assert!(save(&path, &state).is_err());
     }
 

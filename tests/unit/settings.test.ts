@@ -51,3 +51,11 @@ test('fast usage alerts default off at 20% and accept only 10, 20, or 30', () =>
     assert.equal(settingsSchema.safeParse({ ...defaultSettings, burnThreshold }).success, false)
   }
 })
+
+test('weekly digest defaults off and older settings parse with it off', () => {
+  assert.equal(defaultSettings.weeklyDigest, false)
+  const { weeklyDigest: _, ...legacy } = defaultSettings
+  assert.equal(settingsSchema.parse(legacy).weeklyDigest, false)
+  assert.equal(settingsSchema.parse({ ...defaultSettings, weeklyDigest: true }).weeklyDigest, true)
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, weeklyDigest: 'monday' }).success, false)
+})

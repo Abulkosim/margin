@@ -632,11 +632,16 @@ fn append_windows(
             Some(seconds) if seconds % 60 == 0 => format!("{} minutes", seconds / 60),
             Some(seconds) => format!("{seconds} seconds"),
         };
+        let slot = match duration {
+            Some(18_000) => "primary_window",
+            Some(604_800) => "secondary_window",
+            _ => key,
+        };
         windows.push(UsageWindow {
-            id: format!("{prefix}{key}"),
+            id: format!("{prefix}{slot}"),
             label: match name {
                 None => period.clone(),
-                Some(name) if key == "secondary_window" => name.to_owned(),
+                Some(name) if slot == "secondary_window" => name.to_owned(),
                 Some(name) => format!("{name} · {}", period.to_lowercase()),
             },
             used_percent: percent(utilization)?,
@@ -692,7 +697,7 @@ mod tests {
             serde_json::from_str(include_str!("../../../fixtures/codex-live-schema.json")).unwrap();
         let snapshot = parse_usage(&value).unwrap();
         assert_eq!(snapshot.windows.len(), 1);
-        assert_eq!(snapshot.windows[0].id, "primary_window");
+        assert_eq!(snapshot.windows[0].id, "secondary_window");
         assert_eq!(snapshot.windows[0].label, "Weekly");
         assert_eq!(snapshot.windows[0].window_seconds, Some(604_800));
         assert_eq!(snapshot.windows[0].used_percent, 34.0);
@@ -911,6 +916,18 @@ mod tests {
         assert_eq!(snapshot.windows[0].window_seconds, Some(2_592_000));
         let snapshot = parse_usage(&json!({"rate_limit": {"secondary_window": {"used_percent": 50, "limit_window_seconds": 18_000}}})).unwrap();
         assert_eq!(snapshot.windows[0].label, "Session");
+        assert_eq!(snapshot.windows[0].id, "primary_window");
+    }
+
+    #[test]
+    fn a_weekly_only_plan_reports_its_single_window_as_weekly() {
+        let snapshot = parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 16, "limit_window_seconds": 604_800, "reset_at": 1_793_603_850}, "secondary_window": null}})).unwrap();
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].id, "secondary_window");
+        assert_eq!(snapshot.windows[0].label, "Weekly");
+        let snapshot =
+            parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 1}}})).unwrap();
+        assert_eq!(snapshot.windows[0].id, "primary_window");
     }
 
     #[test]

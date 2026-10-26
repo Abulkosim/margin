@@ -1,5 +1,5 @@
 use super::{
-    burn,
+    burn, digest,
     model::UsageError,
     notifications::{self, AlertKind},
     providers,
@@ -75,6 +75,7 @@ pub fn resumed(last_tick: SystemTime, now: SystemTime, interval: Duration) -> bo
 }
 
 const OPEN_REFRESH_AGE: Duration = Duration::from_secs(30);
+const DIGEST_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 fn bring_forward(
     schedules: &mut HashMap<String, Schedule>,
@@ -209,6 +210,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
     tauri::async_runtime::spawn(async move {
         let mut last_tray_update = Instant::now();
         let mut last_tick = SystemTime::now();
+        let mut last_digest_check: Option<Instant> = None;
         loop {
             let mut inner = runtime.inner.lock().await;
             let tick = SystemTime::now();
@@ -216,6 +218,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             if resumed(last_tick, tick, interval) {
                 bring_forward(&mut inner.schedules, true, None);
                 runtime.update_wake.notify_one();
+                last_digest_check = None;
             }
             last_tick = tick;
             let ids: Vec<String> = inner
@@ -277,6 +280,10 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             } else if last_tray_update.elapsed() >= Duration::from_secs(5) {
                 tray::update(&app, &view);
                 last_tray_update = Instant::now();
+            }
+            if last_digest_check.is_none_or(|at| at.elapsed() >= DIGEST_CHECK_INTERVAL) {
+                last_digest_check = Some(Instant::now());
+                digest::deliver(&app, &runtime).await;
             }
             for (account, generation) in due {
                 let runtime = runtime.clone();

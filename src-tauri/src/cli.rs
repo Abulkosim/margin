@@ -1,6 +1,7 @@
 use crate::core::{
-    model::{Account, Provider, UsageWindow, WindowScope},
+    model::{Account, AccountSource, Provider, UsageWindow, WindowScope},
     notifications::reset_clock,
+    providers::claude::nfc,
     settings::{AccountOrder, Settings, TrayMode},
     store::{self, StoredState},
     tray,
@@ -8,39 +9,115 @@ use crate::core::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use std::{
-    ffi::OsString,
-    io::{self, Write},
+    ffi::{OsStr, OsString},
+    io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
 };
 
 pub const SCHEMA: u32 = 1;
 pub const DATA_DIR_ENV: &str = "MARGIN_DATA_DIR";
 const IDENTIFIER: &str = "com.abulkosim.margin";
-const FLAGS: [&str; 7] = [
+const FLAGS: [&str; 10] = [
     "--json",
     "--line",
     "--all",
+    "--short",
+    "--color",
+    "--no-color",
     "--help",
     "-h",
     "--version",
     "-V",
 ];
-const USAGE: &str = "Usage: margin [--json | --line [--all]]
+const USAGE: &str = "Usage: margin [--json | --line [--all] [--short] [--color | --no-color]]
 
-  --json     Print every account as JSON
-  --line     Print one short line for statuslines
-  --all      With --line, list every account
-  --version  Print the version
-  --help     Print this help
+  --json      Print every account as JSON
+  --line      Print session and weekly usage for statuslines
+  --all       With --line, print one row per account
+  --short     With --line, print one account and one window
+  --color     Force ANSI colors on (--no-color: off)
+  --version   Print the version
+  --help      Print this help
 
-Reads the usage Margin last saved. Margin does not need to be running.";
+Reads the usage Margin last saved. Margin does not need to be running.
+Colors are on in a terminal or under Claude Code, off when NO_COLOR is set.
+The line is fitted to COLUMNS when set.";
+
+const LABEL_MAX: usize = 12;
+const LABEL_SHORT: usize = 4;
+const CELL_WIDE: usize = 10;
+const CELL_NARROW: usize = 4;
+const DIVIDER: &str = " │ ";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LineOptions {
+    all: bool,
+    short: bool,
+    color: ColorChoice,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     Json,
-    Line { all: bool },
+    Line(LineOptions),
     Help,
     Version,
+}
+
+/// What the caller's shell tells us: which CLI folders this terminal uses,
+/// how wide it is and whether colors make sense.
+struct Env {
+    claude_dir: Option<OsString>,
+    codex_dir: Option<OsString>,
+    home: Option<PathBuf>,
+    columns: Option<usize>,
+    color: bool,
+}
+
+impl Env {
+    fn capture(choice: ColorChoice) -> Self {
+        let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
+        let color = color_enabled(
+            choice,
+            var("NO_COLOR").is_some(),
+            io::stdout().is_terminal(),
+            var("CLAUDECODE").is_some(),
+        );
+        Self {
+            claude_dir: var("CLAUDE_CONFIG_DIR"),
+            codex_dir: var("CODEX_HOME"),
+            home: dirs::home_dir(),
+            columns: var("COLUMNS")
+                .and_then(|value| value.to_str()?.trim().parse::<usize>().ok())
+                .filter(|columns| *columns > 0),
+            color,
+        }
+    }
+
+    fn plain() -> Self {
+        Self {
+            claude_dir: None,
+            codex_dir: None,
+            home: None,
+            columns: None,
+            color: false,
+        }
+    }
+}
+
+fn color_enabled(choice: ColorChoice, no_color: bool, tty: bool, claude_code: bool) -> bool {
+    match choice {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => !no_color && (tty || claude_code),
+    }
 }
 
 pub fn run(args: impl IntoIterator<Item = OsString>) -> Option<i32> {
@@ -63,29 +140,56 @@ fn parse(args: &[String]) -> Option<Result<Command, String>> {
     if !args.iter().any(|arg| FLAGS.contains(&arg.as_str())) {
         return None;
     }
-    let (mut json, mut line, mut all, mut help, mut version) = (false, false, false, false, false);
+    let (mut json, mut line, mut help, mut version) = (false, false, false, false);
+    let (mut all, mut short, mut color, mut no_color) = (false, false, false, false);
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
             "--line" => line = true,
             "--all" => all = true,
+            "--short" => short = true,
+            "--color" => color = true,
+            "--no-color" => no_color = true,
             "--help" | "-h" => help = true,
             "--version" | "-V" => version = true,
             other => return Some(Err(format!("unknown option {other}"))),
         }
     }
-    Some(if help {
-        Ok(Command::Help)
-    } else if version {
-        Ok(Command::Version)
+    if help {
+        return Some(Ok(Command::Help));
+    }
+    if version {
+        return Some(Ok(Command::Version));
+    }
+    if json && line {
+        return Some(Err("choose --json or --line, not both".into()));
+    }
+    if color && no_color {
+        return Some(Err("choose --color or --no-color, not both".into()));
+    }
+    let line_only = [
+        (all, "--all"),
+        (short, "--short"),
+        (color, "--color"),
+        (no_color, "--no-color"),
+    ];
+    if let Some((_, flag)) = line_only.iter().find(|(set, _)| *set && !line) {
+        return Some(Err(format!("{flag} works with --line")));
+    }
+    Some(if json {
+        Ok(Command::Json)
+    } else if line {
+        Ok(Command::Line(LineOptions {
+            all,
+            short,
+            color: match (color, no_color) {
+                (true, _) => ColorChoice::Always,
+                (_, true) => ColorChoice::Never,
+                _ => ColorChoice::Auto,
+            },
+        }))
     } else {
-        match (json, line) {
-            (true, true) => Err("choose --json or --line, not both".into()),
-            (true, false) if all => Err("--all works with --line".into()),
-            (true, false) => Ok(Command::Json),
-            (false, true) => Ok(Command::Line { all }),
-            (false, false) => Err("--all works with --line".into()),
-        }
+        Err("choose --json or --line".into())
     })
 }
 
@@ -106,7 +210,7 @@ fn execute(command: Result<Command, String>, out: &mut dyn Write, err: &mut dyn 
             let _ = writeln!(out, "margin {}", env!("CARGO_PKG_VERSION"));
             0
         }
-        Command::Json | Command::Line { .. } => {
+        Command::Json | Command::Line(_) => {
             let state = match state_path()
                 .ok_or_else(|| "could not find the app data folder".to_owned())
                 .and_then(|path| read_state(&path))
@@ -117,7 +221,11 @@ fn execute(command: Result<Command, String>, out: &mut dyn Write, err: &mut dyn 
                     return 1;
                 }
             };
-            match render(&command, state.as_ref(), app_running, Utc::now()) {
+            let env = match command {
+                Command::Line(options) => Env::capture(options.color),
+                _ => Env::plain(),
+            };
+            match render(&command, state.as_ref(), app_running, Utc::now(), &env) {
                 Ok((text, empty)) => {
                     let _ = writeln!(out, "{text}");
                     i32::from(empty)
@@ -136,15 +244,16 @@ fn render(
     state: Option<&StoredState>,
     app_running: fn() -> Option<bool>,
     now: DateTime<Utc>,
+    env: &Env,
 ) -> Result<(String, bool), String> {
     let empty = state.is_none_or(|state| state.accounts.is_empty());
     let text = match command {
-        Command::Line { all } => {
+        Command::Line(options) => {
             let default = Settings::default();
             let (accounts, settings) = state.map_or((&[][..], &default), |state| {
                 (&state.accounts[..], &state.settings)
             });
-            line(accounts, settings, *all, now)
+            line(accounts, settings, *options, env, now)
         }
         _ => serde_json::to_string(&report(state, app_running(), now))
             .map_err(|_| "could not encode the report".to_owned())?,
@@ -344,23 +453,453 @@ fn ordered<'a>(
     accounts
 }
 
-fn line(accounts: &[Account], settings: &Settings, all: bool, now: DateTime<Utc>) -> String {
+fn line(
+    accounts: &[Account],
+    settings: &Settings,
+    options: LineOptions,
+    env: &Env,
+    now: DateTime<Utc>,
+) -> String {
+    if options.short {
+        return short_line(accounts, settings, options.all, now);
+    }
+    if accounts.is_empty() {
+        return "No accounts".into();
+    }
+    let rows: Vec<Vec<Segment>> = if options.all {
+        let mut rows = Vec::new();
+        for provider in [Provider::Claude, Provider::Codex] {
+            let subset: Vec<Account> = accounts
+                .iter()
+                .filter(|account| account.provider == provider)
+                .cloned()
+                .collect();
+            for account in ordered(&subset, settings, now) {
+                rows.push(vec![segment(account, settings, now)]);
+            }
+        }
+        rows
+    } else {
+        vec![[Provider::Claude, Provider::Codex]
+            .into_iter()
+            .filter_map(|provider| chosen(accounts, provider, settings, env, now))
+            .map(|account| segment(account, settings, now))
+            .collect()]
+    };
+    let rows = fit(&rows, options.all, env.columns);
+    rows.iter()
+        .map(|row| paint(row, env.color))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The account this terminal is using, or the tray's pick for the provider.
+fn chosen<'a>(
+    accounts: &'a [Account],
+    provider: Provider,
+    settings: &Settings,
+    env: &Env,
+    now: DateTime<Utc>,
+) -> Option<&'a Account> {
+    let subset: Vec<&Account> = accounts
+        .iter()
+        .filter(|account| account.provider == provider)
+        .collect();
+    if subset.is_empty() {
+        return None;
+    }
+    let (configured, folder) = match provider {
+        Provider::Claude => (&env.claude_dir, ".claude"),
+        Provider::Codex => (&env.codex_dir, ".codex"),
+    };
+    let home = env.home.as_deref();
+    let default_dir = home.map(|home| normalize_dir(home.join(folder).as_os_str(), Some(home)));
+    let target = configured
+        .as_deref()
+        .map(|value| normalize_dir(value, home))
+        .or_else(|| default_dir.clone());
+    if let Some(target) = target {
+        let is_default = default_dir.as_ref() == Some(&target);
+        let matched = subset.iter().find(|account| match &account.source {
+            AccountSource::ConfigDir { path, .. } => {
+                normalize_dir(OsStr::new(path), home) == target
+            }
+            AccountSource::Keychain => is_default,
+        });
+        if let Some(account) = matched {
+            return Some(account);
+        }
+    }
+    let owned: Vec<Account> = subset.iter().map(|account| (*account).clone()).collect();
+    let pick = tray::selected(&owned, settings, now)?;
+    subset.into_iter().find(|account| account.id == pick.id)
+}
+
+/// One comparable form for a CLI folder: `~` expanded, relative to the
+/// working directory, symlinks resolved when it exists, no trailing slash,
+/// NFC on macOS.
+fn normalize_dir(value: &OsStr, home: Option<&Path>) -> String {
+    let text = value.to_string_lossy();
+    let text = text.trim();
+    let mut path = PathBuf::from(text);
+    if let Some(rest) = text.strip_prefix('~') {
+        if rest.is_empty() || rest.starts_with(['/', '\\']) {
+            if let Some(home) = home {
+                path = home.join(rest.trim_start_matches(['/', '\\']));
+            }
+        }
+    }
+    if path.is_relative() {
+        if let Ok(cwd) = std::env::current_dir() {
+            path = cwd.join(path);
+        }
+    }
+    let path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.components().collect());
+    nfc(&path.to_string_lossy())
+}
+
+enum Cell {
+    Reading {
+        remaining: f64,
+        left: Option<String>,
+    },
+    Missing,
+}
+
+enum Body {
+    Windows { session: Cell, weekly: Cell },
+    Status(&'static str),
+}
+
+struct Segment {
+    label: String,
+    stale: bool,
+    body: Body,
+}
+
+fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segment {
+    let label = match account.label.trim() {
+        "" => account.provider.name().to_owned(),
+        label => label.to_owned(),
+    };
+    let stale = tray::stale(account, settings, now);
+    let body = match (&account.snapshot, &account.error) {
+        (_, Some(error)) if error.kind == "signedOut" => Body::Status("signed out"),
+        (None, Some(_)) => Body::Status("no data"),
+        (None, None) => Body::Status("…"),
+        (Some(snapshot), _) => {
+            let cell = |ids: [&str; 2]| {
+                snapshot
+                    .windows
+                    .iter()
+                    .find(|window| ids.contains(&window.id.as_str()))
+                    .map_or(Cell::Missing, |window| Cell::Reading {
+                        remaining: 100.0 - used(window),
+                        left: window
+                            .resets_at
+                            .as_deref()
+                            .and_then(|reset| time_left(reset, now)),
+                    })
+            };
+            Body::Windows {
+                session: cell(["five_hour", "primary_window"]),
+                weekly: cell(["seven_day", "secondary_window"]),
+            }
+        }
+    };
+    Segment { label, stale, body }
+}
+
+/// Time until a reset in at most five characters; `None` once it has passed.
+fn time_left(reset: &str, now: DateTime<Utc>) -> Option<String> {
+    let reset = DateTime::parse_from_rfc3339(reset)
+        .ok()?
+        .with_timezone(&Utc);
+    let seconds = (reset - now).num_seconds();
+    if seconds <= 0 {
+        return None;
+    }
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+    let days = hours / 24;
+    Some(if seconds < 60 {
+        "<1m".into()
+    } else if hours == 0 {
+        format!("{minutes}m")
+    } else if hours < 10 {
+        format!("{hours}h{:02}m", minutes % 60)
+    } else if days == 0 {
+        format!("{hours}h")
+    } else if hours % 24 == 0 {
+        format!("{days}d")
+    } else {
+        format!("{days}d{}h", hours % 24)
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tone {
+    Plain,
+    Warn,
+    Low,
+    Out,
+    Dim,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Span {
+    text: String,
+    tone: Tone,
+}
+
+impl Span {
+    fn new(text: impl Into<String>, tone: Tone) -> Self {
+        Self {
+            text: text.into(),
+            tone,
+        }
+    }
+}
+
+fn tone_for(remaining: f64) -> Tone {
+    if remaining <= 0.0 {
+        Tone::Out
+    } else if remaining < 20.0 {
+        Tone::Low
+    } else if remaining < 40.0 {
+        Tone::Warn
+    } else {
+        Tone::Plain
+    }
+}
+
+/// How much of the row survives a narrow terminal, widest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Detail {
+    countdowns: bool,
+    short_labels: bool,
+    weekly: bool,
+}
+
+const DETAILS: [Detail; 4] = [
+    Detail {
+        countdowns: true,
+        short_labels: false,
+        weekly: true,
+    },
+    Detail {
+        countdowns: false,
+        short_labels: false,
+        weekly: true,
+    },
+    Detail {
+        countdowns: false,
+        short_labels: true,
+        weekly: true,
+    },
+    Detail {
+        countdowns: false,
+        short_labels: true,
+        weekly: false,
+    },
+];
+
+impl Detail {
+    fn cell_width(self) -> usize {
+        if self.countdowns {
+            CELL_WIDE
+        } else {
+            CELL_NARROW
+        }
+    }
+
+    fn gap(self) -> usize {
+        if self.countdowns {
+            2
+        } else {
+            1
+        }
+    }
+
+    fn body_width(self) -> usize {
+        if self.weekly {
+            self.cell_width() * 2 + self.gap()
+        } else {
+            self.cell_width()
+        }
+    }
+
+    fn label(self, label: &str) -> String {
+        let limit = if self.short_labels {
+            LABEL_SHORT
+        } else {
+            LABEL_MAX
+        };
+        if label.chars().count() <= limit {
+            label.to_owned()
+        } else if self.short_labels {
+            label.chars().take(limit).collect()
+        } else {
+            let mut text: String = label.chars().take(limit - 1).collect();
+            text.push('…');
+            text
+        }
+    }
+}
+
+fn width(spans: &[Span]) -> usize {
+    spans.iter().map(|span| span.text.chars().count()).sum()
+}
+
+fn pad(spans: &mut Vec<Span>, target: usize) {
+    let current = width(spans);
+    if current < target {
+        spans.push(Span::new(" ".repeat(target - current), Tone::Plain));
+    }
+}
+
+fn cell_spans(cell: &Cell, stale: bool, detail: Detail) -> Vec<Span> {
+    let mut spans = match cell {
+        Cell::Missing => vec![Span::new("–", Tone::Dim)],
+        Cell::Reading { remaining, left } => {
+            let tone = if stale {
+                Tone::Dim
+            } else {
+                tone_for(*remaining)
+            };
+            let prefix = if stale { "~" } else { "" };
+            let mut spans = vec![Span::new(
+                format!("{prefix}{}%", tray::percent_label(*remaining)),
+                tone,
+            )];
+            if let Some(left) = left.as_deref().filter(|_| detail.countdowns) {
+                spans.push(Span::new(format!("·{left}"), Tone::Dim));
+            }
+            spans
+        }
+    };
+    pad(&mut spans, detail.cell_width());
+    spans
+}
+
+fn segment_spans(segment: &Segment, detail: Detail, label_width: Option<usize>) -> Vec<Span> {
+    let label_tone = if segment.stale && matches!(segment.body, Body::Windows { .. }) {
+        Tone::Dim
+    } else {
+        Tone::Plain
+    };
+    let mut spans = vec![Span::new(detail.label(&segment.label), label_tone)];
+    if let Some(label_width) = label_width {
+        pad(&mut spans, label_width);
+    }
+    spans.push(Span::new(" ", Tone::Plain));
+    let mut body = match &segment.body {
+        Body::Status(text) => vec![Span::new(
+            *text,
+            if *text == "…" {
+                Tone::Dim
+            } else {
+                Tone::Plain
+            },
+        )],
+        Body::Windows { session, weekly } => {
+            let mut body = cell_spans(session, segment.stale, detail);
+            if detail.weekly {
+                body.push(Span::new(" ".repeat(detail.gap()), Tone::Plain));
+                body.extend(cell_spans(weekly, segment.stale, detail));
+            }
+            body
+        }
+    };
+    pad(&mut body, detail.body_width());
+    spans.extend(body);
+    spans
+}
+
+fn layout(rows: &[Vec<Segment>], detail: Detail, pad_labels: bool) -> Vec<Vec<Span>> {
+    let label_width = pad_labels.then(|| {
+        rows.iter()
+            .flatten()
+            .map(|segment| detail.label(&segment.label).chars().count())
+            .max()
+            .unwrap_or(0)
+    });
+    rows.iter()
+        .map(|row| {
+            let mut spans = Vec::new();
+            for (index, segment) in row.iter().enumerate() {
+                if index > 0 {
+                    spans.push(Span::new(DIVIDER, Tone::Dim));
+                }
+                spans.extend(segment_spans(segment, detail, label_width));
+            }
+            while let Some(last) = spans.last_mut() {
+                let trimmed = last.text.trim_end();
+                if trimmed.is_empty() {
+                    spans.pop();
+                } else {
+                    last.text.truncate(trimmed.len());
+                    break;
+                }
+            }
+            spans
+        })
+        .collect()
+}
+
+/// The widest layout whose longest row fits `columns`, else the narrowest.
+fn fit(rows: &[Vec<Segment>], pad_labels: bool, columns: Option<usize>) -> Vec<Vec<Span>> {
+    let mut laid_out = Vec::new();
+    for detail in DETAILS {
+        laid_out = layout(rows, detail, pad_labels);
+        let widest = laid_out.iter().map(|row| width(row)).max().unwrap_or(0);
+        if columns.is_none_or(|columns| widest <= columns) {
+            break;
+        }
+    }
+    laid_out
+}
+
+fn paint(spans: &[Span], color: bool) -> String {
+    let mut text = String::new();
+    for span in spans {
+        let code = match span.tone {
+            Tone::Plain => None,
+            Tone::Warn => Some("33"),
+            Tone::Low => Some("31"),
+            Tone::Out => Some("1;31"),
+            Tone::Dim => Some("2"),
+        };
+        match code.filter(|_| color) {
+            Some(code) => text.push_str(&format!("\x1b[{code}m{}\x1b[0m", span.text)),
+            None => text.push_str(&span.text),
+        }
+    }
+    text
+}
+
+fn short_line(accounts: &[Account], settings: &Settings, all: bool, now: DateTime<Utc>) -> String {
     if accounts.is_empty() {
         return "No accounts".into();
     }
     if all {
         return ordered(accounts, settings, now)
             .into_iter()
-            .map(|account| segment(account, settings, false, now))
+            .map(|account| short_segment(account, settings, false, now))
             .collect::<Vec<_>>()
             .join(" · ");
     }
     tray::selected(accounts, settings, now)
-        .map(|account| segment(account, settings, true, now))
+        .map(|account| short_segment(account, settings, true, now))
         .unwrap_or_else(|| "No accounts".into())
 }
 
-fn segment(account: &Account, settings: &Settings, with_reset: bool, now: DateTime<Utc>) -> String {
+fn short_segment(
+    account: &Account,
+    settings: &Settings,
+    with_reset: bool,
+    now: DateTime<Utc>,
+) -> String {
     let Some(window) = tray::limiting_window(account, settings.tray_metric, now) else {
         let state = match &account.error {
             Some(error) if error.kind == "signedOut" => "signed out",
@@ -454,6 +993,8 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
 
+    const NOW: &str = "2026-10-26T10:00:00Z";
+
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
     }
@@ -485,40 +1026,164 @@ mod tests {
     }
 
     fn json_of(state: Option<&StoredState>, running: fn() -> Option<bool>) -> (Value, bool) {
-        let (text, empty) = render(&Command::Json, state, running, Utc::now()).unwrap();
+        let (text, empty) =
+            render(&Command::Json, state, running, Utc::now(), &Env::plain()).unwrap();
         (serde_json::from_str(&text).unwrap(), empty)
     }
 
+    fn options(all: bool, short: bool) -> LineOptions {
+        LineOptions {
+            all,
+            short,
+            color: ColorChoice::Never,
+        }
+    }
+
     fn line_of(state: &StoredState, all: bool) -> String {
-        render(&Command::Line { all }, Some(state), || None, Utc::now())
-            .unwrap()
-            .0
+        render(
+            &Command::Line(options(all, true)),
+            Some(state),
+            || None,
+            Utc::now(),
+            &Env::plain(),
+        )
+        .unwrap()
+        .0
+    }
+
+    // Fixed-clock fixtures for the long line.
+
+    fn now() -> DateTime<Utc> {
+        NOW.parse().unwrap()
+    }
+
+    fn stamp(minutes: i64) -> String {
+        (now() + chrono::Duration::minutes(minutes)).to_rfc3339_opts(SecondsFormat::Secs, true)
+    }
+
+    fn acct(provider: &str, id: &str, label: &str, windows: Value) -> Value {
+        json!({
+            "id": id, "provider": provider, "label": label, "color": "#ffffff",
+            "source": { "kind": "configDir", "path": std::env::temp_dir().join(format!(".{provider}-{id}")) },
+            "identity": { "email": null, "plan": null },
+            "snapshot": { "windows": windows, "fetchedAt": stamp(0), "extraUsage": null },
+            "error": null, "refreshing": false
+        })
+    }
+
+    fn win(id: &str, used: f64, reset_minutes: i64) -> Value {
+        json!({ "id": id, "label": id, "usedPercent": used, "resetsAt": stamp(reset_minutes), "windowSeconds": 18000 })
+    }
+
+    fn claude() -> Value {
+        acct(
+            "claude",
+            "c",
+            "Claude",
+            json!([win("five_hour", 58.0, 138), win("seven_day", 14.0, 2880)]),
+        )
+    }
+
+    fn claude_stale() -> Value {
+        let mut claude = claude();
+        claude["snapshot"]["fetchedAt"] = json!(stamp(-20));
+        claude
+    }
+
+    fn codex() -> Value {
+        acct(
+            "codex",
+            "x",
+            "Codex",
+            json!([
+                win("primary_window", 5.0, 45),
+                win("secondary_window", 40.0, 5760)
+            ]),
+        )
+    }
+
+    fn state_of(accounts: Vec<Value>) -> StoredState {
+        state(accounts, json!({}))
+    }
+
+    fn long(state: &StoredState, all: bool, env: &Env) -> String {
+        line(
+            &state.accounts,
+            &state.settings,
+            options(all, false),
+            env,
+            now(),
+        )
+    }
+
+    fn columns(columns: usize) -> Env {
+        Env {
+            columns: Some(columns),
+            ..Env::plain()
+        }
+    }
+
+    fn colored() -> Env {
+        Env {
+            color: true,
+            ..Env::plain()
+        }
+    }
+
+    fn strip(text: &str) -> String {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(start) = rest.find('\x1b') {
+            out.push_str(&rest[..start]);
+            let end = rest[start..].find('m').unwrap();
+            rest = &rest[start + end + 1..];
+        }
+        out.push_str(rest);
+        out
     }
 
     #[test]
     fn only_cli_flags_take_the_cli_path() {
+        let line = |all, short, color| Some(Ok(Command::Line(LineOptions { all, short, color })));
         assert_eq!(parse(&args(&[])), None);
         assert_eq!(parse(&args(&["--background"])), None);
         assert_eq!(parse(&args(&["--json"])), Some(Ok(Command::Json)));
         assert_eq!(
             parse(&args(&["--line"])),
-            Some(Ok(Command::Line { all: false }))
+            line(false, false, ColorChoice::Auto)
         );
         assert_eq!(
             parse(&args(&["--all", "--line"])),
-            Some(Ok(Command::Line { all: true }))
+            line(true, false, ColorChoice::Auto)
+        );
+        assert_eq!(
+            parse(&args(&["--line", "--short", "--all", "--no-color"])),
+            line(true, true, ColorChoice::Never)
+        );
+        assert_eq!(
+            parse(&args(&["--color", "--line"])),
+            line(false, false, ColorChoice::Always)
         );
         assert_eq!(parse(&args(&["--json", "-h"])), Some(Ok(Command::Help)));
         assert_eq!(parse(&args(&["-V"])), Some(Ok(Command::Version)));
         for bad in [
             &["--json", "--line"][..],
             &["--all"],
+            &["--short"],
+            &["--color"],
             &["--json", "--all"],
+            &["--json", "--short"],
+            &["--json", "--no-color"],
             &["--json", "--background"],
             &["--line", "extra"],
+            &["--line", "--color", "--no-color"],
         ] {
             assert!(matches!(parse(&args(bad)), Some(Err(_))), "{bad:?}");
         }
+        assert_eq!(
+            parse(&args(&["--short", "--all"])),
+            Some(Err("--all works with --line".into()))
+        );
     }
 
     #[test]
@@ -709,7 +1374,7 @@ mod tests {
     }
 
     #[test]
-    fn line_follows_the_tray_account() {
+    fn short_line_follows_the_tray_account() {
         let accounts = vec![
             account(
                 "a",
@@ -754,7 +1419,7 @@ mod tests {
     }
 
     #[test]
-    fn line_marks_stale_and_missing_readings() {
+    fn short_line_marks_stale_and_missing_readings() {
         let mut old = account("a", "Personal", json!([window("five_hour", 58.0, 2)]));
         old["snapshot"]["fetchedAt"] = json!(at(-2));
         let mut out = account("b", "Work", json!([]));
@@ -770,20 +1435,407 @@ mod tests {
             line_of(&mixed, true),
             "Personal 42% (stale) · Work signed out · Spare no data"
         );
+    }
+
+    #[test]
+    fn every_line_mode_reports_no_accounts() {
         let empty = state(Vec::new(), json!({}));
+        for all in [false, true] {
+            for short in [false, true] {
+                for state in [Some(&empty), None] {
+                    assert_eq!(
+                        render(
+                            &Command::Line(options(all, short)),
+                            state,
+                            || None,
+                            Utc::now(),
+                            &Env::plain()
+                        )
+                        .unwrap(),
+                        ("No accounts".to_owned(), true)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn line_shows_both_providers_session_then_weekly() {
+        let state = state_of(vec![codex(), claude()]);
         assert_eq!(
-            render(
-                &Command::Line { all: false },
-                Some(&empty),
-                || None,
-                Utc::now()
-            )
-            .unwrap(),
-            ("No accounts".to_owned(), true)
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d     │ Codex 95%·45m     60%·4d"
+        );
+    }
+
+    #[test]
+    fn line_shows_an_exhausted_session() {
+        let exhausted = acct(
+            "claude",
+            "c",
+            "Claude",
+            json!([win("five_hour", 100.0, 67), win("seven_day", 39.0, 4320)]),
+        );
+        let state = state_of(vec![exhausted, codex()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 0%·1h07m    61%·3d     │ Codex 95%·45m     60%·4d"
+        );
+    }
+
+    #[test]
+    fn line_marks_a_missing_window_with_a_dash() {
+        let mut codex = codex();
+        codex["snapshot"]["windows"] = json!([win("primary_window", 5.0, 45)]);
+        let state = state_of(vec![claude(), codex]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d     │ Codex 95%·45m     –"
+        );
+        let mut claude = claude();
+        claude["snapshot"]["windows"] = json!([win("seven_day_opus", 50.0, 2880)]);
+        let state = state_of(vec![claude]);
+        assert_eq!(long(&state, false, &Env::plain()), "Claude –           –");
+    }
+
+    #[test]
+    fn line_marks_stale_readings_with_a_tilde() {
+        let state = state_of(vec![claude_stale(), codex()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude ~42%·2h18m  ~86%·2d    │ Codex 95%·45m     60%·4d"
+        );
+        let mut codex = codex();
+        codex["error"] =
+            json!({ "kind": "network", "message": "Offline", "retryAfterSeconds": null });
+        let state = state_of(vec![claude_stale(), codex]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude ~42%·2h18m  ~86%·2d    │ Codex ~95%·45m    ~60%·4d"
+        );
+        let mut passed = claude();
+        passed["snapshot"]["windows"] = json!([win("five_hour", 58.0, -1)]);
+        let state = state_of(vec![passed]);
+        assert_eq!(long(&state, false, &Env::plain()), "Claude ~42%        –");
+    }
+
+    #[test]
+    fn line_names_signed_out_pending_and_failed_accounts() {
+        let mut codex = codex();
+        codex["snapshot"] = Value::Null;
+        codex["error"] =
+            json!({ "kind": "signedOut", "message": "Signed out", "retryAfterSeconds": null });
+        let state = state_of(vec![claude(), codex.clone()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d     │ Codex signed out"
+        );
+        codex["error"] = Value::Null;
+        let state = state_of(vec![claude(), codex.clone()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d     │ Codex …"
+        );
+        codex["error"] =
+            json!({ "kind": "network", "message": "Offline", "retryAfterSeconds": null });
+        let state = state_of(vec![claude(), codex]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d     │ Codex no data"
+        );
+    }
+
+    #[test]
+    fn line_with_one_provider_has_no_divider() {
+        let state = state_of(vec![claude()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude 42%·2h18m   86%·2d"
+        );
+        let state = state_of(vec![codex()]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Codex 95%·45m     60%·4d"
+        );
+    }
+
+    #[test]
+    fn line_degrades_step_by_step_to_fit_columns() {
+        let state = state_of(vec![claude(), codex()]);
+        let full = "Claude 42%·2h18m   86%·2d     │ Codex 95%·45m     60%·4d";
+        assert_eq!(full.chars().count(), 56);
+        assert_eq!(long(&state, false, &columns(56)), full);
+        let no_countdowns = "Claude 42%  86%  │ Codex 95%  60%";
+        assert_eq!(long(&state, false, &columns(55)), no_countdowns);
+        assert_eq!(long(&state, false, &columns(40)), no_countdowns);
+        assert_eq!(long(&state, false, &columns(33)), no_countdowns);
+        let short_labels = "Clau 42%  86%  │ Code 95%  60%";
+        assert_eq!(short_labels.chars().count(), 30);
+        assert_eq!(long(&state, false, &columns(32)), short_labels);
+        assert_eq!(long(&state, false, &columns(30)), short_labels);
+        let session_only = "Clau 42%  │ Code 95%";
+        assert_eq!(long(&state, false, &columns(29)), session_only);
+        assert_eq!(long(&state, false, &columns(5)), session_only);
+        let stale = state_of(vec![claude_stale(), codex()]);
+        assert_eq!(
+            long(&stale, false, &columns(40)),
+            "Claude ~42% ~86% │ Codex 95%  60%"
+        );
+    }
+
+    #[test]
+    fn all_prints_one_padded_row_per_account() {
+        let personal = acct(
+            "claude",
+            "p",
+            "Personal",
+            json!([win("five_hour", 58.0, 138), win("seven_day", 14.0, 2880)]),
+        );
+        let work = acct(
+            "claude",
+            "w",
+            "Work",
+            json!([win("five_hour", 29.0, 242), win("seven_day", 88.0, 1080)]),
+        );
+        let mut pending = codex();
+        pending["snapshot"] = Value::Null;
+        let state = state(
+            vec![pending, personal, work],
+            json!({ "accountOrder": "added" }),
         );
         assert_eq!(
-            render(&Command::Line { all: true }, None, || None, Utc::now()).unwrap(),
-            ("No accounts".to_owned(), true)
+            long(&state, true, &Env::plain()),
+            "Personal 42%·2h18m   86%·2d\nWork     71%·4h02m   12%·18h\nCodex    …"
+        );
+        assert_eq!(
+            long(&state, true, &columns(20)),
+            "Personal 42%  86%\nWork     71%  12%\nCodex    …"
+        );
+        assert_eq!(
+            long(&state, true, &columns(16)),
+            "Pers 42%  86%\nWork 71%  12%\nCode …"
+        );
+        let urgency = state_of(vec![
+            acct(
+                "claude",
+                "p",
+                "Personal",
+                json!([win("five_hour", 58.0, 138)]),
+            ),
+            acct("claude", "w", "Work", json!([win("five_hour", 90.0, 138)])),
+        ]);
+        assert_eq!(
+            long(&urgency, true, &Env::plain()),
+            "Work     10%·2h18m   –\nPersonal 42%·2h18m   –"
+        );
+    }
+
+    #[test]
+    fn labels_are_truncated_by_characters() {
+        let state = state_of(vec![acct(
+            "claude",
+            "c",
+            "Ünïcödé Workspace Account",
+            json!([win("five_hour", 58.0, 138)]),
+        )]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Ünïcödé Wor… 42%·2h18m   –"
+        );
+        assert_eq!(long(&state, false, &columns(18)), "Ünïc 42%  –");
+    }
+
+    #[test]
+    fn colors_follow_remaining_and_dim_the_rest() {
+        let claude = acct(
+            "claude",
+            "c",
+            "Claude",
+            json!([win("five_hour", 70.0, 138), win("seven_day", 90.0, 2880)]),
+        );
+        let codex = acct(
+            "codex",
+            "x",
+            "Codex",
+            json!([
+                win("primary_window", 100.0, 45),
+                win("secondary_window", 40.0, 5760)
+            ]),
+        );
+        let state = state_of(vec![claude, codex]);
+        let painted = long(&state, false, &colored());
+        let plain = long(&state, false, &Env::plain());
+        assert_eq!(strip(&painted), plain);
+        assert!(!plain.contains('\x1b'));
+        assert_eq!(
+            painted,
+            "Claude \x1b[33m30%\x1b[0m\x1b[2m·2h18m\x1b[0m   \x1b[31m10%\x1b[0m\x1b[2m·2d\x1b[0m    \
+             \x1b[2m │ \x1b[0mCodex \x1b[1;31m0%\x1b[0m\x1b[2m·45m\x1b[0m      60%\x1b[2m·4d\x1b[0m"
+        );
+        let stale = long(&state_of(vec![claude_stale()]), false, &colored());
+        assert_eq!(
+            stale,
+            "\x1b[2mClaude\x1b[0m \x1b[2m~42%\x1b[0m\x1b[2m·2h18m\x1b[0m  \
+             \x1b[2m~86%\x1b[0m\x1b[2m·2d\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn color_defaults_to_terminals_and_claude_code_unless_no_color() {
+        use ColorChoice::*;
+        assert!(color_enabled(Auto, false, true, false));
+        assert!(color_enabled(Auto, false, false, true));
+        assert!(!color_enabled(Auto, false, false, false));
+        assert!(!color_enabled(Auto, true, true, true));
+        assert!(color_enabled(Always, true, false, false));
+        assert!(!color_enabled(Never, false, true, true));
+    }
+
+    #[test]
+    fn time_left_fits_five_characters() {
+        let left = |seconds: i64| {
+            time_left(
+                &(now() + chrono::Duration::seconds(seconds)).to_rfc3339(),
+                now(),
+            )
+        };
+        assert_eq!(left(-1), None);
+        assert_eq!(left(0), None);
+        assert_eq!(left(30).as_deref(), Some("<1m"));
+        assert_eq!(left(59 * 60 + 59).as_deref(), Some("59m"));
+        assert_eq!(left(3600).as_deref(), Some("1h00m"));
+        assert_eq!(left(2 * 3600 + 5 * 60).as_deref(), Some("2h05m"));
+        assert_eq!(left(9 * 3600 + 59 * 60 + 59).as_deref(), Some("9h59m"));
+        assert_eq!(left(10 * 3600).as_deref(), Some("10h"));
+        assert_eq!(left(23 * 3600 + 59 * 60).as_deref(), Some("23h"));
+        assert_eq!(left(24 * 3600).as_deref(), Some("1d"));
+        assert_eq!(left(25 * 3600).as_deref(), Some("1d1h"));
+        assert_eq!(
+            left(6 * 86_400 + 23 * 3600 + 59 * 60).as_deref(),
+            Some("6d23h")
+        );
+        assert_eq!(time_left("soon", now()), None);
+    }
+
+    fn env_home(home: &Path, claude: Option<&str>, codex: Option<&str>) -> Env {
+        Env {
+            claude_dir: claude.map(OsString::from),
+            codex_dir: codex.map(OsString::from),
+            home: Some(home.to_path_buf()),
+            ..Env::plain()
+        }
+    }
+
+    fn at_path(provider: &str, id: &str, label: &str, used: f64, path: &Path) -> Value {
+        let session = if provider == "claude" {
+            "five_hour"
+        } else {
+            "primary_window"
+        };
+        let mut value = acct(provider, id, label, json!([win(session, used, 138)]));
+        value["source"] = json!({ "kind": "configDir", "path": path });
+        value
+    }
+
+    #[test]
+    fn line_picks_the_account_of_the_callers_config_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        for folder in [".claude", ".claude-work", ".codex", ".codex-work"] {
+            std::fs::create_dir(home.join(folder)).unwrap();
+        }
+        let accounts = vec![
+            at_path("claude", "a", "Personal", 58.0, &home.join(".claude")),
+            at_path("claude", "b", "Work", 90.0, &home.join(".claude-work")),
+            at_path("codex", "x", "Codex", 5.0, &home.join(".codex")),
+            at_path("codex", "y", "Codex Work", 50.0, &home.join(".codex-work")),
+        ];
+        let fresh = state_of(accounts.clone());
+        let pick = |claude: Option<&str>, codex: Option<&str>| {
+            long(&fresh, false, &env_home(home, claude, codex))
+        };
+        assert_eq!(
+            pick(None, None),
+            "Personal 42%·2h18m   –          │ Codex 95%·2h18m   –"
+        );
+        let work = home.join(".claude-work");
+        let work = work.to_str().unwrap();
+        assert!(pick(Some(work), None).starts_with("Work 10%"));
+        assert!(pick(Some(&format!("{work}/")), None).starts_with("Work 10%"));
+        assert!(pick(Some("~/.claude-work"), None).starts_with("Work 10%"));
+        assert!(pick(Some(&format!("  {work}  ")), None).starts_with("Work 10%"));
+        assert!(pick(Some("~/.claude/"), None).starts_with("Personal 42%"));
+        assert!(pick(None, Some("~/.codex-work")).ends_with("│ Codex Work 50%·2h18m   –"));
+        let unknown = pick(Some("/nowhere/.claude"), None);
+        assert!(unknown.starts_with("Work 10%"), "{unknown}");
+        let pinned = state(
+            accounts,
+            json!({ "trayMode": "pinned", "pinnedAccountId": "a" }),
+        );
+        let pinned = long(
+            &pinned,
+            false,
+            &env_home(home, Some("/nowhere/.claude"), Some("/nowhere/.codex")),
+        );
+        assert_eq!(
+            pinned,
+            "Personal 42%·2h18m   –          │ Codex Work 50%·2h18m   –"
+        );
+    }
+
+    #[test]
+    fn keychain_account_is_the_default_claude_folder() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        for folder in [".claude", ".claude-work"] {
+            std::fs::create_dir(home.join(folder)).unwrap();
+        }
+        let mut keychain = acct(
+            "claude",
+            "k",
+            "Keychain",
+            json!([win("five_hour", 58.0, 138)]),
+        );
+        keychain["source"] = json!({ "kind": "keychain" });
+        let state = state_of(vec![
+            at_path("claude", "b", "Work", 90.0, &home.join(".claude-work")),
+            keychain,
+        ]);
+        let pick = |claude: Option<&str>| long(&state, false, &env_home(home, claude, None));
+        assert!(pick(None).starts_with("Keychain 42%"));
+        assert!(pick(Some("~/.claude")).starts_with("Keychain 42%"));
+        assert!(pick(home.join(".claude/").to_str()).starts_with("Keychain 42%"));
+        assert!(pick(Some("~/.claude-work")).starts_with("Work 10%"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn config_dir_match_ignores_unicode_normalization() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let composed = home.join(".claude-caf\u{e9}");
+        std::fs::create_dir(&composed).unwrap();
+        std::fs::create_dir(home.join(".claude")).unwrap();
+        let state = state_of(vec![
+            at_path("claude", "a", "Personal", 58.0, &home.join(".claude")),
+            at_path("claude", "b", "Caf\u{e9}", 90.0, &composed),
+        ]);
+        let decomposed = home.join(".claude-cafe\u{301}");
+        let picked = long(&state, false, &env_home(home, decomposed.to_str(), None));
+        assert!(picked.starts_with("Caf\u{e9} 10%"), "{picked}");
+    }
+
+    #[test]
+    fn normalize_dir_expands_home_and_strips_slashes() {
+        let home = Path::new("/Users/example");
+        let normalized = |value: &str| normalize_dir(OsStr::new(value), Some(home));
+        assert_eq!(normalized("~"), "/Users/example");
+        assert_eq!(normalized("~/.claude/"), "/Users/example/.claude");
+        assert_eq!(normalized("/opt/claude//"), "/opt/claude");
+        assert_eq!(normalized("/opt/./claude/"), "/opt/claude");
+        assert_eq!(
+            normalized("~user/.claude"),
+            normalize_dir(OsStr::new("~user/.claude"), None)
         );
     }
 }

@@ -66,6 +66,7 @@ pub struct Settings {
     pub notify_on_reset: bool,
     pub burn_alerts: bool,
     pub burn_threshold: u8,
+    pub weekly_digest: bool,
     pub notification_permission: NotificationPermission,
     pub tray_mode: TrayMode,
     pub tray_metric: TrayMetric,
@@ -88,6 +89,7 @@ impl Default for Settings {
             notify_on_reset: false,
             burn_alerts: false,
             burn_threshold: 20,
+            weekly_digest: false,
             notification_permission: NotificationPermission::Unasked,
             tray_mode: TrayMode::Lowest,
             tray_metric: TrayMetric::Core,
@@ -198,6 +200,13 @@ impl Settings {
                 "burnThreshold",
                 defaults.burn_threshold,
                 "Fast usage threshold",
+                notes,
+            ),
+            weekly_digest: field(
+                &map,
+                "weeklyDigest",
+                defaults.weekly_digest,
+                "Weekly digest",
                 notes,
             ),
             notification_permission: field(
@@ -599,5 +608,28 @@ mod tests {
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["burnAlerts"], false);
         assert_eq!(saved["burnThreshold"], 20);
+    }
+
+    #[test]
+    fn weekly_digest_defaults_off_and_recovers_bad_values() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({}))] {
+            assert!(!Settings::recover(value, &mut notes).weekly_digest);
+        }
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "weeklyDigest": true })),
+            &mut notes,
+        );
+        assert!(settings.weekly_digest);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "weeklyDigest": "monday", "burnAlerts": true })),
+            &mut notes,
+        );
+        assert!(!settings.weekly_digest);
+        assert!(settings.burn_alerts);
+        assert_eq!(notes, vec!["Weekly digest was reset to its default."]);
+        let saved = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(saved["weeklyDigest"], false);
     }
 }
