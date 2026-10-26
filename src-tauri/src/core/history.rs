@@ -359,7 +359,7 @@ fn latest_two(points: &[HistoryPoint], window_id: &str) -> (Option<usize>, Optio
     (found.next(), latest)
 }
 
-fn compact(points: &mut Vec<HistoryPoint>) -> bool {
+pub(super) fn compact(points: &mut Vec<HistoryPoint>) -> bool {
     let mut middle = vec![false; points.len()];
     let mut runs: HashMap<&str, (usize, bool)> = HashMap::new();
     for (index, point) in points.iter().enumerate() {

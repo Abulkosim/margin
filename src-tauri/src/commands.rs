@@ -1,6 +1,7 @@
 use crate::{
     core::{
         accounts,
+        digest::DigestState,
         model::{Account, Provider},
         poller,
         settings::{OverviewLayout, Settings, TrayMode},
@@ -252,7 +253,15 @@ pub async fn save_settings(
     };
     next.notice = None;
     next.changed();
+    let previous_digest = runtime.digest_state();
+    let enabling_digest = next.settings.weekly_digest && !inner.view.settings.weekly_digest;
+    if enabling_digest {
+        runtime.set_digest_state(Some(DigestState::enabled_at(chrono::Utc::now())));
+    }
     if let Err(error) = runtime.persist(&next, &inner.alerts) {
+        if enabling_digest {
+            runtime.set_digest_state(previous_digest);
+        }
         if previous_autostart != next.settings.autostart {
             let _ = if previous_autostart {
                 app.autolaunch().enable()
