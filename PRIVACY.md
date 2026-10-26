@@ -81,6 +81,8 @@ On macOS, both files are created with owner-only permissions (`0600`). Files are
 
 Tokens are never written to these files.
 
+`margin --json` and `margin --line` only read `state.json` and print to the terminal. They make no network requests and write nothing. See [`cli.rs`](src-tauri/src/cli.rs).
+
 Other changes Margin makes, only when you turn them on:
 
 - **Launch at login:** registers Margin with the OS. On macOS this is a LaunchAgent in `~/Library/LaunchAgents`. On Windows this is a per-user startup entry.

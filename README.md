@@ -89,6 +89,41 @@ Signed out? Margin shows the command to run. For a custom Codex account, run `co
 
 Provider usage endpoints are undocumented and may change. A displayed quota is the provider's reading, not a guarantee that the next request will be accepted.
 
+## Command line
+
+The app binary prints the usage Margin last saved. It makes no network requests and works whether or not Margin is running.
+
+```sh
+/Applications/Margin.app/Contents/MacOS/margin --line    # Personal 42% · resets 16:30
+/Applications/Margin.app/Contents/MacOS/margin --line --all    # Personal 42% · Work 68%
+/Applications/Margin.app/Contents/MacOS/margin --json
+```
+
+Installed in `~/Applications`? Use that path instead. To type `margin`, link it into a folder on your `PATH`:
+
+```sh
+ln -s /Applications/Margin.app/Contents/MacOS/margin ~/.local/bin/margin
+```
+
+On Windows, run `%LOCALAPPDATA%\Margin\Margin.exe --line` (MSI installs: `C:\Program Files\Margin\Margin.exe`). It is a windowed app, so the shell may print its prompt before the output; pipes and redirects work as usual.
+
+`--line` follows **Tray account** and **Tray shows** in Settings and ends with `(stale)` when the reading is old. `--all` lists every account in your account order.
+
+`--json` prints `{"schema": 1, "generatedAt", "appRunning", "accounts": [...]}`. `appRunning` is left out when Margin can't tell. Each account has `id`, `provider`, `label`, `email`, `plan`, `fetchedAt`, `stale`, `status` (`ok`, `stale`, `signedOut`, `error`, `pending`), `error` (`kind`, `message`), and `windows` with `id`, `label`, `scope` (`core`, `model`, `other`), `usedPercent`, `remainingPercent`, `resetsAt`. New fields may be added; `schema` changes only when existing fields change. The output contains account emails but never tokens.
+
+Exit codes: `0` ok, `1` no accounts or unreadable settings, `2` bad arguments. `MARGIN_DATA_DIR` points it at another settings folder (used by tests).
+
+**Claude Code statusline.** In `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/Applications/Margin.app/Contents/MacOS/margin --line"
+  }
+}
+```
+
 ## Privacy
 
 Credentials and provider requests stay in Rust; the interface never receives tokens. Settings, last-known usage, and up to seven days of history are stored locally and can include account emails and folder paths.
