@@ -2283,7 +2283,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
- "toml 0.8.2",
+ "toml 1.1.8+spec-1.1.0",
  "windows-registry",
  "windows-sys 0.61.2",
  "wiremock",
