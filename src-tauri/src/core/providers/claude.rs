@@ -233,7 +233,7 @@ pub(crate) fn keychain_service(suffix: Option<&str>) -> String {
 
 pub fn keychain_suffix(config_dir: &str) -> String {
     let digest = Sha256::digest(nfc(config_dir).as_bytes());
-    format!("{digest:x}")[..8].to_owned()
+    crate::core::hex(&digest)[..8].to_owned()
 }
 
 pub(crate) fn nfc(value: &str) -> String {
@@ -470,7 +470,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
             let model_id = nonempty_string(limit.pointer("/scope/model/id"))
                 .unwrap_or_else(|| model_name.clone());
             let digest = Sha256::digest(model_id.as_bytes());
-            let fingerprint = format!("{digest:x}");
+            let fingerprint = crate::core::hex(&digest);
             let id = format!("weekly_scoped_{}", &fingerprint[..16]);
             if !scoped_ids.insert(id.clone()) {
                 continue;
@@ -835,7 +835,7 @@ mod tests {
             snapshot.windows[2].id,
             format!(
                 "weekly_scoped_{}",
-                &format!("{:x}", Sha256::digest(b"Fable"))[..16]
+                &crate::core::hex(&Sha256::digest(b"Fable"))[..16]
             )
         );
         let wire = serde_json::to_value(&snapshot).unwrap();
@@ -1010,7 +1010,7 @@ mod tests {
         let composed = "/Users/example/.claude-caf\u{e9}";
         let decomposed = "/Users/example/.claude-cafe\u{301}";
         let digest = Sha256::digest(composed.as_bytes());
-        assert_eq!(keychain_suffix(composed), format!("{digest:x}")[..8]);
+        assert_eq!(keychain_suffix(composed), crate::core::hex(&digest)[..8]);
         assert_eq!(keychain_suffix(decomposed), keychain_suffix(composed));
     }
 

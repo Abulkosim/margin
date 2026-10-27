@@ -373,7 +373,7 @@ fn configured_usage_url(directory: &Path) -> Result<Url, UsageError> {
         Ok(_) => {
             let bytes = read_private_file(&config).map_err(|_| config_error())?;
             let source = std::str::from_utf8(&bytes).map_err(|_| config_error())?;
-            let parsed: toml::Value = source.parse().map_err(|_| config_error())?;
+            let parsed: toml::Table = source.parse().map_err(|_| config_error())?;
             match parsed.get("chatgpt_base_url") {
                 None => DEFAULT_BASE_URL.into(),
                 Some(value) => value
@@ -457,7 +457,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
                 continue;
             }
             let digest = Sha256::digest(key.as_bytes());
-            let fingerprint = format!("{digest:x}");
+            let fingerprint = crate::core::hex(&digest);
             append_windows(
                 rate_limit,
                 &format!("extra_{}_", &fingerprint[..16]),
@@ -1077,7 +1077,7 @@ mod tests {
 
     #[test]
     fn toml_parser_respects_comments_and_scoped_settings() {
-        let config: toml::Value = "# chatgpt_base_url = 'https://wrong.test'\nchatgpt_base_url = 'https://proxy.example.test/backend-api' # chosen\n[profiles.other]\nchatgpt_base_url = 'https://other.test'\n".parse().unwrap();
+        let config: toml::Table = "# chatgpt_base_url = 'https://wrong.test'\nchatgpt_base_url = 'https://proxy.example.test/backend-api' # chosen\n[profiles.other]\nchatgpt_base_url = 'https://other.test'\n".parse().unwrap();
         let url = usage_url(config["chatgpt_base_url"].as_str().unwrap()).unwrap();
         assert_eq!(url.host_str(), Some("proxy.example.test"));
     }

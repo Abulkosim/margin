@@ -297,7 +297,7 @@ fn new_account(provider: Provider, source: AccountSource, label: String) -> Acco
         AccountSource::Keychain => hasher.update(b"keychain"),
     }
     let digest = hasher.finalize();
-    let fingerprint = format!("{digest:x}");
+    let fingerprint = super::hex(&digest);
     Account {
         id: format!("{}-{}", provider.key(), &fingerprint[..24]),
         provider,
