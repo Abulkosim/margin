@@ -2,6 +2,7 @@
 
 | Version | Date (UTC) | Changes |
 | --- | --- | --- |
+| [v0.8.1](changelogs/v0.8.1.md) | 2026-10-27 | System clock format, clearer Make active names and sign-in hints, dependency updates. |
 | [v0.8.0](changelogs/v0.8.0.md) | 2026-10-26 | Two-provider statusline, weekly digest, Codex balances, weekly-only Codex plans labelled right. |
 | [v0.7.0](changelogs/v0.7.0.md) | 2026-10-26 | Make active, fast usage alerts, command line output. |
 | [v0.6.0](changelogs/v0.6.0.md) | 2026-10-25 | Accounts ordered by urgency, emails and sign-in commands inline, layout shortcuts, lighter background work. |
