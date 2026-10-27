@@ -4,13 +4,13 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 ## Current release: v0.8.1
 
-**[v0.8.1](https://github.com/Abulkosim/margin/releases/tag/v0.8.1)** was built, verified and installed on 2026-10-27 on macOS 26.6.2; the owner publishes the draft. Clock format follows the system, Make active names accounts by label and plan when emails match, the Add account hint gives the sign-in command, and dependencies moved to Tauri 2.12.5, tokio 1.54, base64 0.23, sha2 0.11, toml 1.x, windows-registry 0.100, Vite 8, Playwright 1.64 and @types/node 26. TypeScript stays on 5.9 until vue-tsc supports 7.
+**[v0.8.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.8.1).** Published by the owner 2026-10-27 09:50 UTC; built, verified and installed the same day on macOS 26.6.2. Clock format follows the system, Make active names accounts by label and plan when emails match, the Add account hint gives the sign-in command, and dependencies moved to Tauri 2.12.5, tokio 1.54, base64 0.23, sha2 0.11, toml 1.x, windows-registry 0.100, Vite 8, Playwright 1.64 and @types/node 26. TypeScript stays on 5.9 until vue-tsc supports 7.
 
 - `pnpm typecheck`, 89 frontend unit tests, 230 Chromium/WebKit browser cases, 313 Rust tests, formatting, strict Clippy, `cargo deny`, and 14 release-script tests passed on `056c3bb`. [Main CI](https://github.com/Abulkosim/margin/actions/runs/40480209578) and the [release build](https://github.com/Abulkosim/margin/actions/runs/40481908554) passed first time, including Windows x64, which is the only compile of the registry crate upgrade and the Windows clock-format reader.
 - sha2 0.11 dropped hex formatting on digests, so nine call sites now share one `hex` helper; toml 1.x parses documents as `Table`, checked against the Codex `config.toml` tests.
 - All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.8.1 installed for x86_64 and arm64. `latest.json` reports 0.8.1. Release notes match `changelogs/v0.8.1.md`.
 - Installed on the owner's Mac over v0.8.0 from the verified archive (backup under `.cache/`); one instance, accounts refreshed, `margin --line` prints both providers.
-- Pending: the owner publishes the release (`gh release edit v0.8.1 --draft=false --latest`), after which the public latest endpoint serves 0.8.1; a real 12-hour-clock check on a Mac set to 12-hour time.
+- The public latest endpoint serves 0.8.1. Pending: a real 12-hour-clock check on a Mac set to 12-hour time.
 
 ## Previous release: v0.8.0
 
