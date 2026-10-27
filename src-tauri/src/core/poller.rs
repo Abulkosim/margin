@@ -199,7 +199,7 @@ fn post(app: &AppHandle, account_label: &str, alert: &notifications::Alert) {
         .notification()
         .builder()
         .title(alert.title(account_label));
-    if let Some(body) = alert.body(chrono::Utc::now()) {
+    if let Some(body) = alert.body(chrono::Utc::now(), notifications::Clock12h::system()) {
         builder = builder.body(body);
     }
     let _ = builder.show();
