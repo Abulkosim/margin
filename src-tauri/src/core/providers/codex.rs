@@ -457,7 +457,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
                 continue;
             }
             let digest = Sha256::digest(key.as_bytes());
-            let fingerprint = format!("{digest:x}");
+            let fingerprint = crate::core::hex(&digest);
             append_windows(
                 rate_limit,
                 &format!("extra_{}_", &fingerprint[..16]),

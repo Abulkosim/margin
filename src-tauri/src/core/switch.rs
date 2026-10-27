@@ -83,7 +83,7 @@ impl Location {
 }
 
 fn sha(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    super::hex(&Sha256::digest(bytes))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -575,7 +575,7 @@ pub fn plan(default: &SlotState, source: &SlotState) -> Result<Plan, Refusal> {
     Ok(Plan {
         provider,
         kind,
-        fingerprint: format!("{:x}", digest.finalize()),
+        fingerprint: super::hex(&digest.finalize()),
         target_email: source_login.email,
         displaced_email: default_login.and_then(|login| login.email),
     })

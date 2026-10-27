@@ -16,9 +16,7 @@ pub fn quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
+pub use crate::core::hex;
 
 #[cfg(test)]
 pub fn unhex(text: &str) -> Option<Vec<u8>> {

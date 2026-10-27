@@ -20,7 +20,7 @@ fn history_key(provider: Provider, account: &str, scope: &str) -> String {
         digest.update((part.len() as u64).to_be_bytes());
         digest.update(part.as_bytes());
     }
-    format!("{:x}", digest.finalize())
+    super::hex(&digest.finalize())
 }
 
 pub fn http_client() -> Result<reqwest::Client, UsageError> {

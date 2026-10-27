@@ -11,3 +11,7 @@ pub mod settings;
 pub mod store;
 pub mod switch;
 pub mod tray;
+
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
