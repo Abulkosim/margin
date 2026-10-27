@@ -65,6 +65,21 @@ test('make active swaps, confirms, and undoes', async ({ page }) => {
   await expect(row(page, 'Studio').locator('.active-tag')).toHaveCount(0)
 })
 
+test('two sign-ins on one email are named by label and plan', async ({ page }) => {
+  await page.goto('/?demo=1&state=same-email')
+  await openAccounts(page)
+  await page.getByRole('button', { name: 'Make Claude Team active', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  await expect(dialog.getByRole('heading', { name: 'Make Claude Team (Team) active?' })).toBeVisible()
+  await expect(dialog).toContainText('claude will use Claude Team (Team). Personal (Max 5×) moves to ~/.claude-studio.')
+  await dialog.getByRole('button', { name: 'Make active', exact: true }).click()
+  const toast = page.getByRole('status').filter({ hasText: 'Claude Team (Team) is active.' })
+  await expect(toast).toBeVisible()
+  await toast.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.getByText('Personal (Max 5×) is active.', { exact: true })).toBeVisible()
+  await expect(row(page, 'Personal').locator('.active-tag')).toBeVisible()
+})
+
 test('moving into an empty default slot warns that the folder signs out and has no undo', async ({ page }) => {
   await page.goto('/?demo=1')
   await openAccounts(page)

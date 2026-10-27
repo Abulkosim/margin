@@ -2,7 +2,7 @@ use crate::{
     core::{
         model::{Account, Provider},
         switch::{
-            self, Context, DiskJournal, Journal, PlanKind, ProperLockfile, RecordAccounts,
+            self, Context, DiskJournal, Journal, Plan, PlanKind, ProperLockfile, RecordAccounts,
             RecordState, RestoreOffer, SlotSpec, SwitchError, SwitchRecord, SystemStore,
         },
     },
@@ -122,27 +122,51 @@ fn preview(target: &Target) -> Result<Preview, String> {
     let running = switch::running(plan.provider);
     switch::check_running(plan.provider, running)
         .map_err(|refusal| fail(SwitchError::Refused(refusal)))?;
+    let (named, displaced) = names(&plan, &target.account, target.previous.as_ref());
     Ok(Preview {
         account_id: target.account.id.clone(),
         provider: plan.provider,
-        target: plan
-            .target_email
-            .unwrap_or_else(|| target.account.label.clone()),
-        displaced: (plan.kind == PlanKind::Swap).then(|| {
-            plan.displaced_email
-                .or_else(|| {
-                    target
-                        .previous
-                        .as_ref()
-                        .map(|account| account.label.clone())
-                })
-                .unwrap_or_else(|| "The current account".into())
-        }),
+        target: named,
+        displaced,
         folder: switch::display_path(&source.dir, &target.home),
         kind: plan.kind,
         fingerprint: plan.fingerprint,
         running: running.any(),
     })
+}
+
+/// How the dialog and toast name the two sign-ins: by email when the emails
+/// differ, else `label (plan)` so a Team org and a Max plan on one address read
+/// apart.
+fn names(plan: &Plan, account: &Account, previous: Option<&Account>) -> (String, Option<String>) {
+    let same = plan.target_email.is_some() && plan.target_email == plan.displaced_email;
+    let target = if same {
+        labelled(account)
+    } else {
+        plan.target_email
+            .clone()
+            .unwrap_or_else(|| account.label.clone())
+    };
+    let displaced = (plan.kind == PlanKind::Swap).then(|| {
+        if same {
+            previous
+                .map(labelled)
+                .or_else(|| plan.displaced_email.clone())
+        } else {
+            plan.displaced_email
+                .clone()
+                .or_else(|| previous.map(|account| account.label.clone()))
+        }
+        .unwrap_or_else(|| "The current account".into())
+    });
+    (target, displaced)
+}
+
+fn labelled(account: &Account) -> String {
+    match &account.identity.plan {
+        Some(plan) => format!("{} ({plan})", account.label),
+        None => account.label.clone(),
+    }
 }
 
 #[tauri::command]
@@ -287,10 +311,7 @@ pub async fn make_active(
             complete(&mut { journal }, &record.id, persisted);
             Ok(Activated {
                 state: view,
-                target: outcome
-                    .plan
-                    .target_email
-                    .unwrap_or_else(|| target.account.label.clone()),
+                target: names(&outcome.plan, &target.account, target.previous.as_ref()).0,
                 previous_account_id: (outcome.plan.kind == PlanKind::Swap)
                     .then(|| record.accounts.and_then(|moved| moved.previous))
                     .flatten(),
@@ -488,6 +509,80 @@ mod tests {
         assert_eq!(journal.records()[0].state, RecordState::Written);
         complete(&mut journal, "claude-1", true);
         assert_eq!(journal.records()[0].state, RecordState::Done);
+    }
+
+    fn account(label: &str, plan: Option<&str>) -> Account {
+        Account {
+            id: label.to_lowercase(),
+            provider: Provider::Claude,
+            label: label.into(),
+            color: "#ffffff".into(),
+            source: crate::core::model::AccountSource::ConfigDir {
+                path: format!("/home/{label}"),
+                keychain_suffix: None,
+            },
+            identity: crate::core::model::Identity {
+                email: Some("you@example.com".into()),
+                plan: plan.map(Into::into),
+                history_key: None,
+            },
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        }
+    }
+
+    fn plan(kind: PlanKind, target: Option<&str>, displaced: Option<&str>) -> Plan {
+        Plan {
+            provider: Provider::Claude,
+            kind,
+            fingerprint: "f".repeat(64),
+            target_email: target.map(Into::into),
+            displaced_email: displaced.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn preview_names_sign_ins_by_email_unless_the_emails_match() {
+        let team = account("Claude Team", Some("Team"));
+        let max = account("you@example.com", Some("Max 20x"));
+        let swap = plan(
+            PlanKind::Swap,
+            Some("work@example.com"),
+            Some("you@example.com"),
+        );
+        assert_eq!(
+            names(&swap, &team, Some(&max)),
+            ("work@example.com".into(), Some("you@example.com".into()))
+        );
+        let same = plan(
+            PlanKind::Swap,
+            Some("you@example.com"),
+            Some("you@example.com"),
+        );
+        assert_eq!(
+            names(&same, &team, Some(&max)),
+            (
+                "Claude Team (Team)".into(),
+                Some("you@example.com (Max 20x)".into())
+            )
+        );
+        let unplanned = account("Studio", None);
+        assert_eq!(
+            names(&same, &unplanned, Some(&team)),
+            ("Studio".into(), Some("Claude Team (Team)".into()))
+        );
+        assert_eq!(
+            names(&same, &team, None),
+            ("Claude Team (Team)".into(), Some("you@example.com".into()))
+        );
+        let moved = plan(PlanKind::Move, Some("you@example.com"), None);
+        assert_eq!(names(&moved, &team, None), ("you@example.com".into(), None));
+        let nameless = plan(PlanKind::Swap, None, None);
+        assert_eq!(
+            names(&nameless, &unplanned, None),
+            ("Studio".into(), Some("The current account".into()))
+        );
     }
 
     #[test]
