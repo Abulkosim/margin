@@ -1,6 +1,6 @@
 use super::{
     model::{Account, UsageWindow},
-    notifications::reset_clock,
+    notifications::{reset_clock, Clock12h},
     poller,
     ring::{ring_rgba, IconStyle},
     settings::{Settings, TrayMetric, TrayMode},
@@ -402,6 +402,7 @@ fn tooltip(
     window: Option<&UsageWindow>,
     is_stale: bool,
     now: chrono::DateTime<Utc>,
+    clock: Clock12h,
 ) -> String {
     let Some(account) = account else {
         return "Margin · Add an account".into();
@@ -415,7 +416,7 @@ fn tooltip(
         .and_then(|reset| chrono::DateTime::parse_from_rfc3339(reset).ok())
         .map(|reset| reset.with_timezone(&Utc))
         .filter(|reset| *reset > now)
-        .map(|reset| format!(" · resets {}", reset_clock(reset, now)))
+        .map(|reset| format!(" · resets {}", reset_clock(reset, now, clock)))
         .unwrap_or_default();
     format!(
         "Margin · {} · {} {}% remaining{reset}{}",
@@ -443,7 +444,7 @@ pub fn update(app: &AppHandle, state: &AppState) {
     let title = amount
         .filter(|_| state.settings.tray_show_percent)
         .map(|amount| format!("{}%", percent_label(amount)));
-    let tooltip = tooltip(account, window, is_stale, now);
+    let tooltip = tooltip(account, window, is_stale, now, Clock12h::system());
     let revision = state.revision;
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -980,24 +981,27 @@ mod tests {
         let reset = now + chrono::Duration::hours(30);
         let window = work.snapshot.as_ref().unwrap().windows[0].clone();
         assert_eq!(
-            tooltip(Some(&work), Some(&window), false, now),
+            tooltip(Some(&work), Some(&window), false, now, Clock12h(false)),
             format!(
                 "Margin · Personal · seven_day 42% remaining · resets {}",
-                reset_clock(reset, now)
+                reset_clock(reset, now, Clock12h(false))
             )
         );
         let mut expired = window.clone();
         expired.resets_at = Some((now - chrono::Duration::minutes(1)).to_rfc3339());
         assert_eq!(
-            tooltip(Some(&work), Some(&expired), true, now),
+            tooltip(Some(&work), Some(&expired), true, now, Clock12h(false)),
             "Margin · Personal · seven_day 42% remaining · last known"
         );
         work.snapshot = None;
         assert_eq!(
-            tooltip(Some(&work), None, false, now),
+            tooltip(Some(&work), None, false, now, Clock12h(false)),
             "Margin · Personal · usage unavailable"
         );
-        assert_eq!(tooltip(None, None, false, now), "Margin · Add an account");
+        assert_eq!(
+            tooltip(None, None, false, now, Clock12h(false)),
+            "Margin · Add an account"
+        );
     }
 
     #[test]

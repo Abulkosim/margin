@@ -120,6 +120,9 @@ export function createDemoState(scenario: string | null): AppState {
       error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signedOutSince: new Date(now - 26 * 3_600_000).toISOString(), signInCommand: 'CLAUDE_CONFIG_DIR=~/.claude-client claude' },
     })]
   }
+  if (scenario === 'same-email') {
+    state.accounts = state.accounts.map(account => account.id === 'demo-claude-studio' ? { ...account, label: 'Claude Team', identity: { email: 'alex@example.com', plan: 'Team' } } : account)
+  }
   if (scenario === 'hidden') state.ignoredSources = ['claude:~/.claude-old', 'codex:~/.codex-old']
   if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']
   state.switching.activeAccountIds = demoActiveIds(state.accounts)
@@ -143,17 +146,23 @@ export function demoPreview(state: AppState, id: AccountId, running: boolean): M
   if (account.provider === 'codex' && running) return 'Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.'
   if (account.error?.kind === 'signedOut') return `${account.label} is signed out. Run ${account.error.signInCommand ?? account.provider}, then try again.`
   const previous = state.accounts.find(item => item.provider === account.provider && active.includes(item.id))
-  if (previous?.identity.email && previous.identity.email === account.identity.email) return 'Both folders hold the same account. Sign out of one first.'
+  const sameEmail = Boolean(previous?.identity.email) && previous?.identity.email === account.identity.email
+  if (sameEmail && previous?.identity.plan === account.identity.plan) return 'Both folders hold the same account. Sign out of one first.'
   return {
     accountId: account.id,
     provider: account.provider,
     kind: previous ? 'swap' : 'move',
     fingerprint: `demo-${account.id}`,
-    target: account.identity.email ?? account.label,
-    displaced: previous ? previous.identity.email ?? previous.label : null,
+    target: sameEmail ? labelled(account) : account.identity.email ?? account.label,
+    displaced: previous ? sameEmail ? labelled(previous) : previous.identity.email ?? previous.label : null,
     folder: account.source.path,
     running,
   }
+}
+
+/** Mirrors the desktop preview: `label (plan)` when two sign-ins share an email. */
+function labelled(account: Account): string {
+  return account.identity.plan ? `${account.label} (${account.identity.plan})` : account.label
 }
 
 export function demoActivate(state: AppState, id: AccountId): { state: AppState; previousAccountId: AccountId | null } {

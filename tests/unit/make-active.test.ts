@@ -44,6 +44,17 @@ test('demo refuses signed-out folders and moves into an empty slot', () => {
   assert.equal(demoPreview(createDemoState(null), work, true), 'Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.')
 })
 
+test('demo names sign-ins by label and plan when their emails match', () => {
+  const studio = accountIdSchema.parse('demo-claude-studio')
+  const preview = demoPreview(createDemoState('same-email'), studio, false)
+  assert.ok(typeof preview !== 'string')
+  assert.equal(preview.target, 'Claude Team (Team)')
+  assert.equal(preview.displaced, 'Personal (Max 5×)')
+  const state = createDemoState('same-email')
+  state.accounts = state.accounts.map(account => account.id === studio ? { ...account, identity: { ...account.identity, plan: 'Max 5×' } } : account)
+  assert.equal(demoPreview(state, studio, false), 'Both folders hold the same account. Sign out of one first.')
+})
+
 test('restore offers expire after 30 minutes', () => {
   const now = Date.parse('2026-10-26T12:00:00Z')
   const offer = { id: 'claude-1', provider: 'claude' as const, reason: 'verifyFailed' as const, createdAt: '2026-10-26T11:45:00Z' }

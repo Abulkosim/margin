@@ -5,6 +5,7 @@ use super::{
 use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::OnceLock;
 
 pub type AlertMemory = HashMap<String, WindowAlerts>;
 
@@ -75,11 +76,16 @@ impl Alert {
         }
     }
 
-    pub fn body(&self, now: DateTime<Utc>) -> Option<String> {
-        self.body_in(&Local, now)
+    pub fn body(&self, now: DateTime<Utc>, clock: Clock12h) -> Option<String> {
+        self.body_in(&Local, clock, now)
     }
 
-    fn body_in<Tz: TimeZone>(&self, zone: &Tz, now: DateTime<Utc>) -> Option<String>
+    fn body_in<Tz: TimeZone>(
+        &self,
+        zone: &Tz,
+        clock: Clock12h,
+        now: DateTime<Utc>,
+    ) -> Option<String>
     where
         Tz::Offset: std::fmt::Display,
     {
@@ -91,7 +97,7 @@ impl Alert {
             if out > now {
                 return Some(format!(
                     "At this rate it runs out around {}",
-                    clock_in(zone, out, now)
+                    clock_in(zone, clock, out, now)
                 ));
             }
         }
@@ -101,29 +107,156 @@ impl Alert {
             format!(
                 "Resets in {} · {}",
                 short_duration(milliseconds),
-                clock_in(zone, reset, now)
+                clock_in(zone, clock, reset, now)
             )
         })
     }
 }
 
-pub fn reset_clock(at: DateTime<Utc>, now: DateTime<Utc>) -> String {
-    clock_in(&Local, at, now)
+/// Whether clock times read `4:30 PM` (true) or `16:30`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Clock12h(pub bool);
+
+impl Clock12h {
+    /// The OS preference, read once per process.
+    pub fn system() -> Self {
+        static SYSTEM: OnceLock<Clock12h> = OnceLock::new();
+        *SYSTEM.get_or_init(|| Clock12h(system_clock::prefers_12h()))
+    }
 }
 
-fn clock_in<Tz: TimeZone>(zone: &Tz, at: DateTime<Utc>, now: DateTime<Utc>) -> String
+pub fn reset_clock(at: DateTime<Utc>, now: DateTime<Utc>, clock: Clock12h) -> String {
+    clock_in(&Local, clock, at, now)
+}
+
+fn clock_in<Tz: TimeZone>(
+    zone: &Tz,
+    clock: Clock12h,
+    at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> String
 where
     Tz::Offset: std::fmt::Display,
 {
     let local = at.with_timezone(zone);
+    let time = if clock.0 { "%-I:%M %p" } else { "%H:%M" };
     let pattern = if local.date_naive() == now.with_timezone(zone).date_naive() {
-        "%H:%M"
+        time.to_owned()
     } else if at - now < chrono::Duration::days(6) {
-        "%a %H:%M"
+        format!("%a {time}")
     } else {
-        "%b %-d %H:%M"
+        format!("%b %-d {time}")
     };
-    local.format(pattern).to_string()
+    local.format(&pattern).to_string()
+}
+
+/// Reads the OS clock preference. Nothing here runs in tests: the formatters
+/// take a `Clock12h` instead.
+mod system_clock {
+    /// Locales whose default short time is 12-hour; most others use 24.
+    const TWELVE_HOUR_REGIONS: [&str; 14] = [
+        "US", "CA", "AU", "NZ", "IN", "PH", "PK", "BD", "EG", "SA", "MX", "CO", "KR", "TW",
+    ];
+
+    /// `en_US`, `en-US`, `en_US@rg=gbzzzz`, `en_US.UTF-8` and a bare `en` all read
+    /// as 12-hour; `de_DE` and `en_GB` as 24.
+    pub(super) fn locale_prefers_12h(locale: &str) -> bool {
+        let tag = locale.split(['@', '.']).next().unwrap_or_default().trim();
+        let mut parts = tag.split(['_', '-']);
+        let language = parts.next().unwrap_or_default();
+        match parts.find(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_alphabetic())) {
+            Some(region) => TWELVE_HOUR_REGIONS
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(region)),
+            None => language.eq_ignore_ascii_case("en"),
+        }
+    }
+
+    /// Windows `sShortTime`: `h:mm tt` is 12-hour, `HH:mm` is 24.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn short_time_prefers_12h(pattern: &str) -> bool {
+        pattern.contains('h') && !pattern.contains('H')
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn prefers_12h() -> bool {
+        let read = |key: &str| {
+            std::process::Command::new("defaults")
+                .args(["read", "-g", key])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        };
+        if read("AppleICUForce12HourTime").as_deref() == Some("1") {
+            return true;
+        }
+        if read("AppleICUForce24HourTime").as_deref() == Some("1") {
+            return false;
+        }
+        locale_prefers_12h(&read("AppleLocale").unwrap_or_else(env_locale))
+    }
+
+    #[cfg(windows)]
+    pub(super) fn prefers_12h() -> bool {
+        let output = std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKCU\Control Panel\International",
+                "/v",
+                "sShortTime",
+            ])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
+        let pattern = output.as_deref().and_then(|text| {
+            text.lines()
+                .find(|line| line.trim_start().starts_with("sShortTime"))
+                .and_then(|line| line.split("REG_SZ").nth(1))
+                .map(str::trim)
+        });
+        match pattern {
+            Some(pattern) => short_time_prefers_12h(pattern),
+            None => locale_prefers_12h(&env_locale()),
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    pub(super) fn prefers_12h() -> bool {
+        locale_prefers_12h(&env_locale())
+    }
+
+    fn env_locale() -> String {
+        ["LC_ALL", "LC_TIME", "LANG"]
+            .iter()
+            .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn locales_pick_the_clock() {
+            for locale in ["en_US", "en-US", "en_US.UTF-8", "en", "es_MX"] {
+                assert!(locale_prefers_12h(locale), "{locale}");
+            }
+            for locale in ["en_GB", "de_DE", "fr_FR", "ja_JP", "ru_RU", ""] {
+                assert!(!locale_prefers_12h(locale), "{locale:?}");
+            }
+        }
+
+        #[test]
+        fn windows_short_time_patterns_pick_the_clock() {
+            assert!(short_time_prefers_12h("h:mm tt"));
+            assert!(short_time_prefers_12h("hh:mm tt"));
+            assert!(!short_time_prefers_12h("HH:mm"));
+            assert!(!short_time_prefers_12h("H:mm"));
+            assert!(!short_time_prefers_12h(""));
+        }
+    }
 }
 
 fn short_duration(milliseconds: i64) -> String {
@@ -386,7 +519,7 @@ mod tests {
         };
         assert_eq!(jumped.title("Personal"), "Personal · Session 2% left");
         assert_eq!(
-            alert.body_in(&Utc, now()).as_deref(),
+            alert.body_in(&Utc, Clock12h(false), now()).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let early = Alert {
@@ -406,9 +539,9 @@ mod tests {
             ..alert
         };
         assert_eq!(reset.title("Personal"), "Personal · Session limit reset");
-        assert_eq!(reset.body(now()), None);
+        assert_eq!(reset.body(now(), Clock12h(false)), None);
         assert_eq!(short_duration(30_000), "<1m");
-        assert_eq!(reset.body_in(&Utc, now()), None);
+        assert_eq!(reset.body_in(&Utc, Clock12h(false), now()), None);
         assert_eq!(short_duration(90 * 3_600_000), "3d 18h");
     }
 
@@ -430,7 +563,7 @@ mod tests {
             "Personal · Session: 20% used in the last hour"
         );
         assert_eq!(
-            alert.body_in(&Utc, now()).as_deref(),
+            alert.body_in(&Utc, Clock12h(false), now()).as_deref(),
             Some("At this rate it runs out around 23:30")
         );
         let steady = Alert {
@@ -441,7 +574,7 @@ mod tests {
             ..alert.clone()
         };
         assert_eq!(
-            steady.body_in(&Utc, now()).as_deref(),
+            steady.body_in(&Utc, Clock12h(false), now()).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let passed = Alert {
@@ -452,7 +585,7 @@ mod tests {
             ..alert
         };
         assert_eq!(
-            passed.body_in(&Utc, now()).as_deref(),
+            passed.body_in(&Utc, Clock12h(false), now()).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
     }
@@ -461,16 +594,56 @@ mod tests {
     fn reset_clock_names_the_day_only_when_needed() {
         let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
         let now = at("2099-12-31T10:00:00Z");
-        assert_eq!(clock_in(&Utc, at("2099-12-31T16:30:00Z"), now), "16:30");
-        assert_eq!(clock_in(&Utc, at("2100-01-01T09:05:00Z"), now), "Fri 09:05");
         assert_eq!(
-            clock_in(&Utc, at("2100-01-08T09:05:00Z"), now),
+            clock_in(&Utc, Clock12h(false), at("2099-12-31T16:30:00Z"), now),
+            "16:30"
+        );
+        assert_eq!(
+            clock_in(&Utc, Clock12h(false), at("2100-01-01T09:05:00Z"), now),
+            "Fri 09:05"
+        );
+        assert_eq!(
+            clock_in(&Utc, Clock12h(false), at("2100-01-08T09:05:00Z"), now),
             "Jan 8 09:05"
         );
         let east = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
         assert_eq!(
-            clock_in(&east, at("2099-12-31T16:30:00Z"), now),
+            clock_in(&east, Clock12h(false), at("2099-12-31T16:30:00Z"), now),
             "Fri 01:30"
+        );
+    }
+
+    #[test]
+    fn twelve_hour_clock_drops_the_leading_zero_and_names_the_half() {
+        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let today = at("2099-12-31T10:00:00Z");
+        let twelve = Clock12h(true);
+        assert_eq!(
+            clock_in(&Utc, twelve, at("2099-12-31T16:30:00Z"), today),
+            "4:30 PM"
+        );
+        assert_eq!(
+            clock_in(&Utc, twelve, at("2099-12-31T00:05:00Z"), today),
+            "12:05 AM"
+        );
+        assert_eq!(
+            clock_in(&Utc, twelve, at("2100-01-01T16:30:00Z"), today),
+            "Fri 4:30 PM"
+        );
+        assert_eq!(
+            clock_in(&Utc, twelve, at("2100-01-08T09:05:00Z"), today),
+            "Jan 8 9:05 AM"
+        );
+        let alert = Alert {
+            window_id: "session".into(),
+            window_label: "Session".into(),
+            kind: AlertKind::Threshold(95),
+            resets_at: Some(RESET.into()),
+            used_percent: 95.0,
+        };
+        assert_eq!(
+            alert.body_in(&Utc, twelve, now()).as_deref(),
+            Some("Resets in 1h 20m · Fri 12:00 AM")
         );
     }
 

@@ -356,6 +356,32 @@ test('folder picker fills the path and typing still works', async ({ page }) => 
   ])
 })
 
+for (const [platform, userAgent, claudeHint] of [
+  ['macOS', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'Sign in there first: CLAUDE_CONFIG_DIR=~/.claude-work claude'],
+  ['Windows', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'The folder containing .credentials.json. Sign in with the CLI first.'],
+] as const) {
+  test.describe(`add-account hint on ${platform}`, () => {
+    test.use({ userAgent })
+
+    test('names the sign-in step per provider and follows the typed folder', async ({ page }) => {
+      await page.goto('/?demo=1')
+      await openSettings(page)
+      await page.getByRole('tab', { name: /^Accounts/ }).click()
+      await page.getByRole('button', { name: 'Add account', exact: true }).click()
+      const hint = page.locator('#path-help')
+      const input = page.getByLabel('Config folder', { exact: true })
+      await expect(hint).toHaveText(claudeHint)
+      await input.fill('~/.claude-team')
+      await expect(hint).toHaveText(platform === 'macOS' ? 'Sign in there first: CLAUDE_CONFIG_DIR=~/.claude-team claude' : claudeHint)
+      await input.fill('')
+      await page.getByRole('button', { name: 'Codex', exact: true }).click()
+      await expect(hint).toHaveText('The folder containing auth.json. Sign in first: CODEX_HOME=~/.codex-work codex login')
+      await input.fill('~/.codex-team')
+      await expect(hint).toHaveText('The folder containing auth.json. Sign in first: CODEX_HOME=~/.codex-team codex login')
+    })
+  })
+}
+
 test('folder picker fills a sample path in the preview', async ({ page }) => {
   await page.goto('/?demo=1')
   await openSettings(page)

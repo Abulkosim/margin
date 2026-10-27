@@ -1,6 +1,6 @@
 use crate::core::{
     model::{Account, AccountSource, Provider, UsageWindow, WindowScope},
-    notifications::reset_clock,
+    notifications::{reset_clock, Clock12h},
     providers::claude::nfc,
     settings::{AccountOrder, Settings, TrayMode},
     store::{self, StoredState},
@@ -79,6 +79,7 @@ struct Env {
     home: Option<PathBuf>,
     columns: Option<usize>,
     color: bool,
+    clock: Clock12h,
 }
 
 impl Env {
@@ -98,6 +99,7 @@ impl Env {
                 .and_then(|value| value.to_str()?.trim().parse::<usize>().ok())
                 .filter(|columns| *columns > 0),
             color,
+            clock: Clock12h::system(),
         }
     }
 
@@ -108,6 +110,7 @@ impl Env {
             home: None,
             columns: None,
             color: false,
+            clock: Clock12h(false),
         }
     }
 }
@@ -461,7 +464,7 @@ fn line(
     now: DateTime<Utc>,
 ) -> String {
     if options.short {
-        return short_line(accounts, settings, options.all, now);
+        return short_line(accounts, settings, options.all, env.clock, now);
     }
     if accounts.is_empty() {
         return "No accounts".into();
@@ -996,19 +999,25 @@ fn paint(spans: &[Span], color: bool) -> String {
     text
 }
 
-fn short_line(accounts: &[Account], settings: &Settings, all: bool, now: DateTime<Utc>) -> String {
+fn short_line(
+    accounts: &[Account],
+    settings: &Settings,
+    all: bool,
+    clock: Clock12h,
+    now: DateTime<Utc>,
+) -> String {
     if accounts.is_empty() {
         return "No accounts".into();
     }
     if all {
         return ordered(accounts, settings, now)
             .into_iter()
-            .map(|account| short_segment(account, settings, false, now))
+            .map(|account| short_segment(account, settings, false, clock, now))
             .collect::<Vec<_>>()
             .join(" · ");
     }
     tray::selected(accounts, settings, now)
-        .map(|account| short_segment(account, settings, true, now))
+        .map(|account| short_segment(account, settings, true, clock, now))
         .unwrap_or_else(|| "No accounts".into())
 }
 
@@ -1016,6 +1025,7 @@ fn short_segment(
     account: &Account,
     settings: &Settings,
     with_reset: bool,
+    clock: Clock12h,
     now: DateTime<Utc>,
 ) -> String {
     let Some(window) = tray::limiting_window(account, settings.tray_metric, now) else {
@@ -1038,7 +1048,7 @@ fn short_segment(
             .map(|reset| reset.with_timezone(&Utc))
             .filter(|reset| *reset > now)
         {
-            text.push_str(&format!(" · resets {}", reset_clock(reset, now)));
+            text.push_str(&format!(" · resets {}", reset_clock(reset, now, clock)));
         }
     }
     if tray::stale(account, settings, now) {
@@ -1508,7 +1518,7 @@ mod tests {
             let reset = DateTime::parse_from_rfc3339(&at(hours))
                 .unwrap()
                 .with_timezone(&Utc);
-            reset_clock(reset, Utc::now())
+            reset_clock(reset, Utc::now(), Clock12h(false))
         };
         let lowest = state(accounts.clone(), json!({}));
         assert_eq!(
