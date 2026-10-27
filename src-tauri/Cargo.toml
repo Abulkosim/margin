@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.4", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri = { version = "2.12.5", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
@@ -35,7 +35,7 @@ tempfile = "3"
 tauri-plugin-updater = { version = "=2.14.0", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [dev-dependencies]
-tauri = { version = "2.12.4", features = ["test"] }
+tauri = { version = "2.12.5", features = ["test"] }
 wiremock = "0.6.5"
 png = "0.18"
 
