@@ -1,6 +1,6 @@
 # Launch checklist
 
-👤 = owner does it. Drafts: [listings.md](listings.md), [posts.md](posts.md).
+👤 = owner does it. **Start with [go.md](go.md)** (current facts, v0.8.1). Older drafts: [listings.md](listings.md), [posts.md](posts.md).
 
 1. [ ] README hero: real Mac menu-bar screenshot, Windows tray from VM 👤, "Why Margin" table (plan 3.1).
 2. [ ] 15s demo GIF + 1280×640 social preview (3.3); upload preview in repo settings 👤.
