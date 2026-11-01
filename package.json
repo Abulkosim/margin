@@ -21,6 +21,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
+    "verify": "pnpm build && pnpm test",
     "tauri": "tauri"
   },
   "dependencies": {
