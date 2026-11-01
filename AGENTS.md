@@ -124,6 +124,10 @@ src/
 - Hit the real endpoints early with the owner's own token to confirm shapes; save sanitized responses as fixtures.
 - Keep the owner posted in short lines. Show screenshots. Decide small things yourself.
 
+## Definition of done
+
+A change is done when `pnpm verify` passes. It runs `pnpm build` (typecheck + production build) then `pnpm test`, the same commands the CI frontend job runs (CI also runs `node --test scripts/*.test.mjs` and `pnpm test:e2e`). Run `pnpm install --frozen-lockfile` first.
+
 ## Copy and changelogs
 
 - Use short, practical wording. Name the action or information; remove slogans and filler. Use “Usage remaining,” not “Your headroom.”
