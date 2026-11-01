@@ -14,7 +14,7 @@ Post Tuesday to Thursday, around 14:00 UTC. Link the repo. Reply to every commen
 **Title** (80 chars, the HN limit):
 
 ```
-Show HN: Margin – Claude Code and Codex usage for all your accounts, in the tray
+Show HN: Margin - Claude Code and Codex usage for all your accounts, in the tray
 ```
 
 **URL:** `https://github.com/Abulkosim/margin`
@@ -32,6 +32,7 @@ Show HN: Margin – Claude Code and Codex usage for all your accounts, in the tr
 > CodexBar inspired it. Differences: Windows, two providers only, many accounts per provider.
 
 **Likely questions:**
+
 - *Undocumented endpoints will break.* Yes. Every response shape has fixtures and tests; a failure shows stale data with its age.
 - *Why Tauri?* One codebase for macOS and Windows; small Rust core. Trade-off: a WebView popover.
 - *Is the switch safe?* It holds Claude Code's own lock files, verifies after writing, rolls back on failure, keeps a backup, and refuses while Codex runs. It's the only code that writes CLI files, and a test fails if anything else does.
@@ -50,11 +51,13 @@ Web form only, no PR, no `gh`: https://github.com/hesreallyhim/awesome-claude-co
 | Author Name | `Abulkosim` |
 | Author Link | `https://github.com/Abulkosim` |
 
-Description (one line, no emoji, 391 chars):
+Description (1 to 3 sentences, not promotional, no dashes):
 
 ```
-Menu bar and system tray app for macOS and Windows that shows remaining Claude Code usage and reset times for several accounts at once, including accounts in separate CLAUDE_CONFIG_DIR folders. Reads the CLI's existing OAuth sign-ins, alerts at thresholds, and prints a statusline with margin --line. Optional account switch swaps sign-ins between folders with a backup. Also supports Codex.
+Menu bar and system tray app for macOS and Windows that shows remaining Claude Code usage for several accounts side by side, including accounts kept in separate CLAUDE_CONFIG_DIR folders. Reads the OAuth sign-ins Claude Code already stored, shows session, weekly and per-model limits with reset times, and can print a statusline with margin --line. Also covers Codex.
 ```
+
+Closest existing entry: ClaudeBar (macOS menu bar). Margin differs by running on Windows too and by showing many accounts per provider.
 
 Tick the checklist boxes only for things you actually did. Leave the last box ("Do not check the following box") unchecked.
 
