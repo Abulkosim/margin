@@ -1,6 +1,6 @@
 use super::{
     burn::BurnState,
-    model::{Snapshot, UsageWindow},
+    model::{Snapshot, UsageWindow, WindowScope},
 };
 use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -289,8 +289,10 @@ fn same_period(previous: Option<&String>, current: Option<&String>) -> bool {
     }
 }
 
+/// Session and weekly windows, by id: Codex labels a core window by its length,
+/// so a 30-day or 3-day plan would never match a "Session"/"Weekly" label.
 pub(super) fn tracked(window: &UsageWindow) -> bool {
-    matches!(window.label.as_str(), "Session" | "Weekly")
+    window.scope() == WindowScope::Core
 }
 
 /// A window seen for the first time, or in a new reset period, alerts once for the highest
@@ -390,9 +392,15 @@ mod tests {
     }
 
     fn labelled(label: &str, used: f64, reset: &str) -> Snapshot {
+        let id = match label {
+            "Session" => "five_hour",
+            "Weekly" => "seven_day",
+            "Monthly" => "primary_window",
+            _ => "seven_day_sonnet",
+        };
         Snapshot {
             windows: vec![UsageWindow {
-                id: "session".into(),
+                id: id.into(),
                 label: label.into(),
                 used_percent: used,
                 resets_at: Some(reset.into()),
@@ -428,7 +436,7 @@ mod tests {
     fn restart_with_persisted_alerts_has_no_burst() {
         let mut memory = AlertMemory::new();
         memory.insert(
-            "a/session".into(),
+            "a/five_hour".into(),
             WindowAlerts {
                 reset: Some(RESET.into()),
                 sent: BTreeSet::from([95]),
@@ -501,6 +509,12 @@ mod tests {
         let mut memory = AlertMemory::new();
         check(&mut memory, &labelled("Weekly", 90.0, next));
         assert!(check(&mut memory, &labelled("Weekly", 0.0, RESET)).is_empty());
+        let mut memory = AlertMemory::new();
+        check(&mut memory, &labelled("Monthly", 90.0, RESET));
+        assert_eq!(
+            check(&mut memory, &labelled("Monthly", 0.0, next)),
+            vec![AlertKind::Reset]
+        );
     }
 
     #[test]
@@ -701,20 +715,20 @@ mod tests {
         let mut replacement = snapshot.clone();
         replacement.windows[0].id = "weekly".into();
         observe(&mut memory, "a", &replacement, &[80], now());
-        assert!(!memory.contains_key("a/session"));
+        assert!(!memory.contains_key("a/five_hour"));
         assert!(memory.contains_key("a/weekly"));
-        assert!(memory.contains_key("ab/session"));
+        assert!(memory.contains_key("ab/five_hour"));
         replacement.windows.clear();
         observe(&mut memory, "a", &replacement, &[80], now());
         assert!(!memory.contains_key("a/weekly"));
-        assert!(memory.contains_key("ab/session"));
+        assert!(memory.contains_key("ab/five_hour"));
     }
 
     #[test]
     fn expired_windows_never_trigger_threshold_alerts() {
         let mut memory = AlertMemory::new();
         memory.insert(
-            "a/session".into(),
+            "a/five_hour".into(),
             WindowAlerts {
                 reset: Some("2000-01-01T00:00:00Z".into()),
                 sent: BTreeSet::new(),
@@ -729,7 +743,7 @@ mod tests {
             now()
         )
         .is_empty());
-        assert!(memory["a/session"].sent.is_empty());
+        assert!(memory["a/five_hour"].sent.is_empty());
     }
 
     #[test]
