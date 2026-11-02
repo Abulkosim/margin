@@ -17,6 +17,8 @@ use std::{
 pub const SCHEMA: u32 = 1;
 pub const DATA_DIR_ENV: &str = "MARGIN_DATA_DIR";
 const IDENTIFIER: &str = "com.abulkosim.margin";
+/// Passed by autostart; starts the app without opening the popover.
+const APP_FLAG: &str = "--background";
 const FLAGS: [&str; 10] = [
     "--json",
     "--line",
@@ -141,7 +143,11 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Option<i32> {
 
 fn parse(args: &[String]) -> Option<Result<Command, String>> {
     if !args.iter().any(|arg| FLAGS.contains(&arg.as_str())) {
-        return None;
+        // A mistyped flag such as `--jsno` must not start the tray app.
+        return args
+            .iter()
+            .find(|arg| arg.starts_with("--") && arg.as_str() != APP_FLAG)
+            .map(|arg| Err(format!("unknown option {arg}")));
     }
     let (mut json, mut line, mut help, mut version) = (false, false, false, false);
     let (mut all, mut short, mut color, mut no_color) = (false, false, false, false);
@@ -1275,6 +1281,10 @@ mod tests {
         let line = |all, short, color| Some(Ok(Command::Line(LineOptions { all, short, color })));
         assert_eq!(parse(&args(&[])), None);
         assert_eq!(parse(&args(&["--background"])), None);
+        assert_eq!(parse(&args(&["-psn_0_12345"])), None);
+        for typo in [&["--jsno"][..], &["--lines"], &["--background", "--al"]] {
+            assert!(matches!(parse(&args(typo)), Some(Err(_))), "{typo:?}");
+        }
         assert_eq!(parse(&args(&["--json"])), Some(Ok(Command::Json)));
         assert_eq!(
             parse(&args(&["--line"])),
