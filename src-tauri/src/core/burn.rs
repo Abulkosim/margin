@@ -413,6 +413,10 @@ mod tests {
     fn snapshot(used: f64, label: &str) -> Snapshot {
         Snapshot {
             windows: vec![UsageWindow {
+                id: match label {
+                    "Sonnet" => "seven_day_sonnet".into(),
+                    _ => window(used).id,
+                },
                 label: label.into(),
                 ..window(used)
             }],
