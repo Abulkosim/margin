@@ -427,6 +427,7 @@ pub async fn restore_switch_backup(
         switch::restore(
             &backup,
             chrono::Utc::now(),
+            switch::running(provider),
             &SystemStore,
             &ProperLockfile::default(),
             &mut journal,
