@@ -126,7 +126,7 @@ src/
 
 ## Definition of done
 
-A change is done when `pnpm verify` passes. It runs `pnpm build` (typecheck + production build) then `pnpm test`, the same commands the CI frontend job runs (CI also runs `node --test scripts/*.test.mjs` and `pnpm test:e2e`). Run `pnpm install --frozen-lockfile` first.
+A change is done when `pnpm verify` passes. It runs `pnpm build` (typecheck + production build), `pnpm test`, then the native job's Rust checks: `pnpm lint:rust` (`cargo fmt --check`, strict Clippy) and `pnpm test:rust`. CI also runs `node --test scripts/*.test.mjs` and `pnpm test:e2e`, and builds on macOS and Windows; the box checks Rust on Linux only, so platform-gated code is compiled in CI. Run `pnpm install --frozen-lockfile` first.
 
 ## Copy and changelogs
 
