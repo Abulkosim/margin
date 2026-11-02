@@ -1037,6 +1037,7 @@ fn journal_recovery_detects_unfinished_switches() {
         restore(
             &record.id,
             chrono::Utc::now(),
+            Running::No,
             &fixture.store,
             &FakeLocks::default(),
             &mut journal,
