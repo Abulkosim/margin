@@ -1,6 +1,6 @@
 # Margin
 
-**Claude Code and Codex usage in your menu bar.** See remaining quota and reset times across multiple accounts, from the macOS menu bar or the Windows system tray.
+**Claude Code and Codex usage in your menu bar.** Usage remaining and reset times for every account you use, in the macOS menu bar or the Windows system tray. Free and open source.
 
 [![CI](https://github.com/Abulkosim/margin/actions/workflows/ci.yml/badge.svg)](https://github.com/Abulkosim/margin/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Abulkosim/margin)](https://github.com/Abulkosim/margin/releases/latest)
@@ -9,23 +9,56 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-747a87)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Abulkosim/margin/badge)](https://scorecard.dev/viewer/?uri=github.com/Abulkosim/margin)
 
-[Download](https://github.com/Abulkosim/margin/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Privacy](#privacy) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[Download](https://github.com/Abulkosim/margin/releases/latest) · [Install](#install) · [Connect accounts](#connect-accounts) · [Command line](#command-line) · [Privacy](#privacy) · [Changelog](CHANGELOG.md)
 
-<p>
-  <img src="docs/images/overview-light.png" alt="Margin overview with sample Claude and Codex accounts" width="300" />
-  <img src="docs/images/compact-light.png" alt="Margin compact overview with one row per sample account" width="300" />
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png" />
+  <img src="docs/images/hero-light.png" alt="Margin popover open below its menu bar icon, next to a terminal running margin --line, with sample accounts" width="880" />
+</picture>
 
-Interface preview with sample data; real menu-bar screenshots to follow.
+<sub>Interface preview with sample data.</sub>
 
-<p><img src="docs/images/demo.gif" alt="Margin popover opening from the menu bar with sample data" width="600" /></p>
+## Install
+
+1. Download **v0.8.2**: [macOS 12+ (Universal DMG)](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_universal.dmg) · [Windows x64 (Setup EXE)](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_x64_en-US.msi)
+2. Open it. Margin finds the Claude Code and Codex sign-ins already on your computer.
+
+Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning:
+
+- **macOS.** Drag Margin to Applications and open it. On macOS 15 and later, when **“Margin” Not Opened** appears, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. Margin lives in the menu bar, with no Dock icon.
+- **Windows.** On **Windows protected your PC**, click **More info → Run anyway**. Smart App Control blocks unsigned apps.
+
+Updates are signed and verified in the app. Margin checks daily and never installs on its own. Homebrew and winget are not available yet. Full guide with uninstall: [docs/install.md](docs/install.md).
 
 ## What it shows
 
 - **Many accounts at once.** Finds existing Claude Code and Codex sign-ins, including separate configuration folders; add more in Settings.
+- **Make active.** Switch which account Claude Code or Codex uses, after a confirmation, with a backup of the previous sign-in.
 - **Session, weekly, and model limits.** Usage remaining, reset countdown and time, and a pace line: "On pace", or when usage runs out at the current rate.
 - **Last-known values, labeled.** A failed request keeps the last reading with its age. Missing data stays unknown, never guessed.
 - **Alerts.** Notifications at thresholds you choose (50–100%), and optionally when a limit resets.
+
+## Command line
+
+`margin --line` prints the usage Margin last saved, without a network request:
+
+```text
+Claude 72%·2h18m   42%·4d6h   │ Codex 91%·3h40m   68%·5d2h
+```
+
+Use it as your Claude Code statusline. In `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/Applications/Margin.app/Contents/MacOS/margin --line",
+    "refreshInterval": 60
+  }
+}
+```
+
+`--all` prints one row per account and `--json` prints everything. Flags, Windows paths, colors and the JSON schema: [docs/cli.md](docs/cli.md).
 
 ## Why Margin
 
@@ -41,32 +74,13 @@ Interface preview with sample data; real menu-bar screenshots to follow.
 
 CodexBar supports about 100 providers; pick it if you need more than Claude and Codex.
 
-## Install
+## Screenshots
 
-Download **v0.8.2** from [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest). It fixes stale accounts, alerts and history, and makes Make active safer. Homebrew and winget are not available yet. Step-by-step guide with uninstall: [docs/install.md](docs/install.md).
+| Compact overview | History |
+| :-: | :-: |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/compact-dark.png" /><img src="docs/images/compact-light.png" alt="Compact overview with one row per sample account" width="300" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/history-dark.png" /><img src="docs/images/history-light.png" alt="Seven-day session history for a sample account" width="300" /></picture> |
 
-| Platform | Download |
-| --- | --- |
-| macOS 12+ · Apple Silicon and Intel | [Universal DMG](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_universal.dmg) |
-| Windows x64 | [Setup EXE](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.8.2/Margin_0.8.2_x64_en-US.msi) |
-
-Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning. Updates are signed and verified in the app.
-
-**macOS.** Drag Margin to Applications and open it. On macOS 15 and later, when **“Margin” Not Opened** appears, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. Margin lives in the menu bar, with no Dock icon. [Details](docs/install.md#macos).
-
-**Windows.** Run the `-setup.exe` (or `.msi`). On **Windows protected your PC**, click **More info → Run anyway**. Smart App Control blocks unsigned apps. [Details](docs/install.md#windows).
-
-**Updates.** Margin checks daily and never installs on its own; turn it off in **Settings → Updates**. [Details](docs/install.md#updates).
-
-### Verify a download
-
-Compare checksums with `SHA256SUMS.txt`, and check the build attestation:
-
-```sh
-gh attestation verify Margin_<version>_universal.dmg --repo Abulkosim/margin
-```
-
-Both platforms: [docs/install.md](docs/install.md#verify-a-download).
+<sub>Interface previews with sample data.</sub>
 
 ## Connect accounts
 
@@ -89,52 +103,15 @@ Signed out? Margin shows the command to run. For a custom Codex account, run `co
 
 Provider usage endpoints are undocumented and may change. A displayed quota is the provider's reading, not a guarantee that the next request will be accepted.
 
-## Command line
+## Verify a download
 
-The app binary prints the usage Margin last saved. It makes no network requests and works whether or not Margin is running.
-
-```sh
-/Applications/Margin.app/Contents/MacOS/margin --line
-# Claude 42%·2h18m   86%·2d     │ Codex 95%·45m     60%·4d
-/Applications/Margin.app/Contents/MacOS/margin --line --all
-# Personal 42%·2h18m   86%·2d
-# Work     71%·4h02m   12%·18h
-# Codex    95%·45m     60%·4d
-/Applications/Margin.app/Contents/MacOS/margin --line --short    # Personal 42% · resets 16:30
-/Applications/Margin.app/Contents/MacOS/margin --json
-```
-
-Installed in `~/Applications`? Use that path instead. To type `margin`, link it into a folder on your `PATH`:
+Compare checksums with `SHA256SUMS.txt`, and check the build attestation:
 
 ```sh
-ln -s /Applications/Margin.app/Contents/MacOS/margin ~/.local/bin/margin
+gh attestation verify Margin_<version>_universal.dmg --repo Abulkosim/margin
 ```
 
-On Windows, run `%LOCALAPPDATA%\Margin\Margin.exe --line` (MSI installs: `C:\Program Files\Margin\Margin.exe`). It is a windowed app, so the shell may print its prompt before the output; pipes and redirects work as usual.
-
-`--line` prints one Claude and one Codex account: usage remaining and time to reset for the session window, then the weekly window. Columns have fixed widths, so the line does not shift between refreshes. `–` means the provider did not report that window, `~42%` means the reading is old, and `signed out`, `no data` or `…` replace the numbers when there are none. With several accounts for a provider, it shows the one your terminal uses (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, else `~/.claude` and `~/.codex`), or the tray account when none matches. Set `COLUMNS` and the line shrinks to fit: first the countdowns go, then the labels shorten, then the weekly window goes.
-
-`--all` prints one row per account, Claude first, in your account order. `--short` prints the one-account form from v0.7 (`--short --all`: `Personal 42% · Work 68%`), following **Tray account** and **Tray shows** in Settings.
-
-Colors: on in a terminal or under Claude Code, off when piped or when `NO_COLOR` is set; `--color` and `--no-color` override. Only the 16 basic colors are used, so your terminal theme applies: yellow below 40% remaining, red below 20%, bold red at 0%.
-
-`--json` prints `{"schema": 1, "generatedAt", "appRunning", "accounts": [...]}`. `appRunning` is left out when Margin can't tell. Each account has `id`, `provider`, `label`, `email`, `plan`, `fetchedAt`, `stale`, `status` (`ok`, `stale`, `signedOut`, `error`, `pending`), `error` (`kind`, `message`), and `windows` with `id`, `label`, `scope` (`core`, `model`, `other`), `usedPercent`, `remainingPercent`, `resetsAt`. New fields may be added; `schema` changes only when existing fields change. The output contains account emails but never tokens.
-
-Exit codes: `0` ok, `1` no accounts or unreadable settings, `2` bad arguments. `MARGIN_DATA_DIR` points it at another settings folder (used by tests).
-
-**Claude Code statusline.** In `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/Applications/Margin.app/Contents/MacOS/margin --line",
-    "refreshInterval": 60
-  }
-}
-```
-
-`refreshInterval` keeps the countdowns moving while the session is idle. Claude Code sets `COLUMNS`, so the line fits the terminal. Codex's own status line only shows its built-in items and cannot run a command, so Margin cannot feed it; Codex users see their limits in the Codex TUI and in Margin.
+Both platforms: [docs/install.md](docs/install.md#verify-a-download).
 
 ## Privacy
 
