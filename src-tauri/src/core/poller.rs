@@ -50,9 +50,15 @@ impl Schedule {
     }
 }
 
+/// A credential rotated mid-fetch is read again soon; the new token is already on disk.
+const CREDENTIALS_CHANGED_RETRY: Duration = Duration::from_secs(5);
+
 pub fn retry_delay(interval: u64, failures: u32, error: &UsageError) -> Duration {
     if error.kind == "signedOut" && error.signed_out_since.is_some() {
         return Duration::from_secs(interval);
+    }
+    if error.kind == "credentialsChanged" && failures <= 1 {
+        return CREDENTIALS_CHANGED_RETRY;
     }
     let backoff = interval
         .saturating_mul(1_u64 << failures.saturating_sub(1).min(6))
@@ -483,6 +489,9 @@ mod tests {
         assert_eq!(retry_delay(60, 5, &local), Duration::from_secs(60));
         let rejected = UsageError::new("signedOut", "Signed out");
         assert_eq!(retry_delay(60, 1, &rejected), Duration::from_secs(300));
+        let changed = UsageError::new("credentialsChanged", "Changed");
+        assert_eq!(retry_delay(60, 1, &changed), CREDENTIALS_CHANGED_RETRY);
+        assert_eq!(retry_delay(60, 2, &changed), Duration::from_secs(120));
     }
 
     #[test]
