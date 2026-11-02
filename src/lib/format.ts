@@ -99,8 +99,10 @@ export function accountIsStale(account: Account, settings: Settings, now: number
   if (connectionInterrupted) return true
   if (account.error && !(account.snapshot && transientErrors.has(account.error.kind))) return true
   if (!account.snapshot) return false
+  const { windows } = account.snapshot
+  const core = windows.filter(window => windowScope(window) === 'core')
   return now - Date.parse(account.snapshot.fetchedAt) > Math.max(settings.idlePollIntervalSeconds * 2, 180) * 1000
-    || account.snapshot.windows.some(window => window.resetsAt !== null && Date.parse(window.resetsAt) <= now)
+    || (core.length ? core : windows).some(window => window.resetsAt !== null && Date.parse(window.resetsAt) <= now)
 }
 
 export function retryingMessage(account: Account, settings: Settings, now: number, connectionInterrupted = false): string | null {

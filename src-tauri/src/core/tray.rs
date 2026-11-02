@@ -1,5 +1,5 @@
 use super::{
-    model::{Account, UsageWindow},
+    model::{Account, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
     poller,
     ring::{ring_rgba, IconStyle},
@@ -298,11 +298,21 @@ pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>)
                 (now - fetched.with_timezone(&Utc)).num_seconds()
                     > (settings.idle_poll_interval_seconds * 2).max(180) as i64
             });
-        old || snapshot.windows.iter().any(|window| {
-            window.resets_at.as_ref().is_some_and(|reset| {
-                chrono::DateTime::parse_from_rfc3339(reset).map_or(true, |reset| reset <= now)
+        // A model or extra window whose reset passed outdates only itself; the
+        // card shows it as pending. Core windows speak for the account.
+        let has_core = snapshot
+            .windows
+            .iter()
+            .any(|window| window.scope() == WindowScope::Core);
+        old || snapshot
+            .windows
+            .iter()
+            .filter(|window| !has_core || window.scope() == WindowScope::Core)
+            .any(|window| {
+                window.resets_at.as_ref().is_some_and(|reset| {
+                    chrono::DateTime::parse_from_rfc3339(reset).map_or(true, |reset| reset <= now)
+                })
             })
-        })
     })
 }
 
@@ -832,6 +842,28 @@ mod tests {
                 .collect();
         }
         account
+    }
+
+    #[test]
+    fn only_core_resets_make_an_account_stale() {
+        let settings = Settings::default();
+        let now = Utc::now();
+        let model_elapsed = windowed(
+            "a",
+            &[
+                ("five_hour", 10.0, Some(2)),
+                ("seven_day", 20.0, Some(48)),
+                ("seven_day_opus", 0.0, Some(-1)),
+            ],
+        );
+        assert!(!stale(&model_elapsed, &settings, now));
+        let session_elapsed = windowed(
+            "a",
+            &[("five_hour", 10.0, Some(-1)), ("seven_day", 20.0, Some(48))],
+        );
+        assert!(stale(&session_elapsed, &settings, now));
+        let model_only = windowed("a", &[("seven_day_opus", 10.0, Some(-1))]);
+        assert!(stale(&model_only, &settings, now));
     }
 
     fn limiting_id(account: &Account, metric: TrayMetric) -> Option<&str> {

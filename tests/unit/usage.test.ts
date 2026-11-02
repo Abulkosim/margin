@@ -44,6 +44,14 @@ test('errors and elapsed resets mark last-known values stale', () => {
   } })
   assert.equal(accountIsStale(expired, defaultSettings, now), true)
   assert.equal(expired.snapshot?.windows[0]?.usedPercent, 93.2)
+  const modelElapsed = accountSchema.parse({ ...account, snapshot: {
+    fetchedAt: '2026-10-16T09:59:30Z', extraUsage: null,
+    windows: [
+      { id: 'five_hour', label: 'Session', usedPercent: 20, resetsAt: '2026-10-16T12:00:00Z', windowSeconds: 18000 },
+      { id: 'seven_day_opus', label: 'Opus', usedPercent: 0, resetsAt: '2026-10-16T09:00:00Z', windowSeconds: 604800 },
+    ],
+  } })
+  assert.equal(accountIsStale(modelElapsed, defaultSettings, now), false)
 })
 
 test('rate limits and account switches retry quietly until the reading is old', () => {
