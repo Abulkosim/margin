@@ -329,7 +329,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     match result {
                         Ok((snapshot, identity)) => {
                             let thresholds = inner.view.settings.thresholds.clone();
-                            if inner.view.accounts[index].identity != identity {
+                            if !inner.view.accounts[index].identity.same_person(&identity) {
                                 inner
                                     .alerts
                                     .retain(|key, _| !key.starts_with(&format!("{}/", account.id)));

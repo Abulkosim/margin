@@ -80,6 +80,20 @@ pub struct Identity {
     pub history_key: Option<String>,
 }
 
+impl Identity {
+    /// False only when both sides name a person and the names differ; a plan
+    /// change or a key appearing for the first time is the same person.
+    pub fn same_person(&self, other: &Self) -> bool {
+        match (&self.history_key, &other.history_key) {
+            (Some(a), Some(b)) => a == b,
+            _ => match (&self.email, &other.email) {
+                (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+                _ => true,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WindowScope {
@@ -308,6 +322,23 @@ mod tests {
         assert!(value.get("refreshToken").is_none());
         assert!(value["snapshot"]["resetGrants"].is_null());
         assert!(value["snapshot"]["balance"].is_null());
+    }
+
+    #[test]
+    fn identity_changes_only_count_when_the_person_differs() {
+        let identity = |email: Option<&str>, plan: &str, key: Option<&str>| Identity {
+            email: email.map(Into::into),
+            plan: Some(plan.into()),
+            history_key: key.map(Into::into),
+        };
+        let before = identity(Some("a@example.com"), "Pro", None);
+        assert!(before.same_person(&identity(Some("a@example.com"), "Max 5×", None)));
+        assert!(before.same_person(&identity(Some("A@example.com"), "Pro", Some("k1"))));
+        assert!(before.same_person(&identity(None, "Pro", None)));
+        assert!(!before.same_person(&identity(Some("b@example.com"), "Pro", None)));
+        let keyed = identity(Some("a@example.com"), "Team", Some("k1"));
+        assert!(!keyed.same_person(&identity(Some("a@example.com"), "Pro", Some("k2"))));
+        assert!(keyed.same_person(&identity(Some("b@example.com"), "Team", Some("k1"))));
     }
 
     #[test]
