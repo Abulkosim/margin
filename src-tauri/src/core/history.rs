@@ -11,6 +11,7 @@ use std::{
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_POINTS: usize = 80_000;
 const MAX_WINDOW_POINTS: usize = 10_240;
+const RESET_JITTER_SECONDS: i64 = 60;
 const READ_ERROR: &str = "History could not be read. Current usage is still available.";
 const IDENTITY_ERROR: &str = "History is paused until account identity is available.";
 const SAVE_ERROR: &str = "History could not be saved. Current usage is still available.";
@@ -191,6 +192,7 @@ impl HistoryStore {
                 .is_some_and(|previous| window.used_percent < previous);
             let (earlier, latest) = latest_two(&entry.saved.points, &window.id);
             let mut gap_before = gap || !entry.present.contains(&window.id);
+            let mut resets_at = window.resets_at.clone();
             if let Some(index) = latest {
                 let previous = &entry.saved.points[index];
                 let previous_at = timestamp(&previous.at).expect("validated history timestamp");
@@ -198,7 +200,12 @@ impl HistoryStore {
                     entry.gap = true;
                     continue;
                 }
-                let boundary = previous.resets_at != window.resets_at
+                // Providers report the same reset a few seconds apart between polls;
+                // keep the stored one so a flat run stays one run.
+                if same_reset(previous.resets_at.as_deref(), resets_at.as_deref()) {
+                    resets_at.clone_from(&previous.resets_at);
+                }
+                let boundary = previous.resets_at != resets_at
                     || previous.window_seconds != window.window_seconds
                     || window.used_percent < previous.used_percent;
                 if observed_decrease && !boundary {
@@ -225,7 +232,7 @@ impl HistoryStore {
                 window_id: window.id.clone(),
                 at: snapshot.fetched_at.clone(),
                 used_percent: window.used_percent,
-                resets_at: window.resets_at.clone(),
+                resets_at,
                 window_seconds: window.window_seconds,
                 gap_before,
             });
@@ -462,6 +469,13 @@ fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) -> bool {
         keep[index - 1]
     });
     changed
+}
+
+fn same_reset(a: Option<&str>, b: Option<&str>) -> bool {
+    match (a.and_then(timestamp), b.and_then(timestamp)) {
+        (Some(a), Some(b)) => (a - b).num_seconds().abs() <= RESET_JITTER_SECONDS,
+        _ => false,
+    }
 }
 
 fn timestamp(value: &str) -> Option<DateTime<Utc>> {
@@ -807,6 +821,36 @@ mod tests {
                 .points
                 .len(),
             7
+        );
+    }
+
+    #[test]
+    fn reset_jitter_keeps_one_run_and_a_new_period_still_breaks_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let first_reset = at(18_000).to_rfc3339();
+        for (seconds, drift) in [(0, 0), (60, 3), (120, -2), (180, 40)] {
+            let mut reading = account(seconds, 10.0);
+            reading.snapshot.as_mut().unwrap().windows[0].resets_at =
+                Some(at(18_000 + drift).to_rfc3339());
+            store.record(&reading, 60, at(seconds));
+        }
+        let mut next = account(240, 10.0);
+        next.snapshot.as_mut().unwrap().windows[0].resets_at = Some(at(36_000).to_rfc3339());
+        store.record(&next, 60, at(240));
+        let shape: Vec<_> = store
+            .get(&next, at(240))
+            .points
+            .iter()
+            .map(|point| (point.at.clone(), point.resets_at.clone()))
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                (at(0).to_rfc3339(), Some(first_reset.clone())),
+                (at(180).to_rfc3339(), Some(first_reset)),
+                (at(240).to_rfc3339(), Some(at(36_000).to_rfc3339())),
+            ]
         );
     }
 
