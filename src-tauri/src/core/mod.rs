@@ -1,9 +1,11 @@
 pub mod accounts;
 pub mod burn;
 pub mod digest;
+pub mod forecast;
 pub mod history;
 pub mod model;
 pub mod notifications;
+pub mod outage;
 pub mod poller;
 pub mod providers;
 pub mod ring;

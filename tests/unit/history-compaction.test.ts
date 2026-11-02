@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { historyReadings, observedHourChange, type HistoryPoint } from '../../src/lib/history.ts'
-import { computePace, fitPace } from '../../src/lib/pace.ts'
+import { forecastPace } from '../../src/lib/pace.ts'
 
 const start = Date.parse('2026-10-17T10:00:00Z')
 const minute = 60_000
@@ -44,26 +44,21 @@ test('compaction drops most repeated readings', () => {
 })
 
 test('pace is the same for dense and run-length readings', () => {
-  for (const end of [40, 60, 120, 149, 200, 240]) {
+  for (const end of [40, 60, 120, 149, 155, 200, 240]) {
     const full = dense().filter(p => Date.parse(p.at) <= at(end))
-    const short = compact(full)
-    const a = fitPace(full)
-    const b = fitPace(short)
-    assert.equal(a === null, b === null, `fit at ${end}`)
-    if (a && b) assert.ok(Math.abs(a.slope - b.slope) <= Math.abs(a.slope) * 1e-9, `slope at ${end}`)
-    const current = { usedPercent: full.at(-1)?.usedPercent ?? 0, resetsAt }
-    assert.deepEqual(computePace(short, current, at(end)), computePace(full, current, at(end)))
+    const current = { id: 'five_hour', usedPercent: full.at(-1)?.usedPercent ?? 0, resetsAt, windowSeconds: 18_000 }
+    assert.deepEqual(forecastPace(compact(full), current, at(end)), forecastPace(full, current, at(end)), `pace at ${end}`)
   }
 })
 
-test('a long idle stretch weighs by its duration, not its point count', () => {
-  const busy = Array.from({ length: 31 }, (_, index) => point(91 + index, 11 + index))
+test('a long idle stretch reads the same stored as a run or polled each minute', () => {
+  const busy = Array.from({ length: 31 }, (_, index) => point(91 + index, 11 + index * 2))
   const stored = [point(0, 10), point(90, 10), ...busy]
   const polled = [...Array.from({ length: 91 }, (_, index) => point(index, 10)), ...busy]
-  const a = fitPace(stored)
-  const b = fitPace(polled)
-  assert.ok(a && b)
-  assert.ok(Math.abs(a.slope - b.slope) <= a.slope * 1e-9)
+  const current = { id: 'five_hour', usedPercent: 71, resetsAt, windowSeconds: 18_000 }
+  const pace = forecastPace(stored, current, at(121))
+  assert.equal(pace.kind, 'runs-out')
+  assert.deepEqual(forecastPace(polled, current, at(121)), pace)
 })
 
 test('observed hour change is the same for dense and run-length readings', () => {

@@ -64,6 +64,8 @@ pub struct Settings {
     pub notifications: bool,
     pub thresholds: Vec<u8>,
     pub notify_on_reset: bool,
+    pub pace_alerts: bool,
+    pub stale_alerts: bool,
     pub burn_alerts: bool,
     pub burn_threshold: u8,
     pub weekly_digest: bool,
@@ -87,6 +89,8 @@ impl Default for Settings {
             notifications: true,
             thresholds: vec![80, 95, 100],
             notify_on_reset: false,
+            pace_alerts: true,
+            stale_alerts: true,
             burn_alerts: false,
             burn_threshold: 20,
             weekly_digest: false,
@@ -186,6 +190,20 @@ impl Settings {
                 "notifyOnReset",
                 defaults.notify_on_reset,
                 "Reset alerts",
+                notes,
+            ),
+            pace_alerts: field(
+                &map,
+                "paceAlerts",
+                defaults.pace_alerts,
+                "Run-out warnings",
+                notes,
+            ),
+            stale_alerts: field(
+                &map,
+                "staleAlerts",
+                defaults.stale_alerts,
+                "Not updating alerts",
                 notes,
             ),
             burn_alerts: field(
@@ -564,6 +582,27 @@ mod tests {
         );
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["autoCheckUpdates"], true);
+    }
+
+    #[test]
+    fn run_out_and_not_updating_alerts_default_on_for_every_store() {
+        let mut notes = Vec::new();
+        for value in [None, Some(serde_json::json!({ "notifications": true }))] {
+            let settings = Settings::recover(value, &mut notes);
+            assert!(settings.pace_alerts);
+            assert!(settings.stale_alerts);
+        }
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "paceAlerts": false, "staleAlerts": "no" })),
+            &mut notes,
+        );
+        assert!(!settings.pace_alerts);
+        assert!(settings.stale_alerts);
+        assert_eq!(notes, vec!["Not updating alerts was reset to its default."]);
+        let saved = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(saved["paceAlerts"], true);
+        assert_eq!(saved["staleAlerts"], true);
     }
 
     #[test]

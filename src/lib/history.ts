@@ -71,14 +71,14 @@ export function createDemoHistory(account: Account): AccountHistory {
     const end = Date.parse(snapshot.fetchedAt)
     const short = window.windowSeconds !== null && window.windowSeconds < 86_400
     const steps = 36
-    const spacing = 5 * 60_000
+    const spacing = (short ? 5 : 80) * 60_000
     for (let index = 0; index <= steps; index++) {
       if (index >= 12 && index < 19) continue
       const olderPeriod = short && index < 9
       points.push({
         windowId: window.id,
         at: new Date(end - (steps - index) * spacing).toISOString(),
-        usedPercent: olderPeriod ? 60 + index * 3 : short ? window.usedPercent * Math.max(0, index - 9) / (steps - 9) : Math.max(0, window.usedPercent - 1.5 * (steps - index) / steps),
+        usedPercent: olderPeriod ? 60 + index * 3 : short ? window.usedPercent * Math.max(0, index - 9) / (steps - 9) : window.usedPercent * (0.55 + 0.45 * index / steps),
         resetsAt: olderPeriod ? new Date(end - 27 * spacing).toISOString() : window.resetsAt,
         windowSeconds: window.windowSeconds,
         gapBefore: index === 19,

@@ -1,7 +1,8 @@
 use super::{
-    burn, digest,
+    burn, digest, forecast,
     model::UsageError,
-    notifications::{self, AlertKind},
+    notifications::{self, AlertKind, Clock12h},
+    outage::{self, Outage},
     providers,
     settings::NotificationPermission,
     tray,
@@ -26,6 +27,7 @@ pub struct Schedule {
     pub generation: u64,
     pub wake_retries: u8,
     pub fetched: Option<Instant>,
+    pub outage: Outage,
 }
 
 const WAKE_RETRIES: u8 = 6;
@@ -42,6 +44,7 @@ impl Schedule {
             generation: 0,
             wake_retries: 0,
             fetched: None,
+            outage: Outage::default(),
         }
     }
 
@@ -200,15 +203,49 @@ async fn sync_permission(app: &AppHandle, runtime: &Runtime) {
     publish(app, &view);
 }
 
-fn post(app: &AppHandle, account_label: &str, alert: &notifications::Alert) {
-    let mut builder = app
-        .notification()
-        .builder()
-        .title(alert.title(account_label));
-    if let Some(body) = alert.body(chrono::Utc::now(), notifications::Clock12h::system()) {
+fn show(app: &AppHandle, title: String, body: Option<String>) {
+    let mut builder = app.notification().builder().title(title);
+    if let Some(body) = body {
         builder = builder.body(body);
     }
     let _ = builder.show();
+}
+
+fn post(app: &AppHandle, account_label: &str, alert: &notifications::Alert) {
+    let (now, clock) = (chrono::Utc::now(), Clock12h::system());
+    show(
+        app,
+        alert.title(account_label, now, clock),
+        alert.body(now, clock),
+    );
+}
+
+fn may_notify(settings: &super::settings::Settings) -> bool {
+    settings.notifications && settings.notification_permission == NotificationPermission::Granted
+}
+
+/// Accounts that just crossed 30 minutes without a reading, with their last reading's time.
+fn not_updating(
+    inner: &mut crate::runtime::RuntimeState,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Vec<(String, UsageError, chrono::DateTime<chrono::Utc>)> {
+    let mut stopped = Vec::new();
+    for account in &inner.view.accounts {
+        let Some(schedule) = inner.schedules.get_mut(&account.id) else {
+            continue;
+        };
+        let last = account
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.fetched_at.as_str());
+        if let (Some(at), Some(error)) = (
+            schedule.outage.observe(account.error.as_ref(), last, now),
+            account.error.as_ref(),
+        ) {
+            stopped.push((account.label.clone(), error.clone(), at));
+        }
+    }
+    stopped
 }
 
 pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
@@ -226,6 +263,9 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
             if resumed(last_tick, tick, interval) {
                 bring_forward(&mut inner.schedules, true, None);
+                for schedule in inner.schedules.values_mut() {
+                    schedule.outage.restart();
+                }
                 runtime.update_wake.notify_one();
                 last_digest_check = None;
             }
@@ -242,6 +282,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     .entry(id.clone())
                     .or_insert_with(|| Schedule::new(Duration::from_millis(index as u64 * 800)));
             }
+            let stopped = not_updating(&mut inner, chrono::Utc::now());
             let now = Instant::now();
             let mut due = Vec::new();
             let running = inner
@@ -280,6 +321,16 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
             }
             let view = inner.view.clone();
             drop(inner);
+            if view.settings.stale_alerts && may_notify(&view.settings) {
+                let (now, clock) = (chrono::Utc::now(), Clock12h::system());
+                for (label, error, last) in stopped {
+                    show(
+                        &app,
+                        outage::title(&label),
+                        Some(outage::body(&error, last, now, clock)),
+                    );
+                }
+            }
             if !due.is_empty() {
                 publish(&app, &view);
                 last_tray_update = Instant::now();
@@ -365,6 +416,21 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     } else {
                         let now = chrono::Utc::now();
                         inner.history.record(&observed, interval + 7, now);
+                        if let Some(snapshot) = observed
+                            .snapshot
+                            .as_ref()
+                            .filter(|_| inner.view.settings.pace_alerts)
+                        {
+                            let state = &mut *inner;
+                            forecast::observe(
+                                &mut state.alerts,
+                                &account.id,
+                                snapshot,
+                                &mut alerts,
+                                |window, since| state.history.recent(&observed, window, since),
+                                now,
+                            );
+                        }
                         let settings = &inner.view.settings;
                         if let Some(snapshot) =
                             observed.snapshot.as_ref().filter(|_| settings.burn_alerts)
@@ -439,9 +505,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     drop(inner);
                     publish(&app, &view);
                     let settings = &view.settings;
-                    if settings.notifications
-                        && settings.notification_permission == NotificationPermission::Granted
-                    {
+                    if may_notify(settings) {
                         for alert in alerts.iter().filter(|alert| {
                             settings.notify_on_reset || alert.kind != AlertKind::Reset
                         }) {

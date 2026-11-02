@@ -22,6 +22,9 @@ pub struct WindowAlerts {
         skip_serializing_if = "Option::is_none"
     )]
     pub(super) burn: Option<BurnState>,
+    /// A run-out warning was sent in this period.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) forecast: bool,
 }
 
 impl WindowAlerts {
@@ -43,10 +46,8 @@ impl WindowAlerts {
 pub enum AlertKind {
     Threshold(u8),
     Reset,
-    Burn {
-        increase: u8,
-        runs_out: Option<DateTime<Utc>>,
-    },
+    Burn { increase: u8 },
+    RunsOut,
 }
 
 #[derive(Clone, Debug)]
@@ -56,10 +57,25 @@ pub struct Alert {
     pub kind: AlertKind,
     pub resets_at: Option<String>,
     pub used_percent: f64,
+    /// When the window is projected to reach its limit, if that is before it resets.
+    pub runs_out: Option<DateTime<Utc>>,
 }
 
 impl Alert {
-    pub fn title(&self, account_label: &str) -> String {
+    pub fn title(&self, account_label: &str, now: DateTime<Utc>, clock: Clock12h) -> String {
+        self.title_in(&Local, clock, account_label, now)
+    }
+
+    fn title_in<Tz: TimeZone>(
+        &self,
+        zone: &Tz,
+        clock: Clock12h,
+        account_label: &str,
+        now: DateTime<Utc>,
+    ) -> String
+    where
+        Tz::Offset: std::fmt::Display,
+    {
         let window = &self.window_label;
         match self.kind {
             AlertKind::Threshold(100) => format!("{account_label} · {window} limit reached"),
@@ -70,9 +86,16 @@ impl Alert {
                 format!("{account_label} · {window} {left}% left")
             }
             AlertKind::Reset => format!("{account_label} · {window} limit reset"),
-            AlertKind::Burn { increase, .. } => {
+            AlertKind::Burn { increase } => {
                 format!("{account_label} · {window}: {increase}% used in the last hour")
             }
+            AlertKind::RunsOut => match self.runs_out {
+                Some(out) => format!(
+                    "{account_label} · {window} runs out around {}",
+                    clock_in(zone, clock, out, now)
+                ),
+                None => format!("{account_label} · {window} runs out before reset"),
+            },
         }
     }
 
@@ -89,27 +112,34 @@ impl Alert {
     where
         Tz::Offset: std::fmt::Display,
     {
-        if let AlertKind::Burn {
-            runs_out: Some(out),
-            ..
-        } = self.kind
-        {
-            if out > now {
-                return Some(format!(
-                    "At this rate it runs out around {}",
-                    clock_in(zone, clock, out, now)
-                ));
-            }
+        let reset = parse(self.resets_at.as_ref()).filter(|reset| *reset > now);
+        if self.kind == AlertKind::RunsOut {
+            let left = (100.0 - self.used_percent).floor().clamp(0.0, 100.0);
+            return Some(match reset {
+                Some(reset) => format!(
+                    "{left}% left · Resets in {} · {}",
+                    short_duration((reset - now).num_milliseconds()),
+                    clock_in(zone, clock, reset, now)
+                ),
+                None => format!("{left}% left"),
+            });
         }
-        let reset = parse(self.resets_at.as_ref())?;
-        let milliseconds = (reset - now).num_milliseconds();
-        (milliseconds > 0).then(|| {
-            format!(
-                "Resets in {} · {}",
-                short_duration(milliseconds),
-                clock_in(zone, clock, reset, now)
-            )
-        })
+        if let Some(out) = self.runs_out.filter(|out| *out > now) {
+            let out = clock_in(zone, clock, out, now);
+            return Some(match reset {
+                Some(reset) => format!(
+                    "At this rate it runs out around {out}, before the {} reset",
+                    clock_in(zone, clock, reset, now)
+                ),
+                None => format!("At this rate it runs out around {out}"),
+            });
+        }
+        let reset = reset?;
+        Some(format!(
+            "Resets in {} · {}",
+            short_duration((reset - now).num_milliseconds()),
+            clock_in(zone, clock, reset, now)
+        ))
     }
 }
 
@@ -336,6 +366,7 @@ pub fn observe(
             kind,
             resets_at: window.resets_at.clone(),
             used_percent: window.used_percent,
+            runs_out: None,
         };
         // A missing reset cannot prove a new period; percentage drops never rearm alerts.
         match memory.get_mut(&key) {
@@ -368,6 +399,7 @@ pub fn observe(
                         reset: window.resets_at.clone(),
                         sent: reached,
                         burn,
+                        forecast: false,
                     },
                 );
             }
@@ -441,6 +473,7 @@ mod tests {
                 reset: Some(RESET.into()),
                 sent: BTreeSet::from([95]),
                 burn: None,
+                forecast: false,
             },
         );
         assert!(check(&mut memory, &reading(97.0, RESET)).is_empty());
@@ -525,13 +558,20 @@ mod tests {
             kind: AlertKind::Threshold(95),
             resets_at: Some(RESET.into()),
             used_percent: 95.0,
+            runs_out: None,
         };
-        assert_eq!(alert.title("Personal"), "Personal · Session 5% left");
+        assert_eq!(
+            alert.title_in(&Utc, Clock12h(false), "Personal", now()),
+            "Personal · Session 5% left"
+        );
         let jumped = Alert {
             used_percent: 97.4,
             ..alert.clone()
         };
-        assert_eq!(jumped.title("Personal"), "Personal · Session 2% left");
+        assert_eq!(
+            jumped.title_in(&Utc, Clock12h(false), "Personal", now()),
+            "Personal · Session 2% left"
+        );
         assert_eq!(
             alert.body_in(&Utc, Clock12h(false), now()).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
@@ -541,18 +581,27 @@ mod tests {
             used_percent: 80.0,
             ..alert.clone()
         };
-        assert_eq!(early.title("Personal"), "Personal · Session 20% left");
+        assert_eq!(
+            early.title_in(&Utc, Clock12h(false), "Personal", now()),
+            "Personal · Session 20% left"
+        );
         let full = Alert {
             kind: AlertKind::Threshold(100),
             ..alert.clone()
         };
-        assert_eq!(full.title("Work"), "Work · Session limit reached");
+        assert_eq!(
+            full.title_in(&Utc, Clock12h(false), "Work", now()),
+            "Work · Session limit reached"
+        );
         let reset = Alert {
             kind: AlertKind::Reset,
             resets_at: None,
             ..alert
         };
-        assert_eq!(reset.title("Personal"), "Personal · Session limit reset");
+        assert_eq!(
+            reset.title_in(&Utc, Clock12h(false), "Personal", now()),
+            "Personal · Session limit reset"
+        );
         assert_eq!(reset.body(now(), Clock12h(false)), None);
         assert_eq!(short_duration(30_000), "<1m");
         assert_eq!(reset.body_in(&Utc, Clock12h(false), now()), None);
@@ -560,48 +609,69 @@ mod tests {
     }
 
     #[test]
-    fn fast_usage_copy_names_the_run_out_time_or_the_reset() {
+    fn run_out_copy_names_the_time_and_the_reset() {
         let reset: DateTime<Utc> = RESET.parse().unwrap();
         let alert = Alert {
             window_id: "five_hour".into(),
             window_label: "Session".into(),
-            kind: AlertKind::Burn {
-                increase: 20,
-                runs_out: Some(reset - chrono::Duration::minutes(30)),
-            },
+            kind: AlertKind::Burn { increase: 20 },
             resets_at: Some(RESET.into()),
             used_percent: 64.0,
+            runs_out: Some(reset - chrono::Duration::minutes(30)),
         };
+        let title = |alert: &Alert| alert.title_in(&Utc, Clock12h(false), "Personal", now());
+        let body = |alert: &Alert| alert.body_in(&Utc, Clock12h(false), now());
         assert_eq!(
-            alert.title("Personal"),
+            title(&alert),
             "Personal · Session: 20% used in the last hour"
         );
         assert_eq!(
-            alert.body_in(&Utc, Clock12h(false), now()).as_deref(),
-            Some("At this rate it runs out around 23:30")
+            body(&alert).as_deref(),
+            Some("At this rate it runs out around 23:30, before the Fri 00:00 reset")
         );
         let steady = Alert {
-            kind: AlertKind::Burn {
-                increase: 20,
-                runs_out: None,
-            },
+            runs_out: None,
             ..alert.clone()
         };
         assert_eq!(
-            steady.body_in(&Utc, Clock12h(false), now()).as_deref(),
+            body(&steady).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let passed = Alert {
-            kind: AlertKind::Burn {
-                increase: 20,
-                runs_out: Some(now() - chrono::Duration::minutes(1)),
-            },
-            ..alert
+            runs_out: Some(now() - chrono::Duration::minutes(1)),
+            ..alert.clone()
         };
         assert_eq!(
-            passed.body_in(&Utc, Clock12h(false), now()).as_deref(),
+            body(&passed).as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
+        let threshold = Alert {
+            kind: AlertKind::Threshold(80),
+            used_percent: 81.0,
+            ..alert.clone()
+        };
+        assert_eq!(title(&threshold), "Personal · Session 19% left");
+        assert_eq!(
+            body(&threshold).as_deref(),
+            Some("At this rate it runs out around 23:30, before the Fri 00:00 reset")
+        );
+        let warning = Alert {
+            kind: AlertKind::RunsOut,
+            used_percent: 63.4,
+            ..alert.clone()
+        };
+        assert_eq!(title(&warning), "Personal · Session runs out around 23:30");
+        assert_eq!(
+            body(&warning).as_deref(),
+            Some("36% left · Resets in 1h 20m · Fri 00:00")
+        );
+        let unknown = Alert {
+            runs_out: None,
+            resets_at: None,
+            ..warning
+        };
+        assert_eq!(title(&unknown), "Personal · Session runs out before reset");
+        assert_eq!(body(&unknown).as_deref(), Some("36% left"));
     }
 
     #[test]
@@ -654,6 +724,7 @@ mod tests {
             kind: AlertKind::Threshold(95),
             resets_at: Some(RESET.into()),
             used_percent: 95.0,
+            runs_out: None,
         };
         assert_eq!(
             alert.body_in(&Utc, twelve, now()).as_deref(),
@@ -681,12 +752,14 @@ mod tests {
             reset: Some(RESET.into()),
             sent: BTreeSet::from([80, 100]),
             burn: None,
+            forecast: false,
         };
         assert!(valid.validate().is_ok());
         assert!(WindowAlerts {
             reset: None,
             sent: BTreeSet::new(),
             burn: None,
+            forecast: false,
         }
         .validate()
         .is_ok());
@@ -733,6 +806,7 @@ mod tests {
                 reset: Some("2000-01-01T00:00:00Z".into()),
                 sent: BTreeSet::new(),
                 burn: None,
+                forecast: false,
             },
         );
         assert!(observe(

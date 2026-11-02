@@ -25,7 +25,7 @@ Interface preview with sample data; real menu-bar screenshots to follow.
 - **Many accounts at once.** Finds existing Claude Code and Codex sign-ins, including separate configuration folders; add more in Settings.
 - **Session, weekly, and model limits.** Usage remaining, reset countdown and time, and a pace line: "On pace", or when usage runs out at the current rate.
 - **Last-known values, labeled.** A failed request keeps the last reading with its age. Missing data stays unknown, never guessed.
-- **Alerts.** Notifications at thresholds you choose (50–100%), and optionally when a limit resets.
+- **Alerts.** Notifications at thresholds you choose (50–100%), when a limit is on pace to run out before it resets, when an account stops updating for 30 minutes, and optionally when a limit resets.
 
 ## Why Margin
 
