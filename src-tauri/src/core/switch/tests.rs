@@ -966,6 +966,35 @@ fn a_held_claude_lock_aborts_before_anything_is_written() {
 }
 
 #[test]
+fn an_unreadable_journal_is_kept_aside_not_overwritten() {
+    let directory = tempfile::tempdir().unwrap();
+    let fixture = Fixture::default_claude();
+    let (default, source) = fixture.states();
+    let plan = plan(&default, &source).unwrap();
+    let pending = writes(&plan, &default, &source).unwrap();
+    let mut journal = DiskJournal {
+        dir: directory.path().into(),
+        keychain: false,
+    };
+    std::fs::write(directory.path().join("switches.json"), b"{not json").unwrap();
+    let record = new_record(Provider::Claude, false, &pending, Vec::new());
+    journal
+        .begin(&record, &backup_blob(&record.id, &pending).unwrap())
+        .unwrap();
+    assert_eq!(journal.records().len(), 1);
+    let aside: Vec<_> = std::fs::read_dir(directory.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("switches.unreadable-"))
+        .collect();
+    assert_eq!(aside.len(), 1);
+    assert_eq!(
+        std::fs::read(directory.path().join(&aside[0])).unwrap(),
+        b"{not json"
+    );
+}
+
+#[test]
 fn journal_recovery_detects_unfinished_switches() {
     let directory = tempfile::tempdir().unwrap();
     let fixture = Fixture::default_claude();
