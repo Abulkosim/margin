@@ -112,10 +112,25 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("Margin could not start")
-        .run(|_app, _event| {
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                flush_on_exit(app);
+            }
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = _event {
-                tray::show(_app, false);
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show(app, false);
             }
         });
+}
+
+/// Readings are saved every 30 seconds; write the latest one before quitting.
+fn flush_on_exit(app: &tauri::AppHandle) {
+    let Some(runtime) = app.try_state::<Arc<Runtime>>() else {
+        return;
+    };
+    if !runtime.has_pending_save() {
+        return;
+    }
+    let inner = tauri::async_runtime::block_on(runtime.inner.lock());
+    let _ = runtime.persist(&inner.view, &inner.alerts);
 }

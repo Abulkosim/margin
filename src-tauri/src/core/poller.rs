@@ -219,6 +219,9 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
         let mut last_digest_check: Option<Instant> = None;
         loop {
             let mut inner = runtime.inner.lock().await;
+            if runtime.flush_due() {
+                inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+            }
             let tick = SystemTime::now();
             let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
             if resumed(last_tick, tick, interval) {
@@ -331,6 +334,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         inner.view.settings.idle_poll_interval_seconds
                     };
                     let mut alerts = Vec::new();
+                    let mut identity_changed = false;
                     let error = result.as_ref().err().cloned();
                     match result {
                         Ok((snapshot, identity)) => {
@@ -350,6 +354,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                             let target = &mut inner.view.accounts[index];
                             target.snapshot = Some(snapshot);
                             target.error = None;
+                            identity_changed = target.identity != identity;
                             target.identity = identity;
                         }
                         Err(error) => inner.view.accounts[index].error = Some(error),
@@ -424,7 +429,11 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         error.retry_at = retry_at;
                     }
                     inner.view.refreshing = inner.view.accounts.iter().any(|item| item.refreshing);
-                    inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+                    let urgent = !alerts.is_empty() || identity_changed;
+                    if let Some(saved) = runtime.persist_reading(&inner.view, &inner.alerts, urgent)
+                    {
+                        inner.view.notice = saved.err();
+                    }
                     inner.view.changed();
                     let view = inner.view.clone();
                     drop(inner);

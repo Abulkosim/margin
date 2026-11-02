@@ -6,12 +6,6 @@
 /// `security -i` reads stdin lines into a 4096-byte buffer; longer lines are cut.
 pub const STDIN_LINE_LIMIT: usize = 4096 - 64;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum AddCommand {
-    Stdin(String),
-    Argv(Vec<String>),
-}
-
 pub fn quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -29,33 +23,16 @@ pub fn unhex(text: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-/// Mirrors Claude Code: the secret goes over stdin as hex; argv only when the line
-/// would overflow `security -i`.
-pub fn add_command(account: &str, service: &str, secret: &[u8]) -> AddCommand {
-    let encoded = hex(secret);
+/// The secret goes over stdin as hex, never argv, where other processes could
+/// read it. `None` when the line would overflow `security -i`.
+pub fn add_command(account: &str, service: &str, secret: &[u8]) -> Option<String> {
     let line = format!(
-        "add-generic-password -U -a {} -s {} -X {encoded}\n",
+        "add-generic-password -U -a {} -s {} -X {}\n",
         quote(account),
-        quote(service)
+        quote(service),
+        hex(secret)
     );
-    if line.len() <= STDIN_LINE_LIMIT {
-        AddCommand::Stdin(line)
-    } else {
-        AddCommand::Argv(
-            [
-                "add-generic-password",
-                "-U",
-                "-a",
-                account,
-                "-s",
-                service,
-                "-X",
-                &encoded,
-            ]
-            .map(str::to_owned)
-            .to_vec(),
-        )
-    }
+    (line.len() <= STDIN_LINE_LIMIT).then_some(line)
 }
 
 /// Reads the `acct` attribute from `find-generic-password` output (no secret).
@@ -88,7 +65,7 @@ pub struct KeychainError;
 
 #[cfg(target_os = "macos")]
 mod system {
-    use super::{add_command, parse_account, AddCommand, KeychainError};
+    use super::{add_command, parse_account, KeychainError};
     use std::io::{Read, Write};
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
@@ -129,13 +106,8 @@ mod system {
     }
 
     pub fn write(service: &str, account: &str, secret: &[u8]) -> Result<(), KeychainError> {
-        let (status, _) = match add_command(account, service, secret) {
-            AddCommand::Stdin(line) => run(&["-i"], Some(line.into_bytes()))?,
-            AddCommand::Argv(args) => {
-                let args: Vec<&str> = args.iter().map(String::as_str).collect();
-                run(&args, None)?
-            }
-        };
+        let line = add_command(account, service, secret).ok_or(KeychainError)?;
+        let (status, _) = run(&["-i"], Some(line.into_bytes()))?;
         if status == 0 {
             Ok(())
         } else {
@@ -144,14 +116,19 @@ mod system {
     }
 
     pub fn remove(service: &str, account: &str) -> Result<(), KeychainError> {
+        delete(service, account).map(|_| ())
+    }
+
+    /// Deletes the item without reading its secret; `false` when there was none.
+    pub fn delete(service: &str, account: &str) -> Result<bool, KeychainError> {
         let (status, _) = run(
             &["delete-generic-password", "-a", account, "-s", service],
             None,
         )?;
-        if status == 0 || status == NOT_FOUND {
-            Ok(())
-        } else {
-            Err(KeychainError)
+        match status {
+            0 => Ok(true),
+            NOT_FOUND => Ok(false),
+            _ => Err(KeychainError),
         }
     }
 
@@ -210,7 +187,7 @@ mod system {
 }
 
 #[cfg(target_os = "macos")]
-pub use system::{account, read, read_account, remove, write};
+pub use system::{account, delete, read, read_account, remove, write};
 
 #[cfg(test)]
 mod tests {
@@ -219,11 +196,8 @@ mod tests {
     #[test]
     fn stdin_line_quotes_the_service_and_hex_encodes_the_secret() {
         let secret = br#"{"claudeAiOauth":{"accessToken":"a\"b"}}"#;
-        let AddCommand::Stdin(line) =
-            add_command("ab\"c", "Claude Code-credentials-96e73013", secret)
-        else {
-            panic!("short secrets go over stdin");
-        };
+        let line = add_command("ab\"c", "Claude Code-credentials-96e73013", secret)
+            .expect("short secrets go over stdin");
         assert_eq!(
             line,
             format!(
@@ -236,28 +210,11 @@ mod tests {
     }
 
     #[test]
-    fn oversized_secrets_fall_back_to_argv() {
+    fn oversized_secrets_are_never_written() {
         let secret = vec![b'x'; STDIN_LINE_LIMIT / 2];
-        let AddCommand::Argv(args) = add_command("me", "Claude Code-credentials", &secret) else {
-            panic!("long secrets use argv");
-        };
-        assert_eq!(
-            args[..6],
-            [
-                "add-generic-password",
-                "-U",
-                "-a",
-                "me",
-                "-s",
-                "Claude Code-credentials"
-            ]
-        );
-        assert_eq!(unhex(&args[7]).unwrap(), secret);
+        assert_eq!(add_command("me", "Claude Code-credentials", &secret), None);
         let fits = vec![b'x'; 1500];
-        assert!(matches!(
-            add_command("me", "Claude Code-credentials", &fits),
-            AddCommand::Stdin(_)
-        ));
+        assert!(add_command("me", "Claude Code-credentials", &fits).is_some());
     }
 
     #[test]

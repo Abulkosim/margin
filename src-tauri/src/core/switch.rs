@@ -488,6 +488,7 @@ pub enum Refusal {
     Symlink(PathBuf),
     ConfigMissing(PathBuf),
     ConfigUnreadable,
+    TooLarge,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -994,6 +995,9 @@ pub fn message(error: &SwitchError, provider: Provider, label: &str, folder: &Pa
             Refusal::ConfigUnreadable => {
                 "Claude Code’s settings file couldn’t be read. Margin won’t change it.".into()
             }
+            Refusal::TooLarge => format!(
+                "This sign-in is too large to write to the Keychain safely. Sign in with {cli} in that folder instead."
+            ),
         },
         SwitchError::Changed => "The accounts changed. Review and try again.".into(),
         SwitchError::Busy => format!("{cli} is busy. Try again in a moment."),
@@ -1187,12 +1191,28 @@ fn backup_blob(id: &str, writes: &[Write]) -> Result<Vec<u8>, SwitchError> {
     .map_err(|_| SwitchError::Journal)
 }
 
+/// Keychain values go to `security` over stdin only; one too long for a single
+/// line would need argv, so the switch is refused before anything is written.
+fn writable(writes: &[Write]) -> bool {
+    writes
+        .iter()
+        .all(|write| match (&write.location, &write.after) {
+            (Location::Keychain { service, account }, Some(bytes)) => {
+                keychain::add_command(account, service, bytes).is_some()
+            }
+            _ => true,
+        })
+}
+
 fn commit(
     mut record: SwitchRecord,
     writes: &[Write],
     store: &dyn CredentialStore,
     journal: &mut dyn Journal,
 ) -> Result<SwitchRecord, SwitchError> {
+    if !writable(writes) {
+        return Err(Refusal::TooLarge.into());
+    }
     journal.begin(&record, &backup_blob(&record.id, writes)?)?;
     for (index, write) in writes.iter().enumerate() {
         if let Err(error) = apply(store, write) {
@@ -1470,14 +1490,9 @@ impl DiskJournal {
         if self.keychain {
             for index in 0..MAX_BACKUP_CHUNKS {
                 let account = format!("{id}.{index}");
-                if read_keychain_account(BACKUP_SERVICE, &account)
-                    .ok()
-                    .flatten()
-                    .is_none()
-                {
+                if !delete_keychain(BACKUP_SERVICE, &account) {
                     break;
                 }
-                let _ = remove_keychain(BACKUP_SERVICE, &account);
             }
         } else {
             let _ = std::fs::remove_file(self.backup_file(id));
@@ -1575,6 +1590,19 @@ fn backup_chunks(bytes: &[u8]) -> Option<Vec<String>> {
         .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
         .collect();
     (chunks.len() <= MAX_BACKUP_CHUNKS).then_some(chunks)
+}
+
+/// True when an item was deleted; the secret is never read to find out.
+fn delete_keychain(service: &str, account: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        keychain::delete(service, account).unwrap_or(false)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (service, account);
+        false
+    }
 }
 
 fn join_chunks(chunks: &[Vec<u8>]) -> Option<Vec<u8>> {
