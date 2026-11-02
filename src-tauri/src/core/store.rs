@@ -462,6 +462,29 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
             return Err(invalid_store());
         }
     }
+    if let Some(balance) = &snapshot.balance {
+        let amount = |value: f64| value.is_finite() && value >= 0.0;
+        if balance
+            .credits
+            .as_ref()
+            .is_some_and(|credits| !credits.amount.is_none_or(amount))
+            || balance.spend_limit.as_ref().is_some_and(|limit| {
+                !amount(limit.used)
+                    || !amount(limit.limit)
+                    || !(0.0..=100.0).contains(&limit.used_percent)
+                    || limit
+                        .resets_at
+                        .as_deref()
+                        .is_some_and(|value| !valid_timestamp(value))
+                    || limit
+                        .unit
+                        .as_deref()
+                        .is_some_and(|unit| !valid_text(unit, 64))
+            })
+        {
+            return Err(invalid_store());
+        }
+    }
     if let Some(grants) = &snapshot.reset_grants {
         if grants.available > 1000
             || grants
@@ -620,6 +643,54 @@ mod tests {
         let mut invalid = snapshot;
         invalid.windows[0].resets_at = Some("soon".into());
         assert!(validate_snapshot(&invalid).is_err());
+    }
+
+    #[test]
+    fn rejects_balances_the_interface_cannot_show() {
+        use crate::core::model::{Balance, Credits, SpendLimit};
+        let mut snapshot = sample_account().snapshot.unwrap();
+        snapshot.balance = Some(Balance {
+            credits: Some(Credits {
+                amount: Some(12.5),
+                unlimited: false,
+            }),
+            spend_limit: Some(SpendLimit {
+                used: 3.0,
+                limit: 10.0,
+                used_percent: 30.0,
+                resets_at: Some("2026-11-01T00:00:00Z".into()),
+                reached: false,
+                unit: Some("credit".into()),
+            }),
+        });
+        assert!(validate_snapshot(&snapshot).is_ok());
+        let mut bad = snapshot.clone();
+        bad.balance
+            .as_mut()
+            .unwrap()
+            .credits
+            .as_mut()
+            .unwrap()
+            .amount = Some(-1.0);
+        assert!(validate_snapshot(&bad).is_err());
+        let mut bad = snapshot.clone();
+        bad.balance
+            .as_mut()
+            .unwrap()
+            .spend_limit
+            .as_mut()
+            .unwrap()
+            .used_percent = 150.0;
+        assert!(validate_snapshot(&bad).is_err());
+        let mut bad = snapshot;
+        bad.balance
+            .as_mut()
+            .unwrap()
+            .spend_limit
+            .as_mut()
+            .unwrap()
+            .resets_at = Some("soon".into());
+        assert!(validate_snapshot(&bad).is_err());
     }
 
     #[test]
