@@ -371,7 +371,7 @@ fn latest_two(points: &[HistoryPoint], window_id: &str) -> (Option<usize>, Optio
 /// a weekly duration under that id can only be that naming; one without a
 /// duration is renamed only when the account's current snapshot shows its
 /// weekly window alone. The rest is left as it is.
-fn migrate_codex_weekly(points: &mut [HistoryPoint], account: &Account) -> bool {
+fn migrate_codex_weekly(points: &mut Vec<HistoryPoint>, account: &Account) -> bool {
     if account.provider != Provider::Codex {
         return false;
     }
@@ -387,21 +387,50 @@ fn migrate_codex_weekly(points: &mut [HistoryPoint], account: &Account) -> bool 
                 .iter()
                 .any(|window| window.id == "primary_window")
         });
-    let mut changed = false;
-    for point in points
-        .iter_mut()
-        .filter(|point| point.window_id == "primary_window")
-    {
-        let weekly = match point.window_seconds {
-            Some(seconds) => seconds == 604_800,
-            None => weekly_only && !had_weekly,
-        };
+    let mut moved = vec![false; points.len()];
+    for (point, moved) in points.iter_mut().zip(&mut moved) {
+        let weekly = point.window_id == "primary_window"
+            && match point.window_seconds {
+                Some(seconds) => seconds == 604_800,
+                None => weekly_only && !had_weekly,
+            };
         if weekly {
             point.window_id = "secondary_window".into();
-            changed = true;
+            *moved = true;
         }
     }
+    let changed = moved.contains(&true);
+    if changed && had_weekly {
+        merge_weekly(points, &moved);
+    }
     changed
+}
+
+/// Weekly readings stored under both ids (after a downgrade to v0.7 and back)
+/// would interleave in one series and fail validation on every later save.
+/// Put them in time order, keep one reading per instant, and start a new
+/// segment wherever the series switches between the two sources.
+fn merge_weekly(points: &mut Vec<HistoryPoint>, moved: &[bool]) {
+    let mut tagged: Vec<(HistoryPoint, bool)> =
+        points.drain(..).zip(moved.iter().copied()).collect();
+    tagged.sort_by_key(|(point, _)| timestamp(&point.at));
+    let mut previous: Option<(DateTime<Utc>, bool)> = None;
+    for (point, moved) in tagged {
+        if point.window_id == "secondary_window" {
+            let at = timestamp(&point.at);
+            if previous.is_some_and(|(before, _)| Some(before) == at) {
+                continue;
+            }
+            let mut point = point;
+            if previous.is_some_and(|(_, was_moved)| was_moved != moved) {
+                point.gap_before = true;
+            }
+            previous = at.map(|at| (at, moved));
+            points.push(point);
+        } else {
+            points.push(point);
+        }
+    }
 }
 
 pub(super) fn compact(points: &mut Vec<HistoryPoint>) -> bool {
@@ -916,6 +945,51 @@ mod tests {
             ids(store.get(&unknown, at(300)).points),
             ["primary_window", "secondary_window"],
             "without a duration or a weekly-only snapshot the point stays"
+        );
+    }
+
+    #[test]
+    fn weekly_points_under_both_ids_merge_in_time_order() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("codex-test.json");
+        let point = |id: &str, seconds: i64| HistoryPoint {
+            window_id: id.into(),
+            at: at(seconds).to_rfc3339(),
+            used_percent: 10.0,
+            resets_at: Some(at(604_800).to_rfc3339()),
+            window_seconds: Some(604_800),
+            gap_before: false,
+        };
+        let mut weekly = account(300, 11.0);
+        let window = &mut weekly.snapshot.as_mut().unwrap().windows[0];
+        window.id = "secondary_window".into();
+        window.window_seconds = Some(604_800);
+        let mut saved = empty(&weekly);
+        saved.points = vec![
+            point("secondary_window", 0),
+            point("secondary_window", 120),
+            point("primary_window", 60),
+            point("primary_window", 120),
+            point("primary_window", 180),
+        ];
+        save(&path, &saved).unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let shape: Vec<_> = store
+            .get(&weekly, at(300))
+            .points
+            .into_iter()
+            .map(|point| (point.window_id, point.at, point.gap_before))
+            .collect();
+        let expected: Vec<_> = [(0, false), (60, true), (120, true), (180, true)]
+            .into_iter()
+            .map(|(seconds, gap)| ("secondary_window".to_owned(), at(seconds).to_rfc3339(), gap))
+            .collect();
+        assert_eq!(shape, expected);
+        store.record(&weekly, 60, at(300));
+        assert_eq!(
+            load(&path).unwrap().unwrap().points.len(),
+            5,
+            "the merged series saves and takes new readings"
         );
     }
 

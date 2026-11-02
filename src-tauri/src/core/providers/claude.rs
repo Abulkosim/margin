@@ -46,9 +46,20 @@ impl ProfileCache {
             .map(|entry| entry.identity.clone())
     }
 
-    fn last(&self, account: &str) -> Option<Identity> {
-        let cache = self.0.lock().ok()?;
-        cache.get(account).map(|entry| entry.identity.clone())
+    /// The identity to keep when the profile request fails. Tokens rotate, so a
+    /// new token keeps the last email and plan on screen, but it may also be a
+    /// different sign-in in that folder: its history key is dropped, which pauses
+    /// history instead of adding someone else's readings to it.
+    fn fallback(&self, account: &str, token: &[u8; 32], stored: &Identity) -> Identity {
+        let cache = self.0.lock().ok();
+        match cache.as_ref().and_then(|cache| cache.get(account)) {
+            Some(entry) if &entry.token == token => entry.identity.clone(),
+            Some(entry) => Identity {
+                history_key: None,
+                ..entry.identity.clone()
+            },
+            None => stored.clone(),
+        }
     }
 
     fn store(&self, account: &str, token: [u8; 32], identity: Identity) {
@@ -119,9 +130,7 @@ async fn fetch_from(
                 profiles.store(&account.id, token_hash, profile.clone());
                 profile
             }
-            None => profiles
-                .last(&account.id)
-                .unwrap_or_else(|| account.identity.clone()),
+            None => profiles.fallback(&account.id, &token_hash, &account.identity),
         },
     };
     let identity = Identity {
@@ -939,6 +948,27 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_profile_request_keeps_only_the_same_tokens_identity() {
+        let cache = ProfileCache::default();
+        let stored = Identity {
+            email: Some("old@example.test".into()),
+            plan: Some("Pro".into()),
+            history_key: None,
+        };
+        assert_eq!(cache.fallback("a", &[1; 32], &stored), stored);
+        let cached = Identity {
+            email: Some("cached@example.test".into()),
+            history_key: Some("k".repeat(64)),
+            ..stored.clone()
+        };
+        cache.store("a", [1; 32], cached.clone());
+        assert_eq!(cache.fallback("a", &[1; 32], &stored), cached);
+        let rotated = cache.fallback("a", &[2; 32], &stored);
+        assert_eq!(rotated.email, cached.email);
+        assert_eq!(rotated.history_key, None);
+    }
+
+    #[test]
     fn an_unusable_keychain_item_falls_back_to_the_file() {
         let mcp_only = || parse_credentials(br#"{"mcpOAuth":{}}"#);
         assert!(keychain_or_file(mcp_only(), true).is_none());
@@ -1173,6 +1203,7 @@ attributes:
         assert_eq!(profile_calls(&server).await, 2);
         assert_eq!(identity.email.as_deref(), Some("person@example.test"));
         assert_eq!(identity.plan.as_deref(), Some("Pro"));
+        assert_eq!(identity.history_key, None, "a new token pauses history");
     }
 
     #[tokio::test]

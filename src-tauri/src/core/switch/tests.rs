@@ -1431,19 +1431,42 @@ fn disk_journal_keeps_five_recent_records_and_private_backups() {
 }
 
 #[test]
+fn a_sign_in_too_large_for_one_keychain_line_is_refused_before_writing() {
+    let fixture = Fixture::default_claude();
+    assert!(matches!(
+        fixture.default.credentials[0],
+        Location::Keychain { .. }
+    ));
+    fixture.store.set(
+        &fixture.source.credentials[0],
+        &credential(&"x".repeat(keychain::STDIN_LINE_LIMIT)),
+    );
+    let before = fixture.store.snapshot();
+    let mut journal = FakeJournal::default();
+    assert_eq!(
+        fixture.execute(&mut journal).err(),
+        Some(SwitchError::Refused(Refusal::TooLarge))
+    );
+    assert_eq!(fixture.store.snapshot(), before);
+    assert!(journal.records.is_empty());
+}
+
+#[test]
 fn keychain_backups_split_into_stdin_sized_ascii_chunks() {
     let blob: Vec<u8> = (0..20_000u32).map(|n| (n % 251) as u8).collect();
     let chunks = backup_chunks(&blob).unwrap();
     assert!(chunks.len() > 1);
     for chunk in &chunks {
         assert!(chunk.is_ascii());
-        let keychain::AddCommand::Stdin(_) = keychain::add_command(
-            "claude-20261026T101010Z-0123abcd.63",
-            BACKUP_SERVICE,
-            chunk.as_bytes(),
-        ) else {
-            panic!("backup chunks must stay off argv");
-        };
+        assert!(
+            keychain::add_command(
+                "claude-20261026T101010Z-0123abcd.63",
+                BACKUP_SERVICE,
+                chunk.as_bytes(),
+            )
+            .is_some(),
+            "backup chunks must fit one stdin line"
+        );
     }
     let stored: Vec<Vec<u8>> = chunks.into_iter().map(String::into_bytes).collect();
     assert_eq!(join_chunks(&stored).unwrap(), blob);

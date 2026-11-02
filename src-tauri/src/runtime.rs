@@ -14,6 +14,7 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, Notify};
@@ -66,6 +67,16 @@ pub struct Runtime {
     last_update_check_at: std::sync::Mutex<Option<String>>,
     digest: std::sync::Mutex<Option<DigestState>>,
     pub switching: AtomicBool,
+    save_pending: AtomicBool,
+    last_saved: std::sync::Mutex<Option<Instant>>,
+}
+
+/// New readings reach the settings file at most this often; alerts and user
+/// changes are saved at once.
+pub const READING_SAVE_INTERVAL: Duration = Duration::from_secs(30);
+
+pub fn reading_save_due(last_saved: Option<Instant>, now: Instant) -> bool {
+    last_saved.is_none_or(|last| now.saturating_duration_since(last) >= READING_SAVE_INTERVAL)
 }
 
 impl Runtime {
@@ -115,6 +126,8 @@ impl Runtime {
             last_update_check_at: std::sync::Mutex::new(saved.last_update_check_at),
             digest: std::sync::Mutex::new(saved.digest),
             switching: AtomicBool::new(false),
+            save_pending: AtomicBool::new(false),
+            last_saved: std::sync::Mutex::new(None),
         })
     }
 
@@ -190,7 +203,41 @@ impl Runtime {
                 digest: self.digest_state(),
                 ..StoredState::default()
             },
-        )
+        )?;
+        self.save_pending.store(false, Ordering::SeqCst);
+        if let Ok(mut last) = self.last_saved.lock() {
+            *last = Some(Instant::now());
+        }
+        Ok(())
+    }
+
+    /// Saves a new reading now when `urgent` or when the last save is old
+    /// enough; otherwise leaves it for the poller to flush. `None` means deferred.
+    pub fn persist_reading(
+        &self,
+        view: &AppState,
+        alerts: &AlertMemory,
+        urgent: bool,
+    ) -> Option<Result<(), String>> {
+        if urgent || self.reading_save_due() {
+            return Some(self.persist(view, alerts));
+        }
+        self.save_pending.store(true, Ordering::SeqCst);
+        None
+    }
+
+    /// True when a deferred reading is waiting and the interval has passed.
+    pub fn flush_due(&self) -> bool {
+        self.save_pending.load(Ordering::SeqCst) && self.reading_save_due()
+    }
+
+    pub fn has_pending_save(&self) -> bool {
+        self.save_pending.load(Ordering::SeqCst)
+    }
+
+    fn reading_save_due(&self) -> bool {
+        let last = self.last_saved.lock().ok().and_then(|last| *last);
+        reading_save_due(last, Instant::now())
     }
 
     pub fn digest_state(&self) -> Option<DigestState> {
@@ -249,10 +296,13 @@ impl Runtime {
             )
             .map(|account| account.id.clone())
             .collect();
-        for id in changed_ids {
-            inner.history.remove(&id)?;
-        }
+        // Save first: if that fails, the account and its history both stay.
         self.persist(&next, &alerts)?;
+        for id in changed_ids {
+            if let Err(error) = inner.history.remove(&id) {
+                next.notice = Some(error);
+            }
+        }
         inner.view = next.clone();
         inner.alerts = alerts;
         inner
@@ -283,6 +333,18 @@ pub fn publish(app: &AppHandle, state: &AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readings_are_saved_at_most_every_interval() {
+        let now = Instant::now();
+        assert!(reading_save_due(None, now));
+        assert!(!reading_save_due(Some(now), now));
+        assert!(!reading_save_due(
+            Some(now),
+            now + READING_SAVE_INTERVAL - Duration::from_millis(1)
+        ));
+        assert!(reading_save_due(Some(now), now + READING_SAVE_INTERVAL));
+    }
 
     #[tokio::test]
     async fn existing_settings_remain_usable_when_separate_history_is_corrupt() {
