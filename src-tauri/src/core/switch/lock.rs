@@ -1,12 +1,16 @@
 //! Claude Code's `proper-lockfile` protocol: a lock is a directory made with
-//! `mkdir`. Margin waits a bounded time, never takes over a lock it did not make,
-//! and keeps its own locks fresh while it holds them.
+//! `mkdir`, and a live holder touches it every few seconds. Margin waits a
+//! bounded time, keeps its own locks fresh while it holds them, and only removes
+//! a lock nobody has touched for [`ABANDONED`], such as one left by a crash.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+/// Far past `proper-lockfile`'s 10 s staleness, so a live holder never loses its lock.
+const ABANDONED: Duration = Duration::from_secs(120);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LockError {
@@ -50,6 +54,9 @@ impl LockSet for ProperLockfile {
                         break;
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if abandoned(&path) && std::fs::remove_dir(&path).is_ok() {
+                            continue;
+                        }
                         if Instant::now() >= deadline {
                             return Err(LockError::Busy);
                         }
@@ -97,6 +104,14 @@ impl Held {
             }
         }));
     }
+}
+
+fn abandoned(path: &std::path::Path) -> bool {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age >= ABANDONED)
 }
 
 fn touch(path: &std::path::Path) {
@@ -156,6 +171,26 @@ mod tests {
         assert!(started.elapsed() >= Duration::from_millis(250));
         assert!(busy.is_dir(), "someone else's lock stays in place");
         assert!(!first.exists(), "partial locks are released");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_abandoned_lock_is_removed_and_taken() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.lock");
+        std::fs::create_dir(&path).unwrap();
+        let old = std::time::SystemTime::now() - ABANDONED - Duration::from_secs(1);
+        std::fs::File::open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let locks = ProperLockfile {
+            timeout: Duration::from_millis(250),
+        };
+        let held = locks.acquire(std::slice::from_ref(&path)).unwrap();
+        assert_eq!(held.paths(), std::slice::from_ref(&path));
+        drop(held);
+        assert!(!path.exists());
     }
 
     #[test]
