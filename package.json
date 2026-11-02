@@ -21,7 +21,9 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
-    "verify": "pnpm build && pnpm test",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
+    "lint:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
+    "verify": "pnpm build && pnpm test && pnpm lint:rust && pnpm test:rust",
     "tauri": "tauri"
   },
   "dependencies": {
