@@ -1057,6 +1057,7 @@ pub fn execute(
 pub fn restore(
     id: &str,
     now: chrono::DateTime<chrono::Utc>,
+    running: Running,
     store: &dyn CredentialStore,
     locks: &dyn LockSet,
     journal: &mut dyn Journal,
@@ -1069,6 +1070,8 @@ pub fn restore(
     if !original.restorable(now) {
         return Err(Refusal::RestoreExpired.into());
     }
+    // Codex has no lock files, so a running Codex could refresh mid-restore.
+    check_running(original.provider, running)?;
     let blob: BackupBlob = journal
         .backup(id)?
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())

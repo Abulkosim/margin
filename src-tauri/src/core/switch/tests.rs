@@ -1044,6 +1044,7 @@ fn restore_writes_the_backup_back_while_the_stores_are_unchanged() {
     let record = restore(
         &id,
         now,
+        Running::No,
         &fixture.store,
         &FakeLocks::default(),
         &mut journal,
@@ -1070,6 +1071,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
     let error = restore(
         &id,
         now,
+        Running::No,
         &fixture.store,
         &FakeLocks::default(),
         &mut journal,
@@ -1092,6 +1094,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
         restore(
             &id,
             later,
+            Running::No,
             &fixture.store,
             &FakeLocks::default(),
             &mut journal
@@ -1108,6 +1111,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
         restore(
             &outcome.record.id,
             chrono::Utc::now(),
+            Running::No,
             &fixture.store,
             &FakeLocks::default(),
             &mut journal
@@ -1116,6 +1120,35 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
         Some(SwitchError::Refused(Refusal::RestoreExpired)),
         "a finished switch has no restore"
     );
+}
+
+#[test]
+fn restore_refuses_while_codex_runs() {
+    let fixture = codex_fixture();
+    let mut journal = FakeJournal::default();
+    fixture.execute(&mut journal).unwrap();
+    let live = fingerprints(&fixture.store, &journal.records[0].items);
+    journal.records[0].state = RecordState::VerifyFailed;
+    journal.records[0].live = Some(live);
+    let id = journal.records[0].id.clone();
+    let before = fixture.store.snapshot();
+    for running in [Running::Cli, Running::Helper] {
+        assert_eq!(
+            restore(
+                &id,
+                chrono::Utc::now(),
+                running,
+                &fixture.store,
+                &FakeLocks::default(),
+                &mut journal,
+            )
+            .err(),
+            Some(SwitchError::Refused(Refusal::CodexRunning {
+                helper: running == Running::Helper
+            }))
+        );
+    }
+    assert_eq!(fixture.store.snapshot(), before);
 }
 
 #[test]
