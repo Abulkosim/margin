@@ -51,13 +51,11 @@ States are defined in [`src/lib/demo.ts`](src/lib/demo.ts). Public screenshots f
 ## Test
 
 ```sh
-pnpm build        # type check and frontend assets; native checks need these
-pnpm test
+pnpm verify       # build, unit tests, cargo fmt --check, strict Clippy, cargo test
 pnpm test:e2e
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
+
+`pnpm verify` builds first because the native checks need the frontend assets. `pnpm lint:rust` and `pnpm test:rust` run the Rust steps alone.
 
 CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test.
 
