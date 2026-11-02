@@ -1420,6 +1420,21 @@ impl DiskJournal {
         self.dir.join("backups").join(format!("{id}.json"))
     }
 
+    /// `None` when the index exists but cannot be read.
+    fn load(&self) -> Option<Vec<SwitchRecord>> {
+        match read_file(&self.index()) {
+            Ok(None) => Some(Vec::new()),
+            Ok(Some(bytes)) => serde_json::from_slice(&bytes).ok(),
+            Err(_) => None,
+        }
+    }
+
+    fn set_aside(&self) -> Result<(), SwitchError> {
+        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ");
+        let aside = self.dir.join(format!("switches.unreadable-{stamp}.json"));
+        std::fs::rename(self.index(), aside).map_err(|_| SwitchError::Journal)
+    }
+
     fn save(&self, records: &[SwitchRecord]) -> Result<(), SwitchError> {
         std::fs::create_dir_all(&self.dir).map_err(|_| SwitchError::Journal)?;
         let bytes = serde_json::to_vec_pretty(records).map_err(|_| SwitchError::Journal)?;
@@ -1472,16 +1487,20 @@ impl DiskJournal {
 
 impl Journal for DiskJournal {
     fn records(&self) -> Vec<SwitchRecord> {
-        read_file(&self.index())
-            .ok()
-            .flatten()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default()
+        self.load().unwrap_or_default()
     }
 
     fn begin(&mut self, record: &SwitchRecord, backup: &[u8]) -> Result<(), SwitchError> {
+        // Rewriting an unreadable index would drop its records and orphan their
+        // backups; keep it beside the new one instead.
+        let mut records = match self.load() {
+            Some(records) => records,
+            None => {
+                self.set_aside()?;
+                Vec::new()
+            }
+        };
         self.store_backup(&record.id, backup)?;
-        let mut records = self.records();
         records.push(record.clone());
         let now = chrono::Utc::now();
         let cutoff = now - chrono::Duration::days(KEEP_DAYS);
