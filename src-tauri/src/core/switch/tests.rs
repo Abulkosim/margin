@@ -991,10 +991,32 @@ fn journal_recovery_detects_unfinished_switches() {
         .write(&pending[0].location, pending[0].after.as_ref().unwrap())
         .unwrap();
     let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    let baseline = recovery.offer.as_ref().and_then(|offer| offer.live.clone());
     assert_eq!(
         recovery.offer.map(|record| record.id),
         Some(record.id.clone())
     );
+
+    // A CLI refresh between two launches must not become the new baseline.
+    let refreshed = fixture.store.snapshot();
+    fixture
+        .store
+        .set(&pending[1].location, &credential("refreshed-later"));
+    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    assert_eq!(recovery.offer.and_then(|offer| offer.live), baseline);
+    assert_eq!(
+        restore(
+            &record.id,
+            chrono::Utc::now(),
+            &fixture.store,
+            &FakeLocks::default(),
+            &mut journal,
+        )
+        .err(),
+        Some(SwitchError::Refused(Refusal::RestoreStale))
+    );
+    *fixture.store.values.borrow_mut() = refreshed;
+    journal.mark(&record.id, RecordState::Started).unwrap();
 
     for write in &pending[1..] {
         match &write.after {

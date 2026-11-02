@@ -1327,8 +1327,16 @@ pub fn recover(
                 } else if matches(|item| &item.before) {
                     let _ = journal.mark(&record.id, RecordState::Abandoned);
                 } else {
-                    let live = fingerprints(store, &record.items);
-                    let _ = journal.fail(&record.id, RecordState::Started, live.clone());
+                    // Keep the first baseline: taking a new one at every launch would
+                    // accept a CLI refresh made since, and restore would overwrite it.
+                    let live = match record.live.clone() {
+                        Some(live) => live,
+                        None => {
+                            let live = fingerprints(store, &record.items);
+                            let _ = journal.fail(&record.id, RecordState::Started, live.clone());
+                            live
+                        }
+                    };
                     let record = SwitchRecord {
                         live: Some(live),
                         ..record
