@@ -209,10 +209,11 @@ async fn load_credentials(source: &AccountSource) -> Result<Credentials, UsageEr
                     None
                 };
                 if let Some(service) = service {
-                    match read_keychain_item(service).await {
-                        Ok(bytes) => return parse_credentials(&bytes),
-                        Err(error) if !file.exists() => return Err(error),
-                        Err(_) => {}
+                    let keychain = read_keychain_item(service)
+                        .await
+                        .and_then(|bytes| parse_credentials(&bytes));
+                    if let Some(result) = keychain_or_file(keychain, file.exists()) {
+                        return result;
                     }
                 }
             }
@@ -262,6 +263,21 @@ pub(crate) fn parse_keychain_suffixes(dump: &str) -> Vec<String> {
         }
     }
     suffixes
+}
+
+/// The Keychain wins when it holds a usable sign-in. An unreadable item, or one
+/// with no Claude sign-in (some versions keep only `mcpOAuth` there), falls back
+/// to `.credentials.json` when that file exists. `None` means read the file.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn keychain_or_file(
+    keychain: Result<Credentials, UsageError>,
+    file_exists: bool,
+) -> Option<Result<Credentials, UsageError>> {
+    match keychain {
+        Ok(credentials) => Some(Ok(credentials)),
+        Err(error) if !file_exists => Some(Err(error)),
+        Err(_) => None,
+    }
 }
 
 fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
@@ -920,6 +936,15 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[test]
+    fn an_unusable_keychain_item_falls_back_to_the_file() {
+        let mcp_only = || parse_credentials(br#"{"mcpOAuth":{}}"#);
+        assert!(keychain_or_file(mcp_only(), true).is_none());
+        assert!(keychain_or_file(mcp_only(), false).unwrap().is_err());
+        let usable = parse_credentials(br#"{"claudeAiOauth":{"accessToken":"synthetic"}}"#);
+        assert!(keychain_or_file(usable, true).unwrap().is_ok());
     }
 
     #[test]
