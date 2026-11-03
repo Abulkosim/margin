@@ -2,7 +2,7 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Unreleased: run-out warnings and not-updating alerts (feat/no-surprise)
+## Next release: v0.9.0 (run-out warnings, not-updating alerts)
 
 Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend unit tests, 14 release-script tests, 232 Chromium/WebKit browser cases, `cargo fmt --check`, strict Clippy, and 333 Rust tests passed. Notification delivery, the 30-minute not-updating alert, and the Windows build are not checked natively yet 👤.
 
