@@ -112,6 +112,15 @@ Owner asked for these on 2026-10-26. Research first, then build; use Codex CLI a
 - [x] **5.4 Weekly digest notification.** One Monday-morning notification per week from recorded history: per account, weekly peak used and how many sessions hit a limit. Off by default; Settings → Notifications. Verify: pure digest computation tests on run-length history; scheduling tests (missed Monday fires on next launch, never twice).
 - [x] **5.5 Release v0.8.0.** Published 2026-10-26; see `docs/verification.md`.
 
+## Phase 6 — Never surprised by a limit
+
+Owner goal 2026-11-02: "Margin never surprises me with a limit." Threshold alerts were reactive, and an account Margin cannot read sends no alerts at all.
+
+- [x] **6.1 Run-out warnings**, on by default. One forecast model in Rust and the card pace line. Verify: mirrored unit tests; e2e settings. Done 2026-11-02.
+- [x] **6.2 "Usage not updating" alert**, on by default, 30 minutes. Verify: unit tests on outage tracking. Done 2026-11-02.
+- [ ] **6.3 Native check** 👤: a run-out warning and a not-updating alert arrive on the owner's Mac (e.g. block `api.anthropic.com` for 30 min).
+- Known gap: a Claude account used only on claude.ai, with an expired Claude Code token, reads as signed out with no notification (the card and tray show it). Alerting on every idle token expiry would be noise.
+
 ## Explicitly not doing
 
 - Official homebrew-cask (unsigned apps disabled Sept 2026), Scoop Extras (<100★), awesome-tauri (closed), Azure Trusted Signing ($, US/CA only), Apple notarization ($).

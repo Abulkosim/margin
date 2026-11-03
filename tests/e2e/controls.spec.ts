@@ -508,6 +508,27 @@ test('reset alerts save and follow the usage alerts switch', async ({ page }) =>
   await expect(page.getByText(/Notifications are off in/)).toHaveCount(0)
 })
 
+test('run-out and not-updating alerts start on, save, and follow usage alerts', async ({ page }) => {
+  await installDesktopBridge(page, { state: notificationState(), failure: 'none' })
+  await page.goto('/')
+  await openSettings(page)
+  const pace = page.getByRole('switch', { name: 'Run-out warnings', exact: true })
+  const stale = page.getByRole('switch', { name: 'Notify when usage stops updating', exact: true })
+  await expect(pace).toHaveAttribute('aria-checked', 'true')
+  await expect(stale).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByText('When a limit is on pace to run out before it resets.', { exact: true })).toBeVisible()
+  await expect(page.getByText('When an account can’t be read for 30 minutes.', { exact: true })).toBeVisible()
+  await pace.click()
+  await expect(pace).toHaveAttribute('aria-checked', 'false')
+  await stale.click()
+  await expect(stale).toHaveAttribute('aria-checked', 'false')
+  const saved = await savedSettings(page)
+  expect(saved.map(settings => [settings.paceAlerts, settings.staleAlerts])).toEqual([[false, true], [false, false]])
+  await page.getByRole('switch', { name: 'Usage alerts', exact: true }).click()
+  await expect(pace).toBeDisabled()
+  await expect(stale).toBeDisabled()
+})
+
 test('fast usage alerts start off, save a threshold, and keep it on reopen', async ({ page }) => {
   await installDesktopBridge(page, { state: notificationState(), failure: 'none' })
   await page.goto('/')

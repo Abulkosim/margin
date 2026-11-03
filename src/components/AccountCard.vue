@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
 import { accountIsStale, balanceLines, formatRemaining, groupWindows, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, retryingMessage, signedOutMessage } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
-import { fitPace, paceWindowIds, projectPace } from '../lib/pace'
+import { forecastPace, paceAt, paceWindowIds } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -15,11 +15,16 @@ defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
 const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo)
-const paceFits = computed(() => {
+const forecasts = computed(() => {
   const points = historyState.value.kind === 'ready' ? historyState.value.history.points : []
-  return new Map((props.account.snapshot?.windows ?? []).filter(window => paceWindowIds.has(window.id)).map(window => [window.id, fitPace(points.filter(point => point.windowId === window.id))]))
+  const snapshot = props.account.snapshot
+  const at = snapshot ? Date.parse(snapshot.fetchedAt) : Number.NaN
+  return new Map((snapshot?.windows ?? []).filter(window => paceWindowIds.has(window.id)).map(window => [window.id, forecastPace(points, window, at)]))
 })
-const pace = (window: UsageWindow): string | null => stale.value || !paceFits.value.has(window.id) ? null : paceText(projectPace(paceFits.value.get(window.id) ?? null, window, props.now), props.now)
+const pace = (window: UsageWindow): string | null => {
+  const forecast = forecasts.value.get(window.id)
+  return stale.value || !forecast ? null : paceText(paceAt(forecast, window, props.now), props.now)
+}
 const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
 const refreshing = computed(() => props.account.refreshing && !props.connectionError)

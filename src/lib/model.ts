@@ -13,6 +13,8 @@ export const settingsSchema = z.object({
   thresholds: z.array(z.number().int().min(1).max(100)).min(1).max(10)
     .refine(values => values.every((value, index) => index === 0 || value > (values[index - 1] ?? 0)), 'Thresholds must be distinct and increasing'),
   notifyOnReset: z.boolean().default(false),
+  paceAlerts: z.boolean().default(true),
+  staleAlerts: z.boolean().default(true),
   burnAlerts: z.boolean().default(false),
   burnThreshold: z.literal(burnThresholds).default(20),
   weeklyDigest: z.boolean().default(false),
@@ -146,6 +148,8 @@ export const defaultSettings: Settings = {
   notifications: true,
   thresholds: [80, 95, 100],
   notifyOnReset: false,
+  paceAlerts: true,
+  staleAlerts: true,
   burnAlerts: false,
   burnThreshold: 20,
   weeklyDigest: false,

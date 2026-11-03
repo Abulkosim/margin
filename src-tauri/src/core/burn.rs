@@ -61,14 +61,14 @@ impl Burn {
     }
 }
 
-fn timestamp(value: &str) -> Option<DateTime<Utc>> {
+pub(super) fn timestamp(value: &str) -> Option<DateTime<Utc>> {
     (value.len() <= 64)
         .then(|| DateTime::parse_from_rfc3339(value).ok())
         .flatten()
         .map(|at| at.with_timezone(&Utc))
 }
 
-fn same_reset(a: Option<&String>, b: Option<&String>) -> bool {
+pub(super) fn same_reset(a: Option<&String>, b: Option<&String>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => match (timestamp(a), timestamp(b)) {
@@ -228,10 +228,10 @@ pub fn observe(
             window_label: window.label.clone(),
             kind: AlertKind::Burn {
                 increase: burn.increase.floor().clamp(0.0, 100.0) as u8,
-                runs_out,
             },
             resets_at: window.resets_at.clone(),
             used_percent: window.used_percent,
+            runs_out,
         });
     }
     alerts
@@ -458,30 +458,16 @@ mod tests {
         let (thresholds, burns) = run(&mut memory, 60.0, "Session", 36.0);
         assert!(thresholds.is_empty());
         assert_eq!(burns.len(), 1);
-        assert_eq!(
-            burns[0].kind,
-            AlertKind::Burn {
-                increase: 24,
-                runs_out: Some(minutes(100))
-            }
-        );
-        assert_eq!(
-            burns[0].title("Personal"),
-            "Personal · Session: 24% used in the last hour"
-        );
+        assert_eq!(burns[0].kind, AlertKind::Burn { increase: 24 });
+        assert_eq!(burns[0].runs_out, Some(minutes(100)));
         let saved = serde_json::to_value(&memory).unwrap();
         assert_eq!(saved["a/five_hour"]["burn"]["reset"], RESET);
         let (_, burns) = run(&mut memory, 61.0, "Session", 36.0);
         assert!(burns.is_empty());
         let mut memory = AlertMemory::new();
         let (_, burns) = run(&mut memory, 30.0, "Session", 9.0);
-        assert_eq!(
-            burns[0].kind,
-            AlertKind::Burn {
-                increase: 21,
-                runs_out: None
-            }
-        );
+        assert_eq!(burns[0].kind, AlertKind::Burn { increase: 21 });
+        assert_eq!(burns[0].runs_out, None);
     }
 
     #[test]

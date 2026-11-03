@@ -39,6 +39,17 @@ test('new installs follow the lowest account and order by urgency', () => {
   assert.equal(settingsSchema.parse({ ...defaultSettings, accountOrder: 'added' }).accountOrder, 'added')
 })
 
+test('run-out and not-updating alerts default on, including for older settings', () => {
+  assert.equal(defaultSettings.paceAlerts, true)
+  assert.equal(defaultSettings.staleAlerts, true)
+  const { paceAlerts: _, staleAlerts: __, ...legacy } = defaultSettings
+  const parsed = settingsSchema.parse(legacy)
+  assert.equal(parsed.paceAlerts, true)
+  assert.equal(parsed.staleAlerts, true)
+  assert.equal(settingsSchema.parse({ ...defaultSettings, paceAlerts: false }).paceAlerts, false)
+  assert.equal(settingsSchema.safeParse({ ...defaultSettings, staleAlerts: 'yes' }).success, false)
+})
+
 test('fast usage alerts default off at 20% and accept only 10, 20, or 30', () => {
   assert.equal(defaultSettings.burnAlerts, false)
   assert.equal(defaultSettings.burnThreshold, 20)

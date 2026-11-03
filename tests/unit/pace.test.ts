@@ -1,87 +1,89 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { computePace, currentSegment, fitPace } from '../../src/lib/pace.ts'
+import { forecastPace, paceAt, type Pace, type PaceWindow } from '../../src/lib/pace.ts'
 import { paceText } from '../../src/lib/format.ts'
 import type { HistoryPoint } from '../../src/lib/history.ts'
 
-const start = Date.parse('2026-10-17T10:00:00Z')
-const resetsAt = '2026-10-17T15:00:00Z'
+// Same cases as src-tauri/src/core/forecast.rs, so the card and the run-out warning agree.
+const start = Date.parse('2099-12-31T12:00:00Z')
+const resetsAt = '2099-12-31T14:00:00Z'
 const minute = 60_000
+const at = (minutes: number): number => start + minutes * minute
 const point = (minutes: number, usedPercent: number, overrides: Partial<HistoryPoint> = {}): HistoryPoint => ({
-  windowId: 'five_hour', at: new Date(start + minutes * minute).toISOString(), usedPercent,
+  windowId: 'five_hour', at: new Date(at(minutes)).toISOString(), usedPercent,
   resetsAt, windowSeconds: 18_000, gapBefore: false, ...overrides,
 })
-const ramp = (from: number, to: number, perMinute: number, base = 0): HistoryPoint[] =>
-  Array.from({ length: Math.floor((to - from) / 5) + 1 }, (_, index) => point(from + index * 5, base + (index * 5) * perMinute))
-const at = (minutes: number): number => start + minutes * minute
+const ramp = (from: number, to: number, base: number, perMinute: number): HistoryPoint[] =>
+  Array.from({ length: Math.floor((to - from) / 5) + 1 }, (_, index) => point(from + index * 5, base + index * 5 * perMinute))
+const session = (usedPercent: number): PaceWindow => ({ id: 'five_hour', usedPercent, resetsAt, windowSeconds: 18_000 })
+const runsOut = (points: HistoryPoint[], used: number): number | Pace['kind'] => {
+  const pace = forecastPace(points, session(used), at(0))
+  return pace.kind === 'runs-out' ? pace.at.getTime() : pace.kind
+}
 
-test('too little data hides the pace', () => {
-  assert.deepEqual(computePace([], { usedPercent: 0, resetsAt }, at(0)), { kind: 'hidden' })
-  assert.deepEqual(computePace([point(0, 10), point(40, 30)], { usedPercent: 30, resetsAt }, at(40)), { kind: 'hidden' })
-  assert.deepEqual(computePace(ramp(0, 25, 1), { usedPercent: 25, resetsAt }, at(25)), { kind: 'hidden' })
-  assert.notDeepEqual(computePace(ramp(0, 30, 1), { usedPercent: 30, resetsAt }, at(30)), { kind: 'hidden' })
+test('projects from the last hour of a session', () => {
+  assert.equal(runsOut(ramp(-90, 0, 0, 0.5), 45), at(110))
+  const pace = forecastPace(ramp(-90, 0, 0, 0.5), session(45), at(0))
+  assert.equal(pace.kind === 'runs-out' && pace.resetsAt.toISOString(), new Date(resetsAt).toISOString())
 })
 
-test('missing or passed reset time hides the pace', () => {
-  const points = ramp(0, 60, 0.1).map(p => ({ ...p, resetsAt: null }))
-  assert.deepEqual(computePace(points, { usedPercent: 6, resetsAt: null }, at(60)), { kind: 'hidden' })
-  assert.deepEqual(computePace(ramp(0, 60, 0.1), { usedPercent: 6, resetsAt }, Date.parse(resetsAt) + 1), { kind: 'hidden' })
+test('needs readings spanning half the look-back', () => {
+  assert.equal(runsOut(ramp(-25, 0, 50, 1), 75), 'hidden')
+  assert.equal(runsOut(ramp(-30, 0, 50, 1), 80), at(20))
+  assert.equal(runsOut([point(-40, 10), point(0, 50)], 50), at(50))
 })
 
-test('flat or falling usage hides the pace', () => {
-  assert.deepEqual(computePace(ramp(0, 60, 0, 40), { usedPercent: 40, resetsAt }, at(60)), { kind: 'hidden' })
-  const falling = ramp(0, 60, 0, 40).map((p, index) => ({ ...p, usedPercent: 40 - index * 0.1 }))
-  assert.deepEqual(computePace(falling, { usedPercent: 38.8, resetsAt }, at(60)), { kind: 'hidden' })
+test('slow usage is on pace; flat, falling, full or unknown usage is hidden', () => {
+  assert.equal(runsOut(ramp(-60, 0, 0, 0.1), 6), 'on-pace')
+  assert.equal(runsOut(ramp(-60, 0, 40, 0), 40), 'hidden')
+  assert.equal(runsOut([point(-60, 41), point(0, 40)], 40), 'hidden')
+  assert.equal(runsOut(ramp(-60, 0, 0, 1), 100), 'hidden')
+  assert.equal(forecastPace(ramp(-60, 0, 0, 1), { ...session(60), resetsAt: null }, at(0)).kind, 'hidden')
+  assert.equal(forecastPace(ramp(-60, 0, 0, 1), { ...session(60), windowSeconds: null }, at(0)).kind, 'hidden')
 })
 
-test('slow usage is on pace', () => {
-  assert.deepEqual(computePace(ramp(0, 60, 0.1), { usedPercent: 6, resetsAt }, at(60)), { kind: 'on-pace' })
+test('a run-out just before the reset counts as on pace', () => {
+  assert.equal(runsOut([point(-60, 0), point(0, 40)], 40), at(90))
+  assert.equal(runsOut([point(-60, 0), point(0, 34)], 34), 'on-pace')
 })
 
-test('fast usage runs out before reset at the projected time', () => {
-  const pace = computePace(ramp(0, 60, 0.5), { usedPercent: 30, resetsAt }, at(60))
+test('interpolates between readings but not across a gap', () => {
+  assert.equal(runsOut([point(-180, 10), point(-30, 10), point(0, 50)], 50), at(75))
+  assert.equal(runsOut([point(-180, 10), point(0, 50, { gapBefore: true })], 50), 'on-pace')
+  assert.equal(runsOut([point(-100, 10), point(0, 60, { gapBefore: true })], 60), at(80))
+})
+
+test('earlier periods and other windows never count', () => {
+  const old = ramp(-120, -65, 0, 1).map(p => ({ ...p, resetsAt: '2099-12-31T09:00:00Z' }))
+  const weekly = ramp(-120, 0, 0, 1).map(p => ({ ...p, windowId: 'seven_day' }))
+  const points = [...old, ...weekly, ...ramp(-30, 0, 0, 1)]
+  assert.equal(runsOut(points, 30), at(70))
+  assert.equal(runsOut(old, 30), 'hidden')
+})
+
+test('reset jitter is the same period and order does not matter', () => {
+  const points = ramp(-60, 0, 0, 0.8).map((p, index) => ({ ...p, resetsAt: new Date(Date.parse(resetsAt) + (index % 3 - 1) * 30_000).toISOString() }))
+  assert.equal(runsOut(points.reverse(), 48), at(65))
+})
+
+test('a week reads the last day and a half across gaps', () => {
+  const weekReset = '2100-01-03T12:00:00Z'
+  const reading = (minutes: number, usedPercent: number, gapBefore = false): HistoryPoint =>
+    point(minutes, usedPercent, { windowId: 'seven_day', resetsAt: weekReset, windowSeconds: 604_800, gapBefore })
+  const window: PaceWindow = { id: 'seven_day', usedPercent: 70, resetsAt: weekReset, windowSeconds: 604_800 }
+  assert.equal(forecastPace([reading(-16 * 60, 50), reading(0, 70)], window, at(0)).kind, 'hidden')
+  const pace = forecastPace([reading(-2592, 10), reading(-1440, 40), reading(-240, 50, true), reading(0, 70)], window, at(0))
+  assert.equal(pace.kind === 'runs-out' && pace.at.getTime(), at(0) + 80_640_000)
+})
+
+test('the card hides a forecast once its reset or run-out time passes', () => {
+  const pace = forecastPace(ramp(-60, 0, 0, 1), session(60), at(0))
   assert.equal(pace.kind, 'runs-out')
-  if (pace.kind !== 'runs-out') return
-  assert.ok(Math.abs(pace.at.getTime() - at(60 + 140)) < 1000)
-  assert.equal(pace.resetsAt.toISOString(), new Date(resetsAt).toISOString())
-})
-
-test('a gap starts a new segment so slopes never span it', () => {
-  const before = ramp(0, 60, 0, 10)
-  const after = ramp(180, 240, 0.1, 50).map((p, index) => index === 0 ? { ...p, gapBefore: true } : p)
-  assert.equal(currentSegment([...before, ...after]).length, after.length)
-  assert.deepEqual(computePace([...before, ...after], { usedPercent: 56, resetsAt }, at(240)), { kind: 'on-pace' })
-  const shortAfter = ramp(180, 200, 1, 50).map((p, index) => index === 0 ? { ...p, gapBefore: true } : p)
-  assert.deepEqual(computePace([...ramp(0, 60, 0.5), ...shortAfter], { usedPercent: 70, resetsAt }, at(200)), { kind: 'hidden' })
-})
-
-test('a reset mid-history only counts the current period', () => {
-  const nextReset = '2026-10-17T20:00:00Z'
-  const old = ramp(0, 60, 1, 20)
-  const fresh = ramp(65, 125, 0.05).map(p => ({ ...p, resetsAt: nextReset }))
-  assert.equal(currentSegment([...old, ...fresh]).length, fresh.length)
-  assert.deepEqual(computePace([...old, ...fresh], { usedPercent: 3, resetsAt: nextReset }, at(125)), { kind: 'on-pace' })
-  const dropOnly = [...ramp(0, 60, 1, 20), ...ramp(65, 125, 0.05)]
-  assert.equal(currentSegment(dropOnly).length, 13)
-  assert.deepEqual(computePace(old, { usedPercent: 3, resetsAt: nextReset }, at(125)), { kind: 'hidden' })
-})
-
-test('out-of-order and duplicate points give the same result as sorted ones', () => {
-  const sorted = ramp(0, 60, 0.5)
-  const shuffled = [...sorted].reverse().concat(sorted[3] as HistoryPoint)
-  assert.deepEqual(fitPace(shuffled), fitPace(sorted))
-})
-
-test('rounding jitter and reset-time jitter do not split the period or flip the result', () => {
-  const noisy = ramp(0, 120, 0.1).map((p, index) => ({
-    ...p,
-    usedPercent: Math.max(0, Math.round(p.usedPercent + (index % 2 ? 0.8 : -0.8))),
-    resetsAt: new Date(Date.parse(resetsAt) + (index % 3 - 1) * 30_000).toISOString(),
-  }))
-  assert.equal(currentSegment(noisy).length, noisy.length)
-  assert.deepEqual(computePace(noisy, { usedPercent: 12, resetsAt }, at(120)), { kind: 'on-pace' })
-  const fast = ramp(0, 60, 0.5).map((p, index) => ({ ...p, usedPercent: Math.round(p.usedPercent + (index % 2 ? 1 : -1) * 0.9) }))
-  assert.equal(computePace(fast, { usedPercent: 30, resetsAt }, at(60)).kind, 'runs-out')
+  assert.equal(paceAt(pace, session(60), at(30)), pace)
+  assert.equal(paceAt(pace, session(60), at(40)).kind, 'hidden')
+  assert.equal(paceAt({ kind: 'on-pace' }, session(6), at(119)).kind, 'on-pace')
+  assert.equal(paceAt({ kind: 'on-pace' }, session(6), at(120)).kind, 'hidden')
+  assert.equal(paceAt({ kind: 'on-pace' }, { resetsAt: null }, at(0)).kind, 'hidden')
 })
 
 test('pace text', () => {

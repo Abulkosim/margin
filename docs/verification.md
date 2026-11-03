@@ -2,6 +2,14 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
+## Unreleased: run-out warnings and not-updating alerts (feat/no-surprise)
+
+Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend unit tests, 14 release-script tests, 232 Chromium/WebKit browser cases, `cargo fmt --check`, strict Clippy, and 333 Rust tests passed. Notification delivery, the 30-minute not-updating alert, and the Windows build are not checked natively yet 👤.
+
+- `core/forecast.rs` and `src/lib/pace.ts` share one model and mirrored test cases: average rate over the last fifth of the window (1 h session, ~34 h week), readings spanning a tenth of it, current period only, interpolated between readings except across a gap. A run-out within a sixtieth of the window before the reset counts as on pace.
+- Run-out warning fires once per period when the run-out is within the look-back from the reading; a usage alert in the same poll carries the run-out time instead. Session, weekly and model windows; routines, cowork and extra windows are skipped.
+- Not-updating alert: once per outage after 30 minutes of failures with a reading at least that old. Network failures and tokens expired on disk never count; waking from sleep restarts the clock.
+
 ## Current release: v0.8.1
 
 **[v0.8.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.8.1).** Published by the owner 2026-10-27 09:50 UTC; built, verified and installed the same day on macOS 26.6.2. Clock format follows the system, Make active names accounts by label and plan when emails match, the Add account hint gives the sign-in command, and dependencies moved to Tauri 2.12.5, tokio 1.54, base64 0.23, sha2 0.11, toml 1.x, windows-registry 0.100, Vite 8, Playwright 1.64 and @types/node 26. TypeScript stays on 5.9 until vue-tsc supports 7.
