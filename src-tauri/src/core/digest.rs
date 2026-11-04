@@ -508,9 +508,8 @@ fn mark_sent(
 
 /// Sends the digest when a Monday 09:00 slot is due, after every account's first poll.
 /// The slot is marked sent even when nothing is worth sending.
-pub async fn deliver(app: &tauri::AppHandle, runtime: &crate::runtime::Runtime) {
+pub async fn deliver(runtime: &crate::runtime::Runtime) {
     use super::settings::NotificationPermission;
-    use tauri_plugin_notification::NotificationExt;
 
     let now = Utc::now();
     let mut inner = runtime.inner.lock().await;
@@ -559,20 +558,18 @@ pub async fn deliver(app: &tauri::AppHandle, runtime: &crate::runtime::Runtime) 
         runtime.persist(&inner.view, &inner.alerts)
     });
     inner.view.notice = persisted.clone().err();
-    drop(inner);
     if persisted.is_err() {
         return;
     }
     if let Some(digest) = digest {
-        if let Err(error) = app
-            .notification()
-            .builder()
-            .title(digest.title())
-            .body(digest.body())
-            .show()
-        {
-            eprintln!("weekly digest could not be shown: {error}");
-        }
+        inner.delivery.enqueue(
+            None,
+            super::delivery::Message::Digest {
+                title: digest.title(),
+                body: digest.body(),
+            },
+            now,
+        );
     }
 }
 

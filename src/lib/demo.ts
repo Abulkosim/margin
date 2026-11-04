@@ -156,6 +156,7 @@ export function createDemoState(scenario: string | null): AppState {
     state.accounts = state.accounts.map(account => account.id === 'demo-claude-studio' ? { ...account, label: 'Claude Team', identity: { email: 'alex@example.com', plan: 'Team' } } : account)
   }
   if (scenario === 'hidden') state.ignoredSources = ['claude:~/.claude-old', 'codex:~/.codex-old']
+  if (scenario === 'notification-failed') state.notificationFailedAt = new Date(now - 12 * 60_000).toISOString()
   if (scenario === 'recovered') state.recovered = ['Skipped account “Old work” because its saved data couldn’t be read.']
   state.switching.activeAccountIds = demoActiveIds(state.accounts)
   if (scenario === 'switch-restore') state.switching.restore = { id: 'claude-demo-backup', provider: 'claude', reason: 'verifyFailed', createdAt: new Date(now - 4 * 60_000).toISOString() }

@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod burn;
+pub mod delivery;
 pub mod digest;
 pub mod forecast;
 pub mod history;

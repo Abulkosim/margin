@@ -113,6 +113,7 @@ export const appStateSchema = z.object({
   recovered: z.array(z.string()).default([]),
   ignoredSources: z.array(z.string()).default([]),
   switching: switchViewSchema.default({ activeAccountIds: [], restore: null }),
+  notificationFailedAt: z.string().datetime({ offset: true }).nullable().default(null),
 })
 export const activatedSchema = z.object({
   state: appStateSchema,

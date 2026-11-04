@@ -31,6 +31,7 @@ function escape(event: KeyboardEvent): void {
             <template v-if="preview.kind === 'swap'"> {{ preview.displaced }} moves to <code>{{ preview.folder }}</code>.</template>
             <template v-else> <code>{{ preview.folder }}</code> will be signed out.</template>
           </AlertDialogDescription>
+          <p class="beta-note"><span class="beta-tag">Beta</span><span>Not yet tested enough on real machines.</span></p>
           <p v-if="preview.running && preview.provider === 'claude'" class="switch-warning"><AppIcon name="alert" :size="14"/><span>Claude Code is running. Open sessions switch within a minute. Restart them to be sure.</span></p>
           <div class="dialog-actions">
             <AlertDialogCancel class="button" tabindex="0" :disabled="busy">Cancel</AlertDialogCancel>
@@ -53,6 +54,15 @@ function escape(event: KeyboardEvent): void {
   max-width: 100%;
   vertical-align: bottom;
   overflow-wrap: anywhere;
+}
+.beta-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--secondary);
 }
 .switch-warning {
   display: flex;

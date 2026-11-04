@@ -1,4 +1,5 @@
 use crate::core::{
+    delivery::Delivery,
     digest::DigestState,
     history::HistoryStore,
     model::Account,
@@ -31,6 +32,7 @@ pub struct AppState {
     pub recovered: Vec<String>,
     pub ignored_sources: Vec<String>,
     pub switching: SwitchView,
+    pub notification_failed_at: Option<String>,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -49,6 +51,7 @@ impl AppState {
 pub struct RuntimeState {
     pub view: AppState,
     pub alerts: AlertMemory,
+    pub delivery: Delivery,
     pub schedules: HashMap<String, Schedule>,
     pub history: HistoryStore,
 }
@@ -103,8 +106,10 @@ impl Runtime {
                 recovered: saved.recovered.clone(),
                 ignored_sources: saved.ignored_sources,
                 switching: SwitchView::default(),
+                notification_failed_at: None,
             },
             alerts: saved.alerts,
+            delivery: Delivery::default(),
             schedules: HashMap::new(),
             history: HistoryStore::new(store_path.with_file_name("history")),
         };
@@ -161,6 +166,7 @@ impl Runtime {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
             switching: SwitchView::default(),
+            notification_failed_at: None,
         };
         next.changed();
         store::reset(
@@ -178,6 +184,7 @@ impl Runtime {
         self.backup_pending.store(false, Ordering::SeqCst);
         inner.view = next.clone();
         inner.alerts.clear();
+        inner.delivery = Delivery::default();
         inner.schedules.clear();
         self.set_digest_state(None);
         Ok(next)

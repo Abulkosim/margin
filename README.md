@@ -33,10 +33,10 @@ Updates are signed and verified in the app. Margin checks daily and never instal
 ## What it shows
 
 - **Many accounts at once.** Finds existing Claude Code and Codex sign-ins, including separate configuration folders; add more in Settings.
-- **Make active.** Switch which account Claude Code or Codex uses, after a confirmation, with a backup of the previous sign-in.
+- **Make active (beta).** Switch which account Claude Code or Codex uses, after a confirmation, with a backup of the previous sign-in. It hasn't had enough real-world testing yet.
 - **Session, weekly, and model limits.** Usage remaining, reset countdown and time, and a pace line: "On pace", or when usage runs out at the current rate.
 - **Last-known values, labeled.** A failed request keeps the last reading with its age. Missing data stays unknown, never guessed.
-- **Alerts.** Notifications at thresholds you choose (50–100%), when a limit is on pace to run out before it resets, when an account stops updating for 30 minutes, and optionally when a limit resets.
+- **Alerts.** Notifications at thresholds you choose (50–100%), when a limit is on pace to run out before it resets, when an account stops updating for 30 minutes, and optionally when a limit resets. Connection errors count as not updating only while an account from the other provider still updates, so offline time and sleep stay silent. With one provider, Margin can't tell a usage server failure from being offline and stays quiet. Settings has a test notification; Margin can tell it sent one, not that the system displayed it.
 
 ## Command line
 

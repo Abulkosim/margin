@@ -864,6 +864,7 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
             switching: Default::default(),
+            notification_failed_at: None,
         };
         assert_eq!(
             selected(&state.accounts, &state.settings, Utc::now())
@@ -897,6 +898,7 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
             switching: Default::default(),
+            notification_failed_at: None,
         };
         for kind in ["rateLimited", "credentialsChanged"] {
             state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
@@ -1068,6 +1070,7 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
             switching: Default::default(),
+            notification_failed_at: None,
         };
         assert_eq!(
             selected(&state.accounts, &state.settings, Utc::now())

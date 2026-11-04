@@ -33,6 +33,7 @@ pub fn run() {
             commands::get_popover_placement,
             commands::fit_popover,
             commands::refresh_accounts,
+            commands::send_test_notification,
             commands::discover_accounts,
             commands::add_account,
             commands::remove_account,

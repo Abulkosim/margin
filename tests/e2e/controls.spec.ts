@@ -517,7 +517,7 @@ test('run-out and not-updating alerts start on, save, and follow usage alerts', 
   await expect(pace).toHaveAttribute('aria-checked', 'true')
   await expect(stale).toHaveAttribute('aria-checked', 'true')
   await expect(page.getByText('When a limit is on pace to run out before it resets.', { exact: true })).toBeVisible()
-  await expect(page.getByText('When an account can’t be read for 30 minutes.', { exact: true })).toBeVisible()
+  await expect(page.getByText('When an account can’t be read for 30 minutes. Connection errors count only while another provider’s account still updates.', { exact: true })).toBeVisible()
   await pace.click()
   await expect(pace).toHaveAttribute('aria-checked', 'false')
   await stale.click()
