@@ -424,6 +424,10 @@ fn usage_url(base: &str) -> Result<Url, UsageError> {
     Ok(url)
 }
 
+const MAX_WINDOWS: usize = 64;
+
+/// A malformed core window fails the reading. Anything else is dropped and the reading is marked
+/// incomplete.
 pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if !value.is_object() {
         return Err(malformed_response());
@@ -432,42 +436,27 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if let Some(rate_limit) = value.get("rate_limit").filter(|value| !value.is_null()) {
         append_windows(rate_limit, "", None, &mut windows)?;
     }
-    let mut seen = HashSet::new();
+    let mut incomplete = false;
     if let Some(additional) = value
         .get("additional_rate_limits")
         .filter(|value| !value.is_null())
     {
-        for entry in additional.as_array().ok_or_else(malformed_response)? {
-            if !entry.is_object() {
-                return Err(malformed_response());
+        let mut seen = HashSet::new();
+        match additional.as_array() {
+            Some(entries) => {
+                for entry in entries {
+                    match additional_windows(entry, &mut seen) {
+                        Ok(extra) => windows.extend(extra),
+                        Err(_) => incomplete = true,
+                    }
+                }
             }
-            let Some(rate_limit) = entry.get("rate_limit").filter(|value| !value.is_null()) else {
-                continue;
-            };
-            let name = nonempty_string(entry.get("limit_name"))
-                .or_else(|| {
-                    nonempty_string(entry.get("metered_feature")).map(|feature| humanize(&feature))
-                })
-                .ok_or_else(malformed_response)?;
-            if name.len() > 512 {
-                return Err(malformed_response());
-            }
-            let key = nonempty_string(entry.get("metered_feature")).unwrap_or_else(|| name.clone());
-            if !seen.insert(key.clone()) {
-                continue;
-            }
-            let digest = Sha256::digest(key.as_bytes());
-            let fingerprint = crate::core::hex(&digest);
-            append_windows(
-                rate_limit,
-                &format!("extra_{}_", &fingerprint[..16]),
-                Some(&name),
-                &mut windows,
-            )?;
+            None => incomplete = true,
         }
     }
-    if windows.len() > 64 {
-        return Err(malformed_response());
+    if windows.len() > MAX_WINDOWS {
+        windows.truncate(MAX_WINDOWS);
+        incomplete = true;
     }
     if windows.is_empty() {
         return Err(UsageError::new(
@@ -475,13 +464,48 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
             "Codex did not return a measured usage window for this account.",
         ));
     }
+    let (balance, balance_incomplete) = parse_balance(value);
     Ok(Snapshot {
         windows,
         fetched_at: now(),
         extra_usage: None,
         reset_grants: inline_reset_credits(value),
-        balance: parse_balance(value),
+        balance,
+        incomplete: incomplete || balance_incomplete,
     })
+}
+
+/// One named limit's windows, all or none: half of a malformed limit is not a reading of it.
+fn additional_windows(
+    entry: &Value,
+    seen: &mut HashSet<String>,
+) -> Result<Vec<UsageWindow>, UsageError> {
+    if !entry.is_object() {
+        return Err(malformed_response());
+    }
+    let Some(rate_limit) = entry.get("rate_limit").filter(|value| !value.is_null()) else {
+        return Ok(Vec::new());
+    };
+    let name = nonempty_string(entry.get("limit_name"))
+        .or_else(|| nonempty_string(entry.get("metered_feature")).map(|feature| humanize(&feature)))
+        .ok_or_else(malformed_response)?;
+    if name.len() > 512 {
+        return Err(malformed_response());
+    }
+    let key = nonempty_string(entry.get("metered_feature")).unwrap_or_else(|| name.clone());
+    if !seen.insert(key.clone()) {
+        return Ok(Vec::new());
+    }
+    let digest = Sha256::digest(key.as_bytes());
+    let fingerprint = crate::core::hex(&digest);
+    let mut windows = Vec::new();
+    append_windows(
+        rate_limit,
+        &format!("extra_{}_", &fingerprint[..16]),
+        Some(&name),
+        &mut windows,
+    )?;
+    Ok(windows)
 }
 
 fn humanize(feature: &str) -> String {
@@ -499,13 +523,16 @@ fn humanize(feature: &str) -> String {
         .join(" ")
 }
 
-/// Balances are decorative: a malformed block drops that line, not the windows.
-fn parse_balance(value: &Value) -> Option<Balance> {
+/// A malformed block drops that line, not the windows. The second value says one was dropped.
+fn parse_balance(value: &Value) -> (Option<Balance>, bool) {
+    let credits = parse_credits(value.get("credits"));
+    let spend_limit = parse_spend_limit(value.get("spend_control"));
+    let incomplete = credits.is_err() || spend_limit.is_err();
     let balance = Balance {
-        credits: parse_credits(value.get("credits")).ok().flatten(),
-        spend_limit: parse_spend_limit(value.get("spend_control")).ok().flatten(),
+        credits: credits.ok().flatten(),
+        spend_limit: spend_limit.ok().flatten(),
     };
-    (!balance.is_empty()).then_some(balance)
+    ((!balance.is_empty()).then_some(balance), incomplete)
 }
 
 fn flag(block: &Value, key: &str) -> Result<bool, UsageError> {
@@ -938,6 +965,88 @@ mod tests {
         assert_eq!(snapshot.windows.len(), 1);
         assert_eq!(snapshot.windows[0].id, "secondary_window");
         assert_eq!(snapshot.windows[0].used_percent, 91.0);
+    }
+
+    #[test]
+    fn a_malformed_additional_limit_keeps_the_rest_and_marks_the_reading_incomplete() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-partial-limits.json"))
+                .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        let labels: Vec<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Session", "Weekly", "Spark"]);
+        assert_eq!(snapshot.windows[0].used_percent, 28.0);
+        assert!(snapshot.balance.is_none());
+
+        let core = json!({"primary_window": {"used_percent": 28}});
+        for optional in [
+            json!({"additional_rate_limits": "many"}),
+            json!({"additional_rate_limits": ["many"]}),
+            json!({"additional_rate_limits": [{"rate_limit": {}}]}),
+            json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": "full"}]}),
+            json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": {"primary_window": {"used_percent": "9"}}}]}),
+            json!({"credits": "many"}),
+            json!({"spend_control": {"individual_limit": "many"}}),
+        ] {
+            let mut response = json!({"rate_limit": core});
+            for (key, value) in optional.as_object().unwrap() {
+                response[key] = value.clone();
+            }
+            let snapshot = parse_usage(&response).unwrap();
+            assert!(snapshot.incomplete, "{optional}");
+            assert_eq!(snapshot.windows.len(), 1, "{optional}");
+        }
+    }
+
+    #[test]
+    fn half_of_a_malformed_additional_limit_is_dropped_with_it() {
+        let snapshot = parse_usage(&json!({
+            "rate_limit": {"primary_window": {"used_percent": 28}},
+            "additional_rate_limits": [{
+                "limit_name": "Spark",
+                "rate_limit": {
+                    "primary_window": {"used_percent": 9},
+                    "secondary_window": {"used_percent": "9"}
+                }
+            }]
+        }))
+        .unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), 1);
+    }
+
+    #[test]
+    fn a_malformed_core_window_still_fails_the_reading() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/codex-core-malformed.json"))
+                .unwrap();
+        assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
+        for rate_limit in [
+            json!("full"),
+            json!({"primary_window": "full"}),
+            json!({"primary_window": {"used_percent": 1, "reset_at": "soon"}}),
+        ] {
+            assert!(parse_usage(&json!({"rate_limit": rate_limit})).is_err());
+        }
+    }
+
+    #[test]
+    fn complete_responses_are_not_marked_incomplete() {
+        for fixture in [
+            include_str!("../../../fixtures/codex-all-windows.json"),
+            include_str!("../../../fixtures/codex-live-schema.json"),
+            include_str!("../../../fixtures/codex-live-2026-10-26.json"),
+            include_str!("../../../fixtures/codex-credits-unlimited.json"),
+            include_str!("../../../fixtures/codex-weekly-only.json"),
+        ] {
+            let value: Value = serde_json::from_str(fixture).unwrap();
+            assert!(!parse_usage(&value).unwrap().incomplete);
+        }
     }
 
     #[test]

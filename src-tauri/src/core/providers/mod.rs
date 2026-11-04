@@ -161,6 +161,19 @@ fn signed_out(provider: Provider, directory: Option<&Path>, since: Option<String
     }
 }
 
+fn token_expired(provider: Provider, directory: Option<&Path>, since: String) -> UsageError {
+    let command = sign_in_command(provider, directory);
+    let message = format!(
+        "{}'s token expired. Run {command} to get a new reading.",
+        provider.name()
+    );
+    UsageError {
+        signed_out_since: Some(since),
+        sign_in_command: Some(command),
+        ..UsageError::new("signedOut", &message)
+    }
+}
+
 pub(crate) fn sign_in_command(provider: Provider, directory: Option<&Path>) -> String {
     let (variable, program, default) = match provider {
         Provider::Claude => ("CLAUDE_CONFIG_DIR", "claude", ".claude"),

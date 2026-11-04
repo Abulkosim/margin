@@ -271,11 +271,16 @@ pub fn limiting_window(
     metric: TrayMetric,
     now: chrono::DateTime<Utc>,
 ) -> Option<&UsageWindow> {
-    let windows = &account.snapshot.as_ref()?.windows;
+    let snapshot = account.snapshot.as_ref()?;
     let most_used = |metric| {
-        windows
+        snapshot
+            .windows
             .iter()
-            .filter(|window| window.used_percent.is_finite() && counts(window, metric, now))
+            .filter(|window| {
+                window.used_percent.is_finite()
+                    && !snapshot.unread_since_reset(window, now)
+                    && counts(window, metric, now)
+            })
             .max_by(|left, right| left.used_percent.total_cmp(&right.used_percent))
     };
     most_used(metric).or_else(|| most_used(TrayMetric::All))
@@ -387,6 +392,64 @@ pub fn percent_label(amount: f64) -> String {
     }
 }
 
+/// How long ago a timestamp was, in the popover's wording.
+pub fn relative_age(timestamp: &str, now: chrono::DateTime<Utc>) -> Option<String> {
+    let at = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
+    let seconds = (now - at.with_timezone(&Utc)).num_seconds().max(0);
+    let (minutes, hours) = (seconds / 60, seconds / 3600);
+    Some(if seconds < 10 {
+        "just now".to_owned()
+    } else if seconds < 60 {
+        format!("{seconds}s ago")
+    } else if minutes < 60 {
+        format!("{minutes}m ago")
+    } else if hours < 24 {
+        format!("{hours}h ago")
+    } else {
+        format!("{}d ago", hours / 24)
+    })
+}
+
+/// The status of an account whose token expired on disk, or `None` for any other account.
+pub fn idle_note(account: &Account, now: chrono::DateTime<Utc>) -> Option<String> {
+    account
+        .error
+        .as_ref()
+        .filter(|error| error.token_expired())?;
+    Some(
+        match account
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| relative_age(&snapshot.fetched_at, now))
+        {
+            Some(age) => format!("idle, last read {age}"),
+            None => "idle, no reading yet".to_owned(),
+        },
+    )
+}
+
+/// Names the most relevant window whose reset passed with no reading since.
+pub fn unread_reset_note(
+    account: &Account,
+    now: chrono::DateTime<Utc>,
+    clock: Clock12h,
+) -> Option<String> {
+    let snapshot = account.snapshot.as_ref()?;
+    let unread = |window: &&UsageWindow| snapshot.unread_since_reset(window, now);
+    let window = snapshot
+        .windows
+        .iter()
+        .filter(|window| window.scope() == WindowScope::Core)
+        .find(unread)
+        .or_else(|| snapshot.windows.iter().find(unread))?;
+    let reset = chrono::DateTime::parse_from_rfc3339(window.resets_at.as_deref()?).ok()?;
+    Some(format!(
+        "{} reset {}, not read since",
+        window.label.chars().take(64).collect::<String>(),
+        reset_clock(reset.with_timezone(&Utc), now, clock)
+    ))
+}
+
 #[cfg(target_os = "macos")]
 fn set_tabular_title(tray: &tauri::tray::TrayIcon, title: Option<&str>) -> bool {
     use objc2::MainThreadMarker;
@@ -417,8 +480,16 @@ fn tooltip(
     let Some(account) = account else {
         return "Margin · Add an account".into();
     };
+    let idle = idle_note(account, now);
     let Some(window) = window else {
-        return format!("Margin · {} · usage unavailable", account.label);
+        let notes: Vec<String> = [unread_reset_note(account, now, clock), idle]
+            .into_iter()
+            .flatten()
+            .collect();
+        if notes.is_empty() {
+            return format!("Margin · {} · usage unavailable", account.label);
+        }
+        return format!("Margin · {} · {}", account.label, notes.join(" · "));
     };
     let reset = window
         .resets_at
@@ -428,12 +499,25 @@ fn tooltip(
         .filter(|reset| *reset > now)
         .map(|reset| format!(" · resets {}", reset_clock(reset, now, clock)))
         .unwrap_or_default();
+    let status = match idle {
+        Some(idle) => format!(" · {idle}"),
+        None if is_stale => " · last known".to_owned(),
+        None => String::new(),
+    };
+    let incomplete = if account
+        .snapshot
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.incomplete)
+    {
+        " · incomplete"
+    } else {
+        ""
+    };
     format!(
-        "Margin · {} · {} {}% remaining{reset}{}",
+        "Margin · {} · {} {}% remaining{reset}{status}{incomplete}",
         account.label,
         window.label.chars().take(64).collect::<String>(),
         percent_label(100.0 - window.used_percent),
-        if is_stale { " · last known" } else { "" }
     )
 }
 
@@ -758,6 +842,7 @@ mod tests {
                 extra_usage: None,
                 reset_grants: None,
                 balance: None,
+                incomplete: false,
             }),
             error: None,
             refreshing: false,
@@ -1034,6 +1119,129 @@ mod tests {
             tooltip(None, None, false, now, Clock12h(false)),
             "Margin · Add an account"
         );
+    }
+
+    fn expired_token() -> UsageError {
+        UsageError {
+            signed_out_since: Some("2026-10-16T10:00:00Z".into()),
+            ..UsageError::new("signedOut", "Expired")
+        }
+    }
+
+    fn read_ago(account: &mut Account, now: chrono::DateTime<Utc>, hours: i64) {
+        if let Some(snapshot) = account.snapshot.as_mut() {
+            snapshot.fetched_at = (now - chrono::Duration::hours(hours)).to_rfc3339();
+        }
+    }
+
+    #[test]
+    fn tooltip_names_an_idle_account_without_calling_it_signed_out() {
+        let now = Utc::now();
+        let clock = Clock12h(false);
+        let mut idle = windowed("Work", &[("seven_day", 58.0, None)]);
+        idle.error = Some(expired_token());
+        read_ago(&mut idle, now, 3);
+        let window = limiting_window(&idle, TrayMetric::Core, now)
+            .unwrap()
+            .clone();
+        assert_eq!(
+            tooltip(Some(&idle), Some(&window), true, now, clock),
+            "Margin · Work · seven_day 42% remaining · idle, last read 3h ago"
+        );
+        idle.snapshot = None;
+        assert_eq!(
+            tooltip(Some(&idle), None, true, now, clock),
+            "Margin · Work · idle, no reading yet"
+        );
+        let mut rejected = windowed("Work", &[("seven_day", 58.0, None)]);
+        rejected.error = Some(UsageError::new("signedOut", "Rejected"));
+        assert_eq!(idle_note(&rejected, now), None);
+        assert_eq!(
+            tooltip(Some(&rejected), Some(&window), true, now, clock),
+            "Margin · Work · seven_day 42% remaining · last known"
+        );
+    }
+
+    #[test]
+    fn a_window_past_its_reset_is_never_the_current_value() {
+        let now = Utc::now();
+        let clock = Clock12h(false);
+        let mut account = windowed(
+            "Work",
+            &[("five_hour", 90.0, Some(-1)), ("seven_day", 30.0, Some(48))],
+        );
+        read_ago(&mut account, now, 3);
+        for metric in [TrayMetric::Core, TrayMetric::All, TrayMetric::Session] {
+            assert_eq!(
+                limiting_id(&account, metric),
+                Some("seven_day"),
+                "{metric:?}"
+            );
+        }
+        let mut all_passed = windowed(
+            "Work",
+            &[
+                ("five_hour", 90.0, Some(-1)),
+                ("seven_day_opus", 95.0, Some(-1)),
+            ],
+        );
+        read_ago(&mut all_passed, now, 3);
+        for metric in [TrayMetric::Core, TrayMetric::All, TrayMetric::Weekly] {
+            assert_eq!(limiting_id(&all_passed, metric), None, "{metric:?}");
+        }
+        let reset = now - chrono::Duration::hours(1);
+        assert_eq!(
+            tooltip(Some(&all_passed), None, true, now, clock),
+            format!(
+                "Margin · Work · five_hour reset {}, not read since",
+                reset_clock(reset, now, clock)
+            )
+        );
+        all_passed.error = Some(expired_token());
+        assert!(tooltip(Some(&all_passed), None, true, now, clock)
+            .ends_with("not read since · idle, last read 3h ago"));
+    }
+
+    #[test]
+    fn an_account_past_its_reset_does_not_compete_for_the_tray() {
+        let now = Utc::now();
+        let mut passed = windowed("passed", &[("five_hour", 99.0, Some(-1))]);
+        read_ago(&mut passed, now, 3);
+        let current = windowed("current", &[("five_hour", 20.0, Some(2))]);
+        let settings = Settings {
+            tray_mode: TrayMode::Lowest,
+            ..Settings::default()
+        };
+        let accounts = [passed, current];
+        assert_eq!(selected(&accounts, &settings, now).unwrap().id, "current");
+    }
+
+    #[test]
+    fn tooltip_marks_an_incomplete_reading() {
+        let now = Utc::now();
+        let mut account = windowed("Work", &[("seven_day", 58.0, None)]);
+        account.snapshot.as_mut().unwrap().incomplete = true;
+        let window = account.snapshot.as_ref().unwrap().windows[0].clone();
+        assert_eq!(
+            tooltip(Some(&account), Some(&window), false, now, Clock12h(false)),
+            "Margin · Work · seven_day 42% remaining · incomplete"
+        );
+    }
+
+    #[test]
+    fn relative_ages_match_the_popover() {
+        let now: chrono::DateTime<Utc> = "2026-10-16T12:00:00Z".parse().unwrap();
+        for (at, age) in [
+            ("2026-10-16T12:00:05Z", "just now"),
+            ("2026-10-16T11:59:55Z", "just now"),
+            ("2026-10-16T11:59:30Z", "30s ago"),
+            ("2026-10-16T11:58:00Z", "2m ago"),
+            ("2026-10-16T09:00:00Z", "3h ago"),
+            ("2026-10-14T12:00:00Z", "2d ago"),
+        ] {
+            assert_eq!(relative_age(at, now).as_deref(), Some(age));
+        }
+        assert_eq!(relative_age("soon", now), None);
     }
 
     #[test]

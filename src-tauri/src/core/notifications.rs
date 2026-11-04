@@ -172,7 +172,7 @@ where
     let time = if clock.0 { "%-I:%M %p" } else { "%H:%M" };
     let pattern = if local.date_naive() == now.with_timezone(zone).date_naive() {
         time.to_owned()
-    } else if at - now < chrono::Duration::days(6) {
+    } else if (at - now).abs() < chrono::Duration::days(6) {
         format!("%a {time}")
     } else {
         format!("%b %-d {time}")
@@ -335,16 +335,19 @@ pub fn observe(
     thresholds: &[u8],
     now: DateTime<Utc>,
 ) -> Vec<Alert> {
-    let prefix = format!("{account_id}/");
-    let current: HashSet<_> = snapshot
-        .windows
-        .iter()
-        .map(|window| window.id.as_str())
-        .collect();
-    memory.retain(|key, _| {
-        key.strip_prefix(&prefix)
-            .is_none_or(|id| current.contains(id))
-    });
+    // A window missing from an incomplete reading may still exist.
+    if !snapshot.incomplete {
+        let prefix = format!("{account_id}/");
+        let current: HashSet<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.id.as_str())
+            .collect();
+        memory.retain(|key, _| {
+            key.strip_prefix(&prefix)
+                .is_none_or(|id| current.contains(id))
+        });
+    }
     let mut alerts = Vec::new();
     for window in &snapshot.windows {
         if window
@@ -423,6 +426,23 @@ mod tests {
         labelled("Session", used, reset)
     }
 
+    #[test]
+    fn an_incomplete_reading_keeps_alert_memory_for_windows_it_dropped() {
+        let mut memory = AlertMemory::new();
+        let mut both = reading(90.0, RESET);
+        both.windows
+            .push(labelled("Sonnet", 90.0, RESET).windows.remove(0));
+        observe(&mut memory, "a", &both, &[80], now());
+        assert_eq!(memory.len(), 2);
+        let mut partial = reading(90.0, RESET);
+        partial.incomplete = true;
+        assert!(observe(&mut memory, "a", &partial, &[80], now()).is_empty());
+        assert_eq!(memory.len(), 2);
+        assert!(observe(&mut memory, "a", &both, &[80], now()).is_empty());
+        observe(&mut memory, "a", &reading(90.0, RESET), &[80], now());
+        assert_eq!(memory.len(), 1);
+    }
+
     fn labelled(label: &str, used: f64, reset: &str) -> Snapshot {
         let id = match label {
             "Session" => "five_hour",
@@ -442,6 +462,7 @@ mod tests {
             extra_usage: None,
             reset_grants: None,
             balance: None,
+            incomplete: false,
         }
     }
 

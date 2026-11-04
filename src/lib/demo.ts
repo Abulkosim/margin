@@ -4,6 +4,7 @@ import type { UpdateState } from './updater.ts'
 export function createDemoState(scenario: string | null): AppState {
   const now = Date.now()
   const future = (hours: number): string => new Date(now + hours * 3_600_000).toISOString()
+  const past = (hours: number): string => future(-hours)
   const state = appStateSchema.parse({
     revision: 0,
     settings: { ...defaultSettings, notifications: false, burnAlerts: false, burnThreshold: 20, weeklyDigest: false },
@@ -64,7 +65,7 @@ export function createDemoState(scenario: string | null): AppState {
       if (index === 0) return {
         ...account,
         snapshot: account.snapshot && { ...account.snapshot, fetchedAt: new Date(now - 2 * 3_600_000).toISOString() },
-        error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signedOutSince: new Date(now - 2 * 3_600_000).toISOString(), signInCommand: 'claude' },
+        error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signInCommand: 'claude' },
       }
       if (index === 1) return {
         ...account,
@@ -73,6 +74,37 @@ export function createDemoState(scenario: string | null): AppState {
       }
       return account
     })
+  }
+  if (scenario === 'idle') {
+    const expired = (command: string) => ({ kind: 'signedOut', message: `Claude's token expired. Run ${command} to get a new reading.`, retryAfterSeconds: null, signedOutSince: past(0.5), signInCommand: command })
+    state.accounts = state.accounts.map((account, index) => {
+      if (!account.snapshot) return account
+      if (index === 0) return {
+        ...account,
+        error: expired('claude'),
+        snapshot: {
+          ...account.snapshot,
+          fetchedAt: past(3),
+          windows: account.snapshot.windows.map(window => window.id === 'five_hour' || window.id === 'seven_day_sonnet' ? { ...window, resetsAt: past(1) } : window),
+        },
+      }
+      if (index === 1) return {
+        ...account,
+        error: { kind: 'network', message: 'Could not reach the provider. Check your connection.', retryAfterSeconds: null },
+        snapshot: {
+          ...account.snapshot,
+          fetchedAt: past(4),
+          windows: account.snapshot.windows.map(window => window.id === 'primary_window' ? { ...window, resetsAt: past(1) } : window),
+        },
+      }
+      return { ...account, snapshot: null, error: expired('CLAUDE_CONFIG_DIR=~/.claude-studio claude') }
+    })
+  }
+  if (scenario === 'incomplete') {
+    state.accounts = state.accounts.map((account, index) => index === 0 && account.snapshot ? {
+      ...account,
+      snapshot: { ...account.snapshot, incomplete: true, windows: account.snapshot.windows.filter(window => window.id !== 'seven_day_sonnet') },
+    } : account)
   }
   if (scenario === 'retrying') {
     const fetchedAt = (minutes: number): string => new Date(now - minutes * 60_000).toISOString()
@@ -117,7 +149,7 @@ export function createDemoState(scenario: string | null): AppState {
       id: 'demo-claude-client', provider: 'claude', label: 'Client work for Northwind Studio', color: '#b8d1bf',
       source: { kind: 'configDir', path: '~/.claude-client' },
       identity: { email: 'alex@northwind.example', plan: 'Max 20×' }, refreshing: false, snapshot: null,
-      error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signedOutSince: new Date(now - 26 * 3_600_000).toISOString(), signInCommand: 'CLAUDE_CONFIG_DIR=~/.claude-client claude' },
+      error: { kind: 'signedOut', message: 'Claude is signed out. Run claude, then refresh.', retryAfterSeconds: null, signInCommand: 'CLAUDE_CONFIG_DIR=~/.claude-client claude' },
     })]
   }
   if (scenario === 'same-email') {
@@ -144,7 +176,7 @@ export function demoPreview(state: AppState, id: AccountId, running: boolean): M
   const active = state.switching.activeAccountIds
   if (active.includes(id)) return 'This account is already active.'
   if (account.provider === 'codex' && running) return 'Codex is still running. Quit the Codex app and any Codex CLI or editor sessions, then try again.'
-  if (account.error?.kind === 'signedOut') return `${account.label} is signed out. Run ${account.error.signInCommand ?? account.provider}, then try again.`
+  if (account.error?.kind === 'signedOut' && !account.error.signedOutSince) return `${account.label} is signed out. Run ${account.error.signInCommand ?? account.provider}, then try again.`
   const previous = state.accounts.find(item => item.provider === account.provider && active.includes(item.id))
   const sameEmail = Boolean(previous?.identity.email) && previous?.identity.email === account.identity.email
   if (sameEmail && previous?.identity.plan === account.identity.plan) return 'Both folders hold the same account. Sign out of one first.'

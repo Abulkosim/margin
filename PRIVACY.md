@@ -57,7 +57,7 @@ All requests use HTTPS. Provider requests do not follow redirects. Each request 
 
 GitHub may redirect release files to its own download storage. Update requests send no CLI credentials, account identities, or usage readings.
 
-Refreshes follow the polling interval in Settings, or a manual refresh. Usage history adds no requests.
+Refreshes follow the polling interval in Settings, or a manual refresh. Usage history adds no requests. A Claude token that has expired is not sent anywhere: Margin rechecks the local credentials until the CLI replaces it.
 
 The interface itself has no network access. Its content security policy allows connections only to Margin's local process ([`tauri.conf.json`](src-tauri/tauri.conf.json)).
 

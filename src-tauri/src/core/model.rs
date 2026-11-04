@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -229,6 +230,21 @@ pub struct Snapshot {
     pub reset_grants: Option<ResetGrants>,
     #[serde(default)]
     pub balance: Option<Balance>,
+    /// An optional limit in the response could not be read, so `windows` may be missing some.
+    #[serde(default)]
+    pub incomplete: bool,
+}
+
+impl Snapshot {
+    /// True once a window's reset has passed with no reading since: its percentage describes
+    /// the previous period, and the current value is unknown.
+    pub fn unread_since_reset(&self, window: &UsageWindow, now: DateTime<Utc>) -> bool {
+        let parse = |value: &str| DateTime::parse_from_rfc3339(value).ok();
+        let Some(reset) = window.resets_at.as_deref().and_then(parse) else {
+            return false;
+        };
+        reset <= now && parse(&self.fetched_at).is_none_or(|fetched| fetched < reset)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -263,6 +279,12 @@ impl UsageError {
             sign_in_command: None,
             retry_at: None,
         }
+    }
+
+    /// The CLI's token expired on disk. Nothing rejected it, and the CLI refreshes it on its
+    /// next run, so the account is idle rather than signed out.
+    pub fn token_expired(&self) -> bool {
+        self.kind == "signedOut" && self.signed_out_since.is_some()
     }
 }
 
@@ -308,6 +330,7 @@ mod tests {
                 extra_usage: None,
                 reset_grants: None,
                 balance: None,
+                incomplete: false,
             }),
             error: None,
             refreshing: false,
@@ -373,6 +396,56 @@ mod tests {
         let partial: Balance =
             serde_json::from_value(serde_json::json!({"credits": null})).unwrap();
         assert!(partial.is_empty());
+    }
+
+    #[test]
+    fn stored_snapshots_without_incomplete_read_as_complete() {
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "windows": [], "fetchedAt": "2026-10-16T10:00:00Z", "extraUsage": null
+        }))
+        .unwrap();
+        assert!(!snapshot.incomplete);
+        assert_eq!(
+            serde_json::to_value(&snapshot).unwrap()["incomplete"],
+            false
+        );
+    }
+
+    #[test]
+    fn only_a_reset_after_the_last_reading_counts_as_unread() {
+        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let window = |reset: Option<&str>| UsageWindow {
+            id: "five_hour".into(),
+            label: "Session".into(),
+            used_percent: 40.0,
+            resets_at: reset.map(Into::into),
+            window_seconds: None,
+        };
+        let snapshot = Snapshot {
+            windows: Vec::new(),
+            fetched_at: "2026-10-16T10:00:00Z".into(),
+            extra_usage: None,
+            reset_grants: None,
+            balance: None,
+            incomplete: false,
+        };
+        let now = at("2026-10-16T12:00:00Z");
+        assert!(snapshot.unread_since_reset(&window(Some("2026-10-16T11:00:00Z")), now));
+        assert!(snapshot.unread_since_reset(&window(Some("2026-10-16T12:00:00Z")), now));
+        assert!(!snapshot.unread_since_reset(&window(Some("2026-10-16T13:00:00Z")), now));
+        assert!(!snapshot.unread_since_reset(&window(Some("2026-10-16T09:00:00Z")), now));
+        assert!(!snapshot.unread_since_reset(&window(None), now));
+    }
+
+    #[test]
+    fn only_a_timed_sign_out_is_an_expired_token() {
+        let expired = UsageError {
+            signed_out_since: Some("2026-10-16T10:00:00Z".into()),
+            ..UsageError::new("signedOut", "Expired")
+        };
+        assert!(expired.token_expired());
+        assert!(!UsageError::new("signedOut", "Rejected").token_expired());
+        assert!(!UsageError::new("network", "Offline").token_expired());
     }
 
     #[test]

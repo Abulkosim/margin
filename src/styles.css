@@ -464,6 +464,10 @@ button:disabled:hover {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.quota-unread .quota-track {
+  background: repeating-linear-gradient(90deg,var(--track) 0 6px,transparent 6px 10px);
+  border-radius: 0;
+}
 .quota-fill {
   height: 100%;
   background: var(--accent);
@@ -539,6 +543,10 @@ button:disabled:hover {
   background: var(--accent);
   transition: width .22s ease,background-color .22s ease;
 }
+.model-chip-unread .model-chip-value {
+  color: var(--tertiary);
+  font-weight: 400;
+}
 .model-chip.quota-low .model-chip-value {
   color: var(--warning);
 }
@@ -606,6 +614,10 @@ button:disabled:hover {
   white-space: nowrap;
   font-size: 13px;
 }
+.stale-badge.idle-badge {
+  color: var(--secondary);
+  background: var(--hover);
+}
 .account-stale .pin-button {
   display: none;
 }
@@ -628,6 +640,13 @@ button:disabled:hover {
   line-height: 1.5;
   color: var(--tertiary);
   font-variant-numeric: tabular-nums;
+}
+.idle-note {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
 }
 .stale-note {
   display: flex;
@@ -729,6 +748,9 @@ button:disabled:hover {
   gap: 6px;
   font-size: 13px;
   color: var(--warning);
+}
+.account-idle .account-error-title {
+  color: var(--secondary);
 }
 .account-error p {
   font-size: 13px;
@@ -1869,6 +1891,9 @@ input::placeholder {
 }
 .compact-status {
   color: var(--warning);
+}
+.compact-status.compact-status-quiet {
+  color: var(--secondary);
 }
 .compact-value,.compact-reset,.compact-empty {
   text-align: right;

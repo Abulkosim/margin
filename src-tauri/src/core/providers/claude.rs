@@ -1,6 +1,7 @@
 use super::{
     credentials_changed, http_error, malformed_credentials, malformed_response, nonempty_string,
     now, percent, read_credentials, request_error, response_json, signed_out, timestamp, token,
+    token_expired,
 };
 #[cfg(test)]
 use crate::core::model::WindowScope;
@@ -95,13 +96,15 @@ async fn fetch_from(
         .expires_at
         .filter(|expires_at| *expires_at <= chrono::Utc::now().timestamp_millis() + EXPIRY_SKEW_MS)
     {
-        let since = chrono::DateTime::from_timestamp_millis(expires_at)
-            .map(|since| since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
-        return Err(signed_out(
-            Provider::Claude,
-            sign_in_directory(&account.source),
-            since,
-        ));
+        let directory = sign_in_directory(&account.source);
+        return Err(match chrono::DateTime::from_timestamp_millis(expires_at) {
+            Some(since) => token_expired(
+                Provider::Claude,
+                directory,
+                since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            ),
+            None => signed_out(Provider::Claude, directory, None),
+        });
     }
     let mut response = usage_request(client, base_url, &credentials.access_token, true).await?;
     if needs_query_fallback(response.status()) {
@@ -231,6 +234,22 @@ async fn load_credentials(source: &AccountSource) -> Result<Credentials, UsageEr
             read_credentials(&file, parse_credentials, 2).await
         }
         AccountSource::Keychain => read_keychain(keychain_service(None)).await,
+    }
+}
+
+/// Whether reading this account's token spawns `/usr/bin/security`, which macOS may answer with
+/// an access prompt.
+pub fn reads_keychain(source: &AccountSource) -> bool {
+    cfg!(target_os = "macos") && keychain_backed(source)
+}
+
+fn keychain_backed(source: &AccountSource) -> bool {
+    match source {
+        AccountSource::Keychain => true,
+        AccountSource::ConfigDir {
+            path,
+            keychain_suffix,
+        } => keychain_suffix.is_some() || super::is_home_directory(Path::new(path), ".claude"),
     }
 }
 
@@ -433,94 +452,134 @@ fn run_security(args: &[&str], limit: u64) -> Result<Vec<u8>, UsageError> {
     Ok(bytes)
 }
 
+const CORE_WINDOWS: [(&str, &str, u64); 2] = [
+    ("five_hour", "Session", 18_000),
+    ("seven_day", "Weekly", 604_800),
+];
+const OPTIONAL_WINDOWS: [(&str, &str, u64); 4] = [
+    ("seven_day_sonnet", "Sonnet", 604_800),
+    ("seven_day_opus", "Opus", 604_800),
+    ("seven_day_routines", "Routines", 604_800),
+    ("seven_day_cowork", "Cowork", 604_800),
+];
+const MAX_WINDOWS: usize = 64;
+
+fn fixed_window(
+    value: &Value,
+    (id, label, seconds): (&str, &str, u64),
+) -> Result<Option<UsageWindow>, UsageError> {
+    let Some(window) = value.get(id).filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    if !window.is_object() {
+        return Err(malformed_response());
+    }
+    let Some(utilization) = window.get("utilization").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    Ok(Some(UsageWindow {
+        id: id.into(),
+        label: label.into(),
+        used_percent: percent(utilization)?,
+        resets_at: timestamp(window.get("resets_at"))?,
+        window_seconds: Some(seconds),
+    }))
+}
+
+fn scoped_window(limit: &Value) -> Result<Option<UsageWindow>, UsageError> {
+    if !limit.is_object() {
+        return Err(malformed_response());
+    }
+    if limit.get("kind").and_then(Value::as_str) != Some("weekly_scoped") {
+        return Ok(None);
+    }
+    let Some(model_name) = nonempty_string(limit.pointer("/scope/model/display_name")) else {
+        return Ok(None);
+    };
+    if model_name.len() > 512 {
+        return Err(malformed_response());
+    }
+    if model_name.eq_ignore_ascii_case("all models") {
+        return Ok(None);
+    }
+    let Some(utilization) = limit.get("percent") else {
+        return Err(malformed_response());
+    };
+    if utilization.is_null() {
+        return Ok(None);
+    }
+    let model_id =
+        nonempty_string(limit.pointer("/scope/model/id")).unwrap_or_else(|| model_name.clone());
+    let digest = Sha256::digest(model_id.as_bytes());
+    let fingerprint = crate::core::hex(&digest);
+    Ok(Some(UsageWindow {
+        id: format!("weekly_scoped_{}", &fingerprint[..16]),
+        label: model_name,
+        used_percent: percent(utilization)?,
+        resets_at: timestamp(limit.get("resets_at"))?,
+        window_seconds: Some(604_800),
+    }))
+}
+
+/// A window sent with fields but no `utilization` key. A null `utilization` means inactive.
+fn unreadable_window(value: &Value, id: &str) -> bool {
+    value
+        .get(id)
+        .and_then(Value::as_object)
+        .is_some_and(|window| !window.is_empty() && !window.contains_key("utilization"))
+}
+
+/// A malformed core window fails the reading. Anything else is dropped and the reading is marked
+/// incomplete.
 pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if !value.is_object() {
         return Err(malformed_response());
     }
-    let mut windows = Vec::new();
-    let fixed = |windows: &mut Vec<UsageWindow>, entries: &[(&str, &str, u64)]| {
-        for &(id, label, seconds) in entries {
-            let Some(window) = value.get(id).filter(|value| !value.is_null()) else {
-                continue;
-            };
-            if !window.is_object() {
-                return Err(malformed_response());
-            }
-            let Some(utilization) = window.get("utilization").filter(|value| !value.is_null())
-            else {
-                continue;
-            };
-            if windows
-                .iter()
-                .any(|known: &UsageWindow| known.label.eq_ignore_ascii_case(label))
-            {
-                continue;
-            }
-            windows.push(UsageWindow {
-                id: id.into(),
-                label: label.into(),
-                used_percent: percent(utilization)?,
-                resets_at: timestamp(window.get("resets_at"))?,
-                window_seconds: Some(seconds),
-            });
-        }
-        Ok(())
-    };
-    fixed(
-        &mut windows,
-        &[
-            ("five_hour", "Session", 18_000),
-            ("seven_day", "Weekly", 604_800),
-        ],
-    )?;
-    let mut scoped_ids = HashSet::new();
+    let mut windows: Vec<UsageWindow> = Vec::new();
+    let mut incomplete = false;
+    for entry in CORE_WINDOWS {
+        windows.extend(fixed_window(value, entry)?);
+    }
     if let Some(limits) = value.get("limits").filter(|value| !value.is_null()) {
-        for limit in limits.as_array().ok_or_else(malformed_response)? {
-            if limit.get("kind").and_then(Value::as_str) != Some("weekly_scoped") {
-                continue;
+        let mut scoped_ids = HashSet::new();
+        match limits.as_array() {
+            Some(limits) => {
+                for limit in limits {
+                    match scoped_window(limit) {
+                        Ok(Some(window)) => {
+                            if scoped_ids.insert(window.id.clone()) {
+                                windows.push(window);
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(_) => incomplete = true,
+                    }
+                }
             }
-            let Some(model_name) = nonempty_string(limit.pointer("/scope/model/display_name"))
-            else {
-                continue;
-            };
-            if model_name.len() > 512 {
-                return Err(malformed_response());
-            }
-            if model_name.eq_ignore_ascii_case("all models") {
-                continue;
-            }
-            let Some(utilization) = limit.get("percent").filter(|value| !value.is_null()) else {
-                continue;
-            };
-            let model_id = nonempty_string(limit.pointer("/scope/model/id"))
-                .unwrap_or_else(|| model_name.clone());
-            let digest = Sha256::digest(model_id.as_bytes());
-            let fingerprint = crate::core::hex(&digest);
-            let id = format!("weekly_scoped_{}", &fingerprint[..16]);
-            if !scoped_ids.insert(id.clone()) {
-                continue;
-            }
-            windows.push(UsageWindow {
-                id,
-                label: model_name,
-                used_percent: percent(utilization)?,
-                resets_at: timestamp(limit.get("resets_at"))?,
-                window_seconds: Some(604_800),
-            });
+            None => incomplete = true,
         }
     }
-    fixed(
-        &mut windows,
-        &[
-            ("seven_day_sonnet", "Sonnet", 604_800),
-            ("seven_day_opus", "Opus", 604_800),
-            ("seven_day_routines", "Routines", 604_800),
-            ("seven_day_cowork", "Cowork", 604_800),
-        ],
-    )?;
-    let extra_usage = parse_extra_usage(value.get("extra_usage"))?;
-    if windows.len() > 64 {
-        return Err(malformed_response());
+    for entry in OPTIONAL_WINDOWS {
+        match fixed_window(value, entry) {
+            Ok(Some(window)) => {
+                if !windows
+                    .iter()
+                    .any(|known| known.label.eq_ignore_ascii_case(&window.label))
+                {
+                    windows.push(window);
+                }
+            }
+            Ok(None) => incomplete |= unreadable_window(value, entry.0),
+            Err(_) => incomplete = true,
+        }
+    }
+    let extra_usage = parse_extra_usage(value.get("extra_usage")).unwrap_or_else(|_| {
+        incomplete = true;
+        None
+    });
+    if windows.len() > MAX_WINDOWS {
+        windows.truncate(MAX_WINDOWS);
+        incomplete = true;
     }
     if windows.is_empty() && extra_usage.is_none() {
         return Err(UsageError::new(
@@ -534,6 +593,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         extra_usage,
         reset_grants: parse_reset_grants(value.get("cedar_ember"), Utc::now()),
         balance: None,
+        incomplete,
     })
 }
 
@@ -831,6 +891,34 @@ mod tests {
     }
 
     #[test]
+    fn a_present_but_unreadable_optional_limit_marks_the_reading_incomplete() {
+        let core = json!({"utilization": 10, "resets_at": "2099-01-01T00:00:00Z"});
+        let snapshot = parse_usage(&json!({
+            "five_hour": core,
+            "seven_day_sonnet": {"resets_at": "2099-01-01T00:00:00Z"},
+        }))
+        .unwrap();
+        assert_eq!(snapshot.windows.len(), 1);
+        assert!(snapshot.incomplete);
+
+        let snapshot = parse_usage(&json!({
+            "five_hour": core,
+            "limits": [{"kind": "weekly_scoped", "scope": {"model": {"display_name": "Opus"}}}],
+        }))
+        .unwrap();
+        assert!(snapshot.incomplete);
+
+        let snapshot = parse_usage(&json!({
+            "five_hour": core,
+            "seven_day_sonnet": {"utilization": null, "resets_at": null},
+            "seven_day_opus": {},
+            "limits": [{"kind": "weekly_scoped", "percent": null, "scope": {"model": {"display_name": "Opus"}}}],
+        }))
+        .unwrap();
+        assert!(!snapshot.incomplete);
+    }
+
+    #[test]
     fn model_scoped_weekly_limits_are_named_tagged_and_stable() {
         let value: Value =
             serde_json::from_str(include_str!("../../../fixtures/claude-weekly-scoped.json"))
@@ -925,6 +1013,101 @@ mod tests {
         assert!(
             parse_usage(&json!({"five_hour": {"utilization": 22, "resets_at": "invalid"}}))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn a_malformed_optional_limit_keeps_the_rest_and_marks_the_reading_incomplete() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/claude-partial-limits.json"))
+                .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        let labels: Vec<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Session", "Weekly", "Fable", "Opus"]);
+        assert_eq!(snapshot.windows[0].used_percent, 22.0);
+        assert!(snapshot.extra_usage.is_none());
+
+        for optional in [
+            json!({"limits": "many"}),
+            json!({"limits": ["many"]}),
+            json!({"limits": [{"kind": "weekly_scoped", "percent": "9", "scope": {"model": {"display_name": "Haiku"}}}]}),
+            json!({"limits": [{"kind": "weekly_scoped", "percent": 9, "resets_at": "soon", "scope": {"model": {"display_name": "Haiku"}}}]}),
+            json!({"seven_day_sonnet": "full"}),
+            json!({"seven_day_cowork": {"utilization": -1}}),
+            json!({"extra_usage": "lots"}),
+            json!({"extra_usage": {"used_credits": -1}}),
+            json!({"extra_usage": {"used_credits": 1, "currency": "US dollars"}}),
+        ] {
+            let mut response = json!({"five_hour": {"utilization": 22}});
+            for (key, value) in optional.as_object().unwrap() {
+                response[key] = value.clone();
+            }
+            let snapshot = parse_usage(&response).unwrap();
+            assert!(snapshot.incomplete, "{optional}");
+            assert_eq!(snapshot.windows.len(), 1, "{optional}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_core_window_still_fails_the_reading() {
+        let value: Value =
+            serde_json::from_str(include_str!("../../../fixtures/claude-core-malformed.json"))
+                .unwrap();
+        assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
+        for core in [
+            json!({"five_hour": "full", "seven_day": {"utilization": 1}}),
+            json!({"five_hour": {"utilization": 1}, "seven_day": {"utilization": "1"}}),
+            json!({"five_hour": {"utilization": 1}, "seven_day": {"utilization": 1, "resets_at": "soon"}}),
+        ] {
+            assert!(parse_usage(&core).is_err(), "{core}");
+        }
+    }
+
+    #[test]
+    fn complete_responses_are_not_marked_incomplete() {
+        for fixture in [
+            include_str!("../../../fixtures/claude-all-windows.json"),
+            include_str!("../../../fixtures/claude-live-schema.json"),
+            include_str!("../../../fixtures/claude-weekly-only.json"),
+            include_str!("../../../fixtures/claude-weekly-scoped.json"),
+            include_str!("../../../fixtures/claude-spend-only.json"),
+        ] {
+            let value: Value = serde_json::from_str(fixture).unwrap();
+            assert!(!parse_usage(&value).unwrap().incomplete);
+        }
+    }
+
+    #[test]
+    fn too_many_limits_keep_the_core_windows_and_mark_the_reading_incomplete() {
+        let limits: Vec<Value> = (0..80)
+            .map(|index| json!({"kind": "weekly_scoped", "percent": 1, "scope": {"model": {"display_name": format!("Model {index}")}}}))
+            .collect();
+        let snapshot =
+            parse_usage(&json!({"five_hour": {"utilization": 22}, "limits": limits})).unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), MAX_WINDOWS);
+        assert_eq!(snapshot.windows[0].id, "five_hour");
+    }
+
+    #[test]
+    fn only_keychain_sources_are_keychain_backed() {
+        assert!(keychain_backed(&AccountSource::Keychain));
+        assert!(keychain_backed(&AccountSource::ConfigDir {
+            path: "/example/.claude-work".into(),
+            keychain_suffix: Some("0123abcd".into()),
+        }));
+        assert!(!keychain_backed(&AccountSource::ConfigDir {
+            path: "/example/.claude-work".into(),
+            keychain_suffix: None,
+        }));
+        assert_eq!(
+            reads_keychain(&AccountSource::Keychain),
+            cfg!(target_os = "macos")
         );
     }
 
@@ -1150,6 +1333,10 @@ attributes:
             error.signed_out_since.as_deref(),
             Some("2025-10-16T10:00:00Z")
         );
+        assert!(error.token_expired());
+        assert!(error.message.contains("token expired"));
+        assert!(error.message.contains("new reading"));
+        assert!(!error.message.contains("signed out"));
         let command = error.sign_in_command.unwrap();
         assert!(
             command.starts_with("CLAUDE_CONFIG_DIR=")

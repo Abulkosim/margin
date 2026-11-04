@@ -70,6 +70,7 @@ export const accountSchema = z.object({
     }).nullable(),
     resetGrants: resetGrantsSchema.nullable().default(null),
     balance: balanceSchema.nullable().default(null),
+    incomplete: z.boolean().default(false),
   }).nullable(),
   error: z.object({
     kind: z.string(),

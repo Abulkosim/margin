@@ -7,7 +7,7 @@ import AccountCard from './components/AccountCard.vue'
 import AccountRow from './components/AccountRow.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
-import { accountIsStale, orderAccounts, relativeAge } from './lib/format'
+import { accountIsStale, orderAccounts, relativeAge, tokenExpired } from './lib/format'
 import { useMargin } from './lib/margin'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
@@ -42,7 +42,7 @@ const orderedAccounts = computed(() => {
     .map(entry => entry.account)
 })
 const visibleAccounts = computed(() => orderedAccounts.value.filter(account => filter.value === 'all' || account.provider === filter.value))
-const needsAttention = (account: Account): boolean => accountIsStale(account, state.value.settings, now.value, Boolean(connectionError.value))
+const needsAttention = (account: Account): boolean => accountIsStale(account, state.value.settings, now.value, Boolean(connectionError.value)) && (Boolean(connectionError.value) || !tokenExpired(account))
 const staleCount = computed(() => state.value.accounts.filter(needsAttention).length)
 const counts = computed(() => ({ all: state.value.accounts.length, claude: state.value.accounts.filter(account => account.provider === 'claude').length, codex: state.value.accounts.filter(account => account.provider === 'codex').length }))
 const showFilters = computed(() => counts.value.claude > 0 && counts.value.codex > 0)
