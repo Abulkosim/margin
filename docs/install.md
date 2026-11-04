@@ -79,7 +79,7 @@ v0.1.1 and earlier have no updater; install the latest release once by hand.
 
 ## Uninstall
 
-First turn off **Launch at login** in Margin's Settings, then right-click the Margin icon and choose **Quit Margin**.
+First turn off **Start at login** in Margin's Settings, then right-click the Margin icon and choose **Quit Margin**.
 
 **macOS.** Delete `Margin.app` from Applications. To remove settings, last-known usage, and history, delete:
 
@@ -87,7 +87,7 @@ First turn off **Launch at login** in Margin's Settings, then right-click the Ma
 ~/Library/Application Support/com.abulkosim.margin/
 ```
 
-If Launch at login was left on, also delete `~/Library/LaunchAgents/Margin.plist`.
+If Start at login was left on, also delete `~/Library/LaunchAgents/Margin.plist`.
 
 **Windows.** Open **Settings → Apps → Installed apps**, choose **Margin → Uninstall**. To remove settings, last-known usage, and history, delete:
 

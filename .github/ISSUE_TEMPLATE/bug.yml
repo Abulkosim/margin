@@ -33,3 +33,9 @@ body:
       description: Include steps, expected behavior, and the exact visible error. Redact screenshots.
     validations:
       required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Filled in by Report a problem in Margin's Settings. Account counts and error kinds only.
+      render: text

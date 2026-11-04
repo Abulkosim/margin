@@ -255,7 +255,7 @@ pub async fn save_settings(
     let previous_autostart = if inner.view.settings.autostart != settings.autostart {
         app.autolaunch()
             .is_enabled()
-            .map_err(|_| "Could not read launch-at-login status.")?
+            .map_err(|_| "Could not read Start at login status.")?
     } else {
         settings.autostart
     };
@@ -266,7 +266,7 @@ pub async fn save_settings(
             app.autolaunch().disable()
         };
         result.map_err(|_| {
-            "Could not update launch at login. Try again from an installed copy of Margin."
+            "Could not update Start at login. Try again from an installed copy of Margin."
         })?;
     }
     let mut next = inner.view.clone();

@@ -75,6 +75,7 @@ pub struct Settings {
     pub tray_show_percent: bool,
     pub pinned_account_id: Option<String>,
     pub autostart: bool,
+    pub autostart_prompt_dismissed: bool,
     pub auto_check_updates: bool,
 }
 
@@ -100,12 +101,20 @@ impl Default for Settings {
             tray_show_percent: false,
             pinned_account_id: None,
             autostart: false,
+            autostart_prompt_dismissed: false,
             auto_check_updates: true,
         }
     }
 }
 
 impl Settings {
+    /// Follows the OS registration. Anyone seen with it on has no need for the
+    /// prompt, even if they later turn it off outside Margin.
+    pub fn sync_autostart(&mut self, enabled: bool) {
+        self.autostart = enabled;
+        self.autostart_prompt_dismissed |= enabled;
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !(30..=3600).contains(&self.poll_interval_seconds) {
             return Err("Refresh interval must be between 30 seconds and 1 hour.".into());
@@ -260,7 +269,14 @@ impl Settings {
                 &map,
                 "autostart",
                 defaults.autostart,
-                "Launch at login",
+                "Start at login",
+                notes,
+            ),
+            autostart_prompt_dismissed: field(
+                &map,
+                "autostartPromptDismissed",
+                defaults.autostart_prompt_dismissed,
+                "Start at login prompt",
                 notes,
             ),
             auto_check_updates: field(
@@ -670,5 +686,56 @@ mod tests {
         assert_eq!(notes, vec!["Weekly digest was reset to its default."]);
         let saved = serde_json::to_value(Settings::default()).unwrap();
         assert_eq!(saved["weeklyDigest"], false);
+    }
+
+    #[test]
+    fn start_at_login_prompt_is_pending_for_new_and_older_stores() {
+        let mut notes = Vec::new();
+        for value in [
+            None,
+            Some(serde_json::json!({})),
+            Some(serde_json::json!({ "autostart": false, "theme": "dark" })),
+        ] {
+            let settings = Settings::recover(value, &mut notes);
+            assert!(!settings.autostart);
+            assert!(!settings.autostart_prompt_dismissed);
+        }
+        assert!(notes.is_empty());
+        let parsed: Settings =
+            serde_json::from_value(serde_json::json!({ "autostart": true })).unwrap();
+        assert!(!parsed.autostart_prompt_dismissed);
+    }
+
+    #[test]
+    fn start_at_login_prompt_answer_round_trips_and_recovers_bad_values() {
+        let mut notes = Vec::new();
+        let saved = serde_json::to_value(Settings {
+            autostart_prompt_dismissed: true,
+            ..Settings::default()
+        })
+        .unwrap();
+        assert_eq!(saved["autostartPromptDismissed"], true);
+        assert!(Settings::recover(Some(saved), &mut notes).autostart_prompt_dismissed);
+        assert!(notes.is_empty());
+        let settings = Settings::recover(
+            Some(serde_json::json!({ "autostartPromptDismissed": "later" })),
+            &mut notes,
+        );
+        assert!(!settings.autostart_prompt_dismissed);
+        assert_eq!(
+            notes,
+            vec!["Start at login prompt was reset to its default."]
+        );
+    }
+
+    #[test]
+    fn seeing_autostart_on_retires_the_prompt_for_good() {
+        let mut settings = Settings::default();
+        settings.sync_autostart(false);
+        assert!(!settings.autostart && !settings.autostart_prompt_dismissed);
+        settings.sync_autostart(true);
+        assert!(settings.autostart && settings.autostart_prompt_dismissed);
+        settings.sync_autostart(false);
+        assert!(!settings.autostart && settings.autostart_prompt_dismissed);
     }
 }
