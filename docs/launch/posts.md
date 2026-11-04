@@ -43,7 +43,7 @@ Rules (sidebar via a Reddit mirror, 2026-10-22): the rules text itself was not f
 **Expect in comments:**
 - "Why not CodexBar?" → see shared answer.
 - "Doesn't `/usage` do this?" → For one account, in the session. This covers all of them while idle.
-- "Is this against ToS?" → It uses your own token against the same account's usage endpoint, read-only. Endpoints are undocumented and could change; if they do, Margin shows last-known values as stale, never guesses.
+- "Is this against ToS?" → Not settled. It reads your own token on your computer and sends it only to the provider, to read your own usage. Anthropic's terms restrict how third-party developers handle Claude.ai credentials and don't address local tools like this directly. Endpoints are undocumented and could change; if they do, Margin shows last-known values as stale, never guesses.
 
 ## r/ClaudeCode
 

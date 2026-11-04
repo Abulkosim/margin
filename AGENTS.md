@@ -57,9 +57,9 @@ When unsure about taste: build the smallest version, screenshot it, iterate. Don
 - Identity: `GET https://api.anthropic.com/api/oauth/profile` (email, plan hints: `subscriptionType`, then `rate_limit_tier`).
 - Response windows: `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_routines`, `seven_day_cowork`, `limits[].weekly_scoped`, `extra_usage` (monthly spend/limit). Each has utilization + reset timestamp. If `five_hour` missing, fall back to `seven_day`.
 - Token scope must include `user:profile`. `user:inference`-only tokens can't read usage.
-- Token sources, in order: our own store → `$CLAUDE_CONFIG_DIR/.credentials.json` → `~/.claude/.credentials.json` → macOS Keychain item `Claude Code-credentials` (JSON with `claudeAiOauth{accessToken, refreshToken, expiresAt}`; may contain only `mcpOAuth` on some versions, treat as "no token"). On Windows, Claude Code uses `.credentials.json` in the config dir.
-- Refresh tokens rotate. If the CLI also owns that account, let the CLI refresh; we just re-read the file. Only refresh ourselves for accounts we logged in via our own OAuth flow.
-- Own OAuth login (for accounts not in any CLI): PKCE with Claude Code's public client id. Verify current client id, authorize and token URLs from the Claude Code CLI binary / docs before implementing; don't trust memory.
+- Token sources, in order: `$CLAUDE_CONFIG_DIR/.credentials.json` → `~/.claude/.credentials.json` → macOS Keychain item `Claude Code-credentials` (JSON with `claudeAiOauth{accessToken, refreshToken, expiresAt}`; may contain only `mcpOAuth` on some versions, treat as "no token"). On Windows, Claude Code uses `.credentials.json` in the config dir.
+- Refresh tokens rotate. Let the CLI refresh; we just re-read the file. Margin never refreshes Claude tokens.
+- No in-app Claude sign-in: [Anthropic's terms](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use) don't permit third-party apps to offer Claude.ai login. Sign-in stays in Claude Code.
 - Local cost history (optional, later): scan `~/.claude/projects/**/*.jsonl`, lines with `type:"assistant"` and `message.usage`, dedupe by `message.id + requestId`.
 
 ### Codex
@@ -74,7 +74,7 @@ When unsure about taste: build the smallest version, screenshot it, iterate. Don
 ```
 Account {
   id, provider: claude|codex, label, color,
-  source: ConfigDir{path} | OwnOAuth | Manual,
+  source: ConfigDir{path} | Manual,
   identity: {email?, plan?},
   lastSnapshot: {windows[], fetchedAt, error?}
 }

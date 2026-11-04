@@ -121,10 +121,24 @@ Owner goal 2026-11-02: "Margin never surprises me with a limit." Threshold alert
 - [ ] **6.3 Native check** 👤: a run-out warning and a not-updating alert arrive on the owner's Mac (e.g. block `api.anthropic.com` for 30 min).
 - Known gap: a Claude account used only on claude.ai, with an expired Claude Code token, reads as signed out with no notification (the card and tray show it). Alerting on every idle token expiry would be noise.
 
+## Phase 7 — Make the claims true, prove them, then launch again
+
+Written 2026-11-04 from independent Codex and Claude Opus reviews of v0.9.0; code claims checked against the source. Launch so far: 3 outside stars, 18 unique visitors, no issues. No new alert types until 7.2 passes.
+
+- [ ] **7.1 Truthful readings (S–M).** An idle Claude account whose token expired reads "Signed out" and stops alerting (`providers/claude.rs:94`, `src/lib/format.ts:174`, `poller.rs:391`), while the README says Margin updates while the CLI is idle. Show "Idle, last read 3h ago" on the card, row and CLI; keep "Signed out" for a real 401. After a reset has passed, show "Reset 14:00, not read since" with no percentage. Recheck expired accounts every 60 s. Qualify the README row. A malformed optional limit keeps the core windows and marks the reading incomplete (`providers/codex.rs:461`; check `providers/claude.rs:478`).
+  Verify: fixture tests; e2e for each state; after an idle night no false "Signed out", and a reading returns within 60 s of running `claude` 👤.
+- [ ] **7.2 Alerts you can trust (S–M code, half a day 👤).** Delivery errors are dropped (`poller.rs:211`) and thresholds are marked sent before delivery (`notifications.rs:378`). Network errors never count as an outage (`outage.rs:16`), which misses a failure of only the usage host. Add "Send test notification" with a pointer to OS settings, show delivery failures, retry within a limit, and alert once when the usage host fails for 30 minutes while the connection works.
+  Verify: tests with injected failures; dated pass/fail rows in `docs/verification.md` for a real alert, a real Make active with Undo and next-day sign-in, and a Windows install, in-app update, toast and DPI check 👤. Label Make active "beta" until they pass; turn it off on any platform that fails.
+- [ ] **7.3 Keep running, and report problems (S).** Launch at login is off by default (`settings.rs:102`), so a reboot ends the alerts. Offer it on first run; on macOS warn when the app is outside Applications. Add "Report a problem": a prefilled issue with version, OS and error kinds, with a preview and no emails, paths or tokens. Record `latest.json` downloads weekly as a telemetry-free count of installs.
+  Verify: e2e; secret-leak test on the report; a fresh install returns after a reboot 👤.
+- [ ] **7.4 Release v0.10.0, then launch again with proof (S, mostly 👤).** Starts after 7.1 and 7.2. 20-second recording of the real app at the top of the README and site; turn on the Homebrew tap (3.7); submit listings (3.12); space the posts (3.13). Follow five real users from install to day 7 and fix what repeats before adding features.
+  Verify: five install outcomes and day-7 answers recorded; 150+ unique visitors, 50+ installer downloads and a first outside issue within 14 days. These targets are estimates.
+
 ## Explicitly not doing
 
 - Official homebrew-cask (unsigned apps disabled Sept 2026), Scoop Extras (<100★), awesome-tauri (closed), Azure Trusted Signing ($, US/CA only), Apple notarization ($).
 - Cookie import, CLI scraping, redeeming resets, more providers.
+- In-app Claude sign-in or token refresh: Anthropic's terms don't permit third-party Claude.ai login, and refresh breaks the read-only promise.
 
 ## Open questions for owner
 
