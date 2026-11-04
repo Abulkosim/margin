@@ -60,6 +60,20 @@ This ignored integration test uses the pinned updater plugin and real public key
 
 v0.1.1 and earlier have no updater and need one manual upgrade to the first updater-enabled release. Publish the complete asset set together; a draft does not replace the current public update endpoint. Never edit a published release's signed files or reuse a version. To stop offering a bad release, mark it as a prerelease so the latest-release endpoint returns to the previous stable release, then ship a higher fixed version. Clients already updated do not automatically downgrade.
 
+## Update check baseline
+
+[`update-check-count.yml`](../.github/workflows/update-check-count.yml) runs weekly and on demand with read-only permissions. It runs `scripts/update-check-count.mjs`, which uses `gh api` to read each published release's download counts, then writes a job summary and a dated JSON artifact. It never commits. Run it locally with `node scripts/update-check-count.mjs`.
+
+Installed apps fetch `latest.json` from the latest release about once a day, so its count is a rough proxy for active installs that needs no telemetry. Compare artifacts: the change in the latest release's `latest.json` count between two weeks, divided by 7, approximates daily active checks.
+
+Limits:
+
+- **Checks can be turned off.** Anyone with **Check for updates daily** off counts only when they check by hand. Margin must also be running, and v0.1.1 and earlier never check.
+- **Counts are cumulative per release.** They reset to zero for each new release and never go down. Only compare a release with itself, and expect a release with more days as latest to have a higher count.
+- **A count isn't a person.** One person can have several computers, a computer can retry or check by hand, and scripts or crawlers can fetch the file too.
+- **EXE and MSI counts mix installs and updates**, because the updater downloads the same files. DMG counts are first installs or manual upgrades; `Margin.app.tar.gz` is Mac updates. Package managers also download these files.
+- **History is limited.** GitHub keeps artifacts for at most 90 days on a public repository, and download counts have no history of their own. Save a copy to keep a longer record.
+
 ## Roll back v0.9.0
 
 Quit Margin and reinstall [v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2). It ignores `paceAlerts`, `staleAlerts` and the run-out alert memory, keeps everything else, and its card pace line goes back to the older estimate. To go back further, reinstall [v0.8.1](https://github.com/Abulkosim/margin/releases/tag/v0.8.1) or [v0.8.0](https://github.com/Abulkosim/margin/releases/tag/v0.8.0); the settings format is identical. To go back further, reinstall [v0.7.0](https://github.com/Abulkosim/margin/releases/tag/v0.7.0). It ignores `weeklyDigest`, the stored digest summary and `balance` on snapshots, and keeps everything else. A weekly-only Codex window moved to the weekly slot by v0.8.0 shows as Session again in v0.7.0 until its next refresh. To go back further, reinstall [v0.6.0](https://github.com/Abulkosim/margin/releases/tag/v0.6.0). It ignores `burnAlerts`, `burnThreshold` and the fast-alert memory, and keeps everything else. Switches already made stay made: the CLI folders keep their swapped sign-ins, and v0.6.0 shows each account under its new folder. Margin backups in the Keychain (`Margin backup`) or `backups/` stay until you delete them. To go back to v0.5.1 from there: it ignores `accountOrder`; history keeps the same format. To go back further, reinstall [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0): it drops the v0.5 fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes and keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.

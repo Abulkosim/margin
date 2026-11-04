@@ -1,0 +1,37 @@
+name: Update check count
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    name: Count latest.json and installer downloads
+    if: github.repository == 'Abulkosim/margin'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Count downloads
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          date="$(date -u +%F)"
+          node scripts/update-check-count.mjs --json "update-check-count-$date.json"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-check-count-${{ steps.count.outputs.date }}
+          path: update-check-count-${{ steps.count.outputs.date }}.json
+          if-no-files-found: error
+          retention-days: 90
