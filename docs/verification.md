@@ -2,6 +2,16 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
+## Unreleased: Phase 7 (PRs #38, #39, #40)
+
+Checked 2026-11-04 on Linux on the combined stack at `650b636`: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). [Readings](https://github.com/Abulkosim/margin/actions/runs/41927918671), [alerts](https://github.com/Abulkosim/margin/actions/runs/41927925910) and [first run](https://github.com/Abulkosim/margin/actions/runs/41927932352) CI passed, including the macOS universal and Windows x64 jobs.
+
+**Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md).
+
+- `tauri-plugin-notification` 2.8.0 reports only preparation errors, and drops OS errors on a background thread (read from source). Only the test notification, checked by eye, proves delivery. On macOS it uses `NSUserNotificationCenter` through mac-notification-sys 0.6.15, because `preview-macos-un` is off; behavior on macOS 26 is unverified.
+- Screens were read from `?demo=1` Playwright screenshots in light and dark. Public screenshots aren't refreshed yet; do that at release, since Settings and compact-row copy changed.
+- Accepted limits: retries are lost on quit; a malformed scoped limit with a valid fixed fallback can repeat one threshold alert; turning on Start at login and then moving the app leaves autostart on the old path until toggled.
+
 ## Next release: v0.9.0 (run-out warnings, not-updating alerts)
 
 Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend unit tests, 14 release-script tests, 232 Chromium/WebKit browser cases, `cargo fmt --check`, strict Clippy, and 333 Rust tests passed. Notification delivery, the 30-minute not-updating alert, and the Windows build are not checked natively yet 👤.
