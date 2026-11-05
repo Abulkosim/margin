@@ -36,7 +36,7 @@ Show HN: Margin - Claude Code and Codex usage for all your accounts, in the tray
 - *Undocumented endpoints will break.* Yes. Every response shape has fixtures and tests; a failure shows stale data with its age.
 - *Why Tauri?* One codebase for macOS and Windows; small Rust core. Trade-off: a WebView popover.
 - *Is the switch safe?* It holds Claude Code's own lock files, verifies after writing, rolls back on failure, keeps a backup, and refuses while Codex runs. It's the only code that writes CLI files, and a test fails if anything else does.
-- *Against ToS?* Your own token, your own account's usage endpoint, read-only.
+- *Against ToS?* Not settled. It reads your own token on your computer and sends it only to the provider, to read your own usage. [Anthropic's terms](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use) restrict how third-party developers handle Claude.ai credentials and don't address local tools like this directly. Decide with that in mind.
 
 ## 2. awesome-claude-code (form opened 2026-10-30)
 
