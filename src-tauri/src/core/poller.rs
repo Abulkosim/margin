@@ -1,6 +1,6 @@
 use super::{
     burn, digest, forecast,
-    model::UsageError,
+    model::{AccountSource, UsageError},
     notifications::{self, AlertKind, Clock12h},
     outage::{self, Outage},
     providers,
@@ -56,8 +56,19 @@ impl Schedule {
 /// A credential rotated mid-fetch is read again soon; the new token is already on disk.
 const CREDENTIALS_CHANGED_RETRY: Duration = Duration::from_secs(5);
 
+/// Rechecking an expired token reads local credentials and makes no request, so it can run at
+/// the active interval. A Keychain read spawns `security` and may prompt, so those stay as they
+/// are.
+fn recheck_interval(error: &UsageError, source: &AccountSource, active: u64, current: u64) -> u64 {
+    if error.token_expired() && !providers::claude::reads_keychain(source) {
+        active
+    } else {
+        current
+    }
+}
+
 pub fn retry_delay(interval: u64, failures: u32, error: &UsageError) -> Duration {
-    if error.kind == "signedOut" && error.signed_out_since.is_some() {
+    if error.token_expired() {
         return Duration::from_secs(interval);
     }
     if error.kind == "credentialsChanged" && failures <= 1 {
@@ -384,6 +395,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     } else {
                         inner.view.settings.idle_poll_interval_seconds
                     };
+                    let active_interval = inner.view.settings.poll_interval_seconds;
                     let mut alerts = Vec::new();
                     let mut identity_changed = false;
                     let error = result.as_ref().err().cloned();
@@ -469,7 +481,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                             } else {
                                 schedule.wake_retries = 0;
                                 schedule.failures = schedule.failures.saturating_add(1);
-                                let delay = retry_delay(interval, schedule.failures, &error);
+                                let wait = recheck_interval(
+                                    &error,
+                                    &account.source,
+                                    active_interval,
+                                    interval,
+                                );
+                                let delay = retry_delay(wait, schedule.failures, &error);
                                 schedule.next = now + delay + Duration::from_secs(jitter);
                                 schedule.not_before = if error.kind == "rateLimited" {
                                     schedule.next
@@ -565,6 +583,31 @@ mod tests {
         let changed = UsageError::new("credentialsChanged", "Changed");
         assert_eq!(retry_delay(60, 1, &changed), CREDENTIALS_CHANGED_RETRY);
         assert_eq!(retry_delay(60, 2, &changed), Duration::from_secs(120));
+    }
+
+    #[test]
+    fn expired_tokens_recheck_at_the_active_interval_unless_the_keychain_is_involved() {
+        let expired = UsageError {
+            signed_out_since: Some("2026-10-16T10:00:00Z".into()),
+            ..UsageError::new("signedOut", "Expired")
+        };
+        let folder = AccountSource::ConfigDir {
+            path: "/example/.claude-work".into(),
+            keychain_suffix: None,
+        };
+        assert_eq!(recheck_interval(&expired, &folder, 60, 300), 60);
+        let rejected = UsageError::new("signedOut", "Rejected");
+        assert_eq!(recheck_interval(&rejected, &folder, 60, 300), 300);
+        let offline = UsageError::new("network", "Offline");
+        assert_eq!(recheck_interval(&offline, &folder, 60, 300), 300);
+        let suffixed = AccountSource::ConfigDir {
+            path: "/example/.claude-work".into(),
+            keychain_suffix: Some("0123abcd".into()),
+        };
+        let keychain_wait = if cfg!(target_os = "macos") { 300 } else { 60 };
+        for source in [AccountSource::Keychain, suffixed] {
+            assert_eq!(recheck_interval(&expired, &source, 60, 300), keychain_wait);
+        }
     }
 
     #[test]

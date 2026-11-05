@@ -41,6 +41,8 @@ Open the printed URL with `?demo=1`. Sample accounts are labeled as such. The pl
 | `stale` | Expired session with the last reading and its age |
 | `error` | Expired session with no reading |
 | `signed-out` | Signed-out account |
+| `idle` | Expired token with a last reading, with no reading, and windows past their reset |
+| `incomplete` | Reading with an unreadable optional limit |
 | `retrying` | Rate limited and changed-account retries |
 | `recovery` | Damaged settings file |
 | `recovered` | An account skipped while loading settings |

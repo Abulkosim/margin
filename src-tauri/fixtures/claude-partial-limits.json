@@ -1,0 +1,15 @@
+{
+  "five_hour": { "utilization": 22, "resets_at": "2026-10-16T15:00:00Z" },
+  "seven_day": { "utilization": 48, "resets_at": "2026-10-20T10:00:00Z" },
+  "seven_day_sonnet": { "utilization": "9", "resets_at": "2026-10-20T10:00:00Z" },
+  "seven_day_cowork": "full",
+  "limits": [
+    { "kind": "session", "group": "session", "percent": 22, "resets_at": "2026-10-16T15:00:00Z", "scope": null, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 66, "resets_at": "2026-10-20T10:00:00Z", "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null }, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": "high", "resets_at": "2026-10-20T10:00:00Z", "scope": { "model": { "id": null, "display_name": "Haiku" }, "surface": null }, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 31, "resets_at": "not a date", "scope": { "model": { "id": null, "display_name": "Sonnet" }, "surface": null }, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 41, "resets_at": "2026-10-20T10:00:00Z", "scope": { "model": { "id": null, "display_name": "Opus" }, "surface": null }, "is_active": true },
+    "not an object"
+  ],
+  "extra_usage": { "is_enabled": true, "used_credits": -5, "monthly_limit": 5000, "currency": "USD" }
+}

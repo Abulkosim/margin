@@ -1,5 +1,5 @@
 use crate::core::{
-    model::{Account, AccountSource, Provider, UsageWindow, WindowScope},
+    model::{Account, AccountSource, Provider, UsageError, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
     providers::claude::nfc,
     settings::{AccountOrder, Settings, TrayMode},
@@ -306,6 +306,9 @@ struct AccountReport<'a> {
     fetched_at: Option<&'a str>,
     stale: bool,
     status: Status,
+    /// The token expired on disk. `status` stays `signedOut` for existing readers.
+    idle: bool,
+    incomplete: bool,
     windows: Vec<WindowReport<'a>>,
     error: Option<ErrorReport<'a>>,
 }
@@ -329,6 +332,8 @@ struct WindowReport<'a> {
     used_percent: f64,
     remaining_percent: f64,
     resets_at: Option<&'a str>,
+    /// The percentages predate this reset and are not current.
+    reset_passed: bool,
 }
 
 #[derive(Serialize)]
@@ -375,17 +380,27 @@ fn account_report<'a>(
             .map(|snapshot| snapshot.fetched_at.as_str()),
         stale,
         status: status(account, stale),
+        idle: account
+            .error
+            .as_ref()
+            .is_some_and(UsageError::token_expired),
+        incomplete: account
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.incomplete),
         windows: account
             .snapshot
             .iter()
-            .flat_map(|snapshot| &snapshot.windows)
-            .map(|window| WindowReport {
-                id: &window.id,
-                label: &window.label,
-                scope: window.scope(),
-                used_percent: rounded(used(window)),
-                remaining_percent: rounded(100.0 - used(window)),
-                resets_at: window.resets_at.as_deref(),
+            .flat_map(|snapshot| {
+                snapshot.windows.iter().map(|window| WindowReport {
+                    id: &window.id,
+                    label: &window.label,
+                    scope: window.scope(),
+                    used_percent: rounded(used(window)),
+                    remaining_percent: rounded(100.0 - used(window)),
+                    resets_at: window.resets_at.as_deref(),
+                    reset_passed: snapshot.unread_since_reset(window, now),
+                })
             })
             .collect(),
         error: account.error.as_ref().map(|error| ErrorReport {
@@ -598,12 +613,21 @@ enum Cell {
         remaining: f64,
         left: Option<String>,
     },
+    /// The window has reset and has not been read since.
+    ResetPassed,
     Missing,
 }
 
 enum Body {
-    Windows { session: Cell, weekly: Cell },
+    Windows {
+        session: Cell,
+        weekly: Cell,
+    },
     Status(&'static str),
+    /// The token expired on disk; `read` is when the last reading was taken.
+    Idle {
+        read: Option<String>,
+    },
 }
 
 struct Segment {
@@ -619,6 +643,11 @@ fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segmen
     };
     let stale = tray::stale(account, settings, now);
     let body = match (&account.snapshot, &account.error) {
+        (snapshot, Some(error)) if error.token_expired() => Body::Idle {
+            read: snapshot
+                .as_ref()
+                .and_then(|snapshot| tray::relative_age(&snapshot.fetched_at, now)),
+        },
         (_, Some(error)) if error.kind == "signedOut" => Body::Status("signed out"),
         (None, Some(_)) => Body::Status("no data"),
         (None, None) => Body::Status("…"),
@@ -628,12 +657,17 @@ fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segmen
                     .windows
                     .iter()
                     .find(|window| ids.contains(&window.id.as_str()))
-                    .map_or(Cell::Missing, |window| Cell::Reading {
-                        remaining: 100.0 - used(window),
-                        left: window
-                            .resets_at
-                            .as_deref()
-                            .and_then(|reset| time_left(reset, now)),
+                    .map_or(Cell::Missing, |window| {
+                        if snapshot.unread_since_reset(window, now) {
+                            return Cell::ResetPassed;
+                        }
+                        Cell::Reading {
+                            remaining: 100.0 - used(window),
+                            left: window
+                                .resets_at
+                                .as_deref()
+                                .and_then(|reset| time_left(reset, now)),
+                        }
                     })
             };
             Body::Windows {
@@ -883,6 +917,10 @@ fn pad(spans: &mut Vec<Span>, target: usize) {
 fn cell_spans(cell: &Cell, stale: bool, detail: Detail) -> Vec<Span> {
     let mut spans = match cell {
         Cell::Missing => vec![Span::new("–", Tone::Dim)],
+        Cell::ResetPassed => vec![Span::new(
+            if detail.countdowns { "reset" } else { "–" },
+            Tone::Dim,
+        )],
         Cell::Reading { remaining, left } => {
             let tone = if stale {
                 Tone::Dim
@@ -902,6 +940,18 @@ fn cell_spans(cell: &Cell, stale: bool, detail: Detail) -> Vec<Span> {
     };
     pad(&mut spans, detail.cell_width());
     spans
+}
+
+fn idle_text(read: Option<&str>, detail: Detail) -> String {
+    match (read, detail.countdowns) {
+        (Some(read), true) => format!("idle, last read {read}"),
+        (None, true) => "idle, no reading yet".to_owned(),
+        (Some(read), false) => match read.strip_suffix(" ago") {
+            Some(age) => format!("idle {age}"),
+            None => "idle".to_owned(),
+        },
+        (None, false) => "idle".to_owned(),
+    }
 }
 
 fn segment_spans(segment: &Segment, detail: Detail, label_width: Option<usize>) -> Vec<Span> {
@@ -924,6 +974,7 @@ fn segment_spans(segment: &Segment, detail: Detail, label_width: Option<usize>) 
                 Tone::Plain
             },
         )],
+        Body::Idle { read } => vec![Span::new(idle_text(read.as_deref(), detail), Tone::Dim)],
         Body::Windows { session, weekly } => {
             let mut body = cell_spans(session, segment.stale, detail);
             if detail.weekly {
@@ -1035,10 +1086,16 @@ fn short_segment(
     now: DateTime<Utc>,
 ) -> String {
     let Some(window) = tray::limiting_window(account, settings.tray_metric, now) else {
-        let state = match &account.error {
-            Some(error) if error.kind == "signedOut" => "signed out",
-            _ => "no data",
-        };
+        let state = tray::idle_note(account, now)
+            .or_else(|| {
+                account
+                    .error
+                    .as_ref()
+                    .filter(|error| error.kind == "signedOut")
+                    .map(|_| "signed out".to_owned())
+            })
+            .or_else(|| tray::unread_reset_note(account, now, clock))
+            .unwrap_or_else(|| "no data".to_owned());
         return format!("{} {state}", account.label);
     };
     let mut text = format!(
@@ -1057,8 +1114,17 @@ fn short_segment(
             text.push_str(&format!(" · resets {}", reset_clock(reset, now, clock)));
         }
     }
-    if tray::stale(account, settings, now) {
+    if let Some(idle) = tray::idle_note(account, now) {
+        text.push_str(&format!(" ({idle})"));
+    } else if tray::stale(account, settings, now) {
         text.push_str(" (stale)");
+    }
+    if account
+        .snapshot
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.incomplete)
+    {
+        text.push_str(" (incomplete)");
     }
     text
 }
@@ -1681,6 +1747,128 @@ mod tests {
             long(&state, false, &Env::plain()),
             "Claude 42%·2h18m   86%·2d     │ Codex no data"
         );
+    }
+
+    fn expired() -> Value {
+        json!({
+            "kind": "signedOut", "message": "Claude's token expired.", "retryAfterSeconds": null,
+            "signedOutSince": at(-1), "signInCommand": "claude"
+        })
+    }
+
+    #[test]
+    fn line_says_idle_for_an_expired_token_and_keeps_signed_out_for_a_rejection() {
+        let mut idle = claude();
+        idle["snapshot"]["fetchedAt"] = json!(stamp(-180));
+        idle["error"] = expired();
+        assert_eq!(
+            long(&state_of(vec![idle.clone(), codex()]), false, &Env::plain()),
+            "Claude idle, last read 3h ago │ Codex 95%·45m     60%·4d"
+        );
+        assert_eq!(
+            long(&state_of(vec![idle.clone()]), true, &Env::plain()),
+            "Claude idle, last read 3h ago"
+        );
+        assert_eq!(
+            long(&state_of(vec![idle.clone()]), false, &columns(16)),
+            "Claude idle 3h"
+        );
+        idle["snapshot"] = Value::Null;
+        assert_eq!(
+            long(&state_of(vec![idle]), false, &Env::plain()),
+            "Claude idle, no reading yet"
+        );
+        let mut rejected = claude();
+        rejected["error"] =
+            json!({ "kind": "signedOut", "message": "Signed out", "retryAfterSeconds": null });
+        assert_eq!(
+            long(&state_of(vec![rejected]), false, &Env::plain()),
+            "Claude signed out"
+        );
+    }
+
+    #[test]
+    fn line_never_prints_a_percentage_past_its_reset() {
+        let mut unread = claude();
+        unread["snapshot"]["fetchedAt"] = json!(stamp(-180));
+        unread["snapshot"]["windows"] =
+            json!([win("five_hour", 58.0, -60), win("seven_day", 14.0, 2880)]);
+        let state = state_of(vec![unread]);
+        assert_eq!(
+            long(&state, false, &Env::plain()),
+            "Claude reset       ~86%·2d"
+        );
+        assert_eq!(long(&state, false, &columns(16)), "Claude –    ~86%");
+    }
+
+    #[test]
+    fn short_line_names_idle_and_unread_windows() {
+        let mut idle = account("a", "Personal", json!([window("five_hour", 58.0, 2)]));
+        idle["snapshot"]["fetchedAt"] = json!(at(-3));
+        idle["error"] = expired();
+        let solo = state(vec![idle.clone()], json!({}));
+        assert!(
+            line_of(&solo, false).ends_with(" (idle, last read 3h ago)"),
+            "{}",
+            line_of(&solo, false)
+        );
+        idle["snapshot"] = Value::Null;
+        assert_eq!(
+            line_of(&state(vec![idle], json!({})), false),
+            "Personal idle, no reading yet"
+        );
+        let mut unread = account("a", "Personal", json!([window("five_hour", 58.0, -1)]));
+        unread["snapshot"]["fetchedAt"] = json!(at(-3));
+        let text = line_of(&state(vec![unread], json!({})), false);
+        assert!(text.starts_with("Personal five_hour reset "), "{text}");
+        assert!(text.ends_with(", not read since"), "{text}");
+        assert!(!text.contains('%'), "{text}");
+        let mut partial = account("a", "Personal", json!([window("five_hour", 58.0, 2)]));
+        partial["snapshot"]["incomplete"] = json!(true);
+        assert!(line_of(&state(vec![partial], json!({})), false).ends_with(" (incomplete)"));
+    }
+
+    #[test]
+    fn json_adds_idle_incomplete_and_reset_passed_without_changing_existing_fields() {
+        let mut idle = account(
+            "claude-idle",
+            "Idle",
+            json!([window("five_hour", 58.0, -1)]),
+        );
+        idle["snapshot"]["fetchedAt"] = json!(at(-3));
+        idle["snapshot"]["incomplete"] = json!(true);
+        idle["error"] = expired();
+        let mut out = account("claude-out", "Out", json!([window("five_hour", 10.0, 2)]));
+        out["error"] =
+            json!({ "kind": "signedOut", "message": "Signed out", "retryAfterSeconds": null });
+        let state = state(vec![idle, out], json!({ "accountOrder": "added" }));
+        let (value, _) = json_of(Some(&state), || None);
+        assert_eq!(value["schema"], 1);
+        let idle = &value["accounts"][0];
+        assert_eq!(idle["status"], "signedOut");
+        assert_eq!(idle["stale"], true);
+        assert_eq!(idle["error"]["kind"], "signedOut");
+        assert_eq!(idle["idle"], true);
+        assert_eq!(idle["incomplete"], true);
+        assert_eq!(idle["windows"][0]["usedPercent"], 58.0);
+        assert_eq!(idle["windows"][0]["remainingPercent"], 42.0);
+        assert_eq!(idle["windows"][0]["resetPassed"], true);
+        let out = &value["accounts"][1];
+        assert_eq!(out["status"], "signedOut");
+        assert_eq!(out["idle"], false);
+        assert_eq!(out["incomplete"], false);
+        assert_eq!(out["windows"][0]["resetPassed"], false);
+    }
+
+    #[test]
+    fn urgency_order_never_ranks_an_account_by_a_window_past_its_reset() {
+        let mut passed = account("b", "Passed", json!([window("five_hour", 99.0, -1)]));
+        passed["snapshot"]["fetchedAt"] = json!(at(-3));
+        let current = account("a", "Current", json!([window("five_hour", 10.0, 2)]));
+        let state = state(vec![passed, current], json!({ "accountOrder": "urgency" }));
+        let (value, _) = json_of(Some(&state), || None);
+        assert_eq!(value["accounts"][0]["label"], "Current");
+        assert_eq!(value["accounts"][1]["label"], "Passed");
     }
 
     #[test]

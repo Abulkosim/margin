@@ -1525,6 +1525,7 @@ fn person(id: &str, label: &str, source: AccountSource, email: &str) -> Account 
             extra_usage: None,
             reset_grants: None,
             balance: None,
+            incomplete: false,
         }),
         error: None,
         refreshing: false,

@@ -143,13 +143,13 @@ test('signed-out copy leads into the sign-in command', () => {
     ...account, provider: 'claude', source: { kind: 'configDir', path: '/example/.claude-work' },
     error: { kind: 'signedOut', message: 'Claude is signed out.', retryAfterSeconds: null, signedOutSince: '2026-10-16T08:00:00Z', signInCommand: 'CLAUDE_CONFIG_DIR=/example/.claude-work claude' },
   })
-  assert.equal(signedOutMessage(claude, now), 'Signed out 2h ago. Run:')
+  assert.equal(signedOutMessage(claude), null)
   const codex = accountSchema.parse({ ...account, error: { kind: 'signedOut', message: 'Codex is signed out.', retryAfterSeconds: null, signInCommand: 'CODEX_HOME=/example/.codex-work codex login' } })
-  assert.equal(signedOutMessage(codex, now), 'Signed out. Run:')
+  assert.equal(signedOutMessage(codex), 'Signed out. Run:')
   const noCommand = accountSchema.parse({ ...claude, error: { kind: 'signedOut', message: 'Claude is signed out.', retryAfterSeconds: null } })
-  assert.equal(signedOutMessage(noCommand, now), 'Signed out. Sign in with the Claude CLI, then refresh.')
-  assert.equal(signedOutMessage(account, now), null)
-  assert.equal(signedOutMessage(accountSchema.parse({ ...account, error: { kind: 'auth', message: 'Denied', retryAfterSeconds: null } }), now), null)
+  assert.equal(signedOutMessage(noCommand), 'Signed out. Sign in with the Claude CLI, then refresh.')
+  assert.equal(signedOutMessage(account), null)
+  assert.equal(signedOutMessage(accountSchema.parse({ ...account, error: { kind: 'auth', message: 'Denied', retryAfterSeconds: null } })), null)
 })
 
 test('model limits are grouped apart from core rows and other windows', () => {

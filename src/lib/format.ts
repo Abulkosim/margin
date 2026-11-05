@@ -55,8 +55,8 @@ export function resetIn(resetsAt: string | null, now: number): string | null {
   return milliseconds <= 0 ? 'Pending' : shortDuration(milliseconds)
 }
 
-export function modelWindowSummary(window: UsageWindow, now: number): string {
-  const reset = resetCountdown(window.resetsAt, now)
+export function modelWindowSummary(window: UsageWindow, now: number, fetchedAt?: string): string {
+  const reset = fetchedAt && unreadSinceReset(window, fetchedAt, now) ? resetPassedText(window, now) : resetCountdown(window.resetsAt, now)
   return `${window.label} weekly · ${reset.charAt(0).toLowerCase()}${reset.slice(1)}`
 }
 
@@ -67,11 +67,21 @@ export function resetCountdown(resetsAt: string | null, now: number): string {
   return `Resets in ${shortDuration(milliseconds)}`
 }
 
+/** The reset passed with no reading since, so the percentage describes the previous period. */
+export function unreadSinceReset(window: UsageWindow, fetchedAt: string, now: number): boolean {
+  const reset = window.resetsAt ? Date.parse(window.resetsAt) : Number.NaN
+  return reset <= now && !(Date.parse(fetchedAt) >= reset)
+}
+
+export function resetPassedText(window: UsageWindow, now: number): string {
+  return `Reset ${clockTime(new Date(window.resetsAt ?? now), now)}, not read since`
+}
+
 export function clockTime(time: Date, now: number): string {
   const today = new Date(now)
   const sameDay = time.getFullYear() === today.getFullYear() && time.getMonth() === today.getMonth() && time.getDate() === today.getDate()
   if (sameDay) return time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-  const withinWeek = time.getTime() - now < 6 * 86_400_000
+  const withinWeek = Math.abs(time.getTime() - now) < 6 * 86_400_000
   return time.toLocaleString(undefined, withinWeek ? { weekday: 'short', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
@@ -168,11 +178,32 @@ export function accountSource(account: Account): string {
   return source.keychainSuffix ? `${source.path} · Keychain` : source.path
 }
 
-export function signedOutMessage(account: Account, now: number): string | null {
+/** The token expired on disk. The CLI refreshes it on its next run, so nothing is wrong with the sign-in. */
+export function tokenExpired(account: Account): boolean {
+  return account.error?.kind === 'signedOut' && Boolean(account.error.signedOutSince)
+}
+
+export function idleStatus(account: Account, now: number): string | null {
+  if (!tokenExpired(account)) return null
+  return account.snapshot ? `Idle, last read ${relativeAge(account.snapshot.fetchedAt, now)}` : 'Idle, no reading yet'
+}
+
+/** The compact row's column is too narrow for the full status. */
+export function idleStatusShort(account: Account, now: number): string | null {
+  if (!tokenExpired(account)) return null
+  return account.snapshot ? `Idle, read ${relativeAge(account.snapshot.fetchedAt, now)}` : 'Idle, no reading yet'
+}
+
+export function idleAction(account: Account): string | null {
+  if (!tokenExpired(account)) return null
+  if (!account.error?.signInCommand) return `Run the ${providerName(account.provider)} CLI to get a new reading.`
+  return account.snapshot ? 'To get a new reading, run:' : 'To get a first reading, run:'
+}
+
+export function signedOutMessage(account: Account): string | null {
   const error = account.error
-  if (error?.kind !== 'signedOut') return null
-  const status = error.signedOutSince ? `Signed out ${relativeAge(error.signedOutSince, now)}` : 'Signed out'
-  return error.signInCommand ? `${status}. Run:` : `${status}. Sign in with the ${providerName(account.provider)} CLI, then refresh.`
+  if (error?.kind !== 'signedOut' || tokenExpired(account)) return null
+  return error.signInCommand ? 'Signed out. Run:' : `Signed out. Sign in with the ${providerName(account.provider)} CLI, then refresh.`
 }
 
 export function orderAccounts(accounts: Account[], settings: Settings, now: number, connectionInterrupted = false): Account[] {

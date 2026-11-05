@@ -69,8 +69,10 @@ Use it as your Claude Code statusline. In `~/.claude/settings.json`:
 | Multiple accounts | ✓ | ✓ | ✓ | – |
 | Claude and Codex together | ✓ | ✓ | ✓ | – |
 | OAuth only, no browser cookies | ✓ | – | – | ✓ |
-| Updates while the CLI is idle | ✓ | ✓ | ✓ | – |
+| Updates while the CLI is idle | Until the token expires | ✓ | ✓ | – |
 | Free, MIT | ✓ | ✓ | ✓ | – |
+
+While the CLI is idle, usage refreshes until the token expires. Margin then shows the last reading until the CLI next runs.
 
 CodexBar supports about 100 providers; pick it if you need more than Claude and Codex.
 
@@ -99,7 +101,7 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude
 
 Margin finds home dotfolders containing `claude` or `codex`. For a folder elsewhere, use **Add account → Choose folder…**. Apps opened from Finder or the Start menu may not see terminal environment variables.
 
-Signed out? Margin shows the command to run. For a custom Codex account, run `codex login` with that `CODEX_HOME`. Claude usage needs the `user:profile` OAuth scope.
+Idle means the token expired on disk: Margin shows the last reading and the command that gets a new one. Signed out? Margin shows the command to run. For a custom Codex account, run `codex login` with that `CODEX_HOME`. Claude usage needs the `user:profile` OAuth scope.
 
 Provider usage endpoints are undocumented and may change. A displayed quota is the provider's reading, not a guarantee that the next request will be accepted.
 

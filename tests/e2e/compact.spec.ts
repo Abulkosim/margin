@@ -94,7 +94,7 @@ test('stale, signed-out, and pinned accounts keep their markers in compact rows'
   await expect(signedOut).toHaveAttribute('aria-label', /^Client work for Northwind Studio, Claude, alex@northwind\.example, signed out$/)
   await signedOut.click()
   const card = page.getByRole('article', { name: 'Client work for Northwind Studio, Claude' })
-  await expect(card.getByText('Signed out 1d ago. Run:', { exact: true })).toBeVisible()
+  await expect(card.getByText('Signed out. Run:', { exact: true })).toBeVisible()
   await expect(card.locator('.account-email')).toHaveText('alex@northwind.example')
   await expect(card.getByRole('button', { name: 'Copy command: CLAUDE_CONFIG_DIR=~/.claude-client claude', exact: true })).toBeVisible()
 })

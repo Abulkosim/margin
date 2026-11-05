@@ -647,6 +647,7 @@ mod tests {
                 extra_usage: None,
                 reset_grants: None,
                 balance: None,
+                incomplete: false,
                 windows: vec![UsageWindow {
                     id: "session".into(),
                     label: "Session".into(),

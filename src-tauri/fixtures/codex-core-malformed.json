@@ -1,0 +1,15 @@
+{
+  "plan_type": "pro",
+  "rate_limit": {
+    "primary_window": { "used_percent": "28", "limit_window_seconds": 18000, "reset_at": 1792177200 },
+    "secondary_window": { "used_percent": 40, "limit_window_seconds": 604800, "reset_at": 1792522800 }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "Spark",
+      "rate_limit": {
+        "secondary_window": { "used_percent": 19, "limit_window_seconds": 604800, "reset_at": 1792522800 }
+      }
+    }
+  ]
+}

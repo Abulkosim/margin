@@ -424,6 +424,7 @@ mod tests {
             extra_usage: None,
             reset_grants: None,
             balance: None,
+            incomplete: false,
         }
     }
 
