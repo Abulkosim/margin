@@ -55,6 +55,29 @@ pub async fn refresh_accounts(runtime: State<'_, Arc<Runtime>>) -> Result<(), St
     Ok(())
 }
 
+/// Submits a notification regardless of the alert settings. A failure is recorded in the state.
+#[tauri::command]
+pub async fn send_test_notification(
+    app: AppHandle,
+    runtime: State<'_, Arc<Runtime>>,
+) -> Result<(), String> {
+    let submitted = poller::submit(
+        &app,
+        "Margin · Test notification",
+        Some("Usage alerts will appear like this."),
+    );
+    let failed_at = (!submitted).then(|| chrono::Utc::now().to_rfc3339());
+    let mut inner = runtime.inner.lock().await;
+    if inner.view.notification_failed_at != failed_at {
+        inner.view.notification_failed_at = failed_at;
+        inner.view.changed();
+        let view = inner.view.clone();
+        drop(inner);
+        crate::runtime::publish(&app, &view);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn discover_accounts(
     app: AppHandle,
@@ -348,6 +371,7 @@ mod tests {
             recovered: Vec::new(),
             ignored_sources: Vec::new(),
             switching: Default::default(),
+            notification_failed_at: None,
         }
     }
 

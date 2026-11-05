@@ -47,6 +47,7 @@ Open the printed URL with `?demo=1`. Sample accounts are labeled as such. The pl
 | `recovery` | Damaged settings file |
 | `recovered` | An account skipped while loading settings |
 | `hidden` | Removed accounts kept out of discovery |
+| `notification-failed` | Last notification could not be sent (Settings) |
 
 States are defined in [`src/lib/demo.ts`](src/lib/demo.ts). Public screenshots follow [docs/screenshots.md](docs/screenshots.md). The [design study](design/directions.html) shows the initial visual directions.
 
@@ -59,7 +60,7 @@ pnpm test:e2e
 
 `pnpm verify` builds first because the native checks need the frontend assets. `pnpm lint:rust` and `pnpm test:rust` run the Rust steps alone.
 
-CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test.
+CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks) and the [native checks](docs/native-checks.md). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test.
 
 Never commit real tokens, credential files, account IDs, unredacted emails, or raw provider responses.
 
@@ -76,6 +77,7 @@ src-tauri/src/
     store.rs           local state file
     history.rs         local usage history
     notifications.rs   threshold notifications
+    delivery.rs        notification submission and retries
     tray.rs, ring.rs   tray menu and icon rendering
 src-tauri/fixtures/    provider response fixtures
 src/

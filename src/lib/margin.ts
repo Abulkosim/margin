@@ -11,14 +11,14 @@ declare global {
   }
 }
 
-type Command = 'refresh_accounts' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore'
+type Command = 'refresh_accounts' | 'send_test_notification' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore'
 export type ToastAction = { label: string; run: () => void }
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
   const demo = query.get('demo') === '1'
   const desktop = typeof window.__TAURI__?.core.invoke === 'function'
-  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [], switching: { activeAccountIds: [], restore: null } })
+  const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [], switching: { activeAccountIds: [], restore: null }, notificationFailedAt: null })
   const demoRunning = query.get('running') === '1'
   const loading = ref(desktop && !demo)
   const connectionError = ref<string | null>(null)
@@ -131,6 +131,14 @@ export function useMargin() {
       }))
       notify('Preview refreshed. Values are sample data.')
     })
+  }
+
+  async function sendTestNotification(): Promise<boolean> {
+    const done = await perform('send_test_notification', undefined, () => {
+      state.value.notificationFailedAt = null
+      notify('Preview only. No notification was sent.')
+    })
+    return done && !demo && !state.value.notificationFailedAt
   }
 
   async function discover(): Promise<void> {
@@ -297,5 +305,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore }
 }
