@@ -5,9 +5,12 @@ import { version } from '../../package.json'
 import { accountIdSchema, providerSchema, type Account, type AccountId, type MakeActivePreview, type Provider, type RestoreOffer, type Settings } from '../lib/model'
 import { accountSource, providerName } from '../lib/format'
 import AppIcon from './AppIcon.vue'
+import InstallWarning from './InstallWarning.vue'
 import MakeActiveDialog from './settings/MakeActiveDialog.vue'
 import NotificationSettings from './settings/NotificationSettings.vue'
+import ReportProblem from './settings/ReportProblem.vue'
 import UpdateSettings from './settings/UpdateSettings.vue'
+import type { ProblemReport } from '../lib/report'
 import type { UpdateState } from '../lib/updater'
 import AppSelect from './ui/AppSelect.vue'
 import AppSwitch from './ui/AppSwitch.vue'
@@ -28,6 +31,9 @@ const props = defineProps<{
   dismissRestore: (id: string) => Promise<boolean>;
   notificationFailedAt: string | null;
   sendTestNotification: () => Promise<boolean>;
+  installWarning: boolean;
+  previewReport: (version: string) => Promise<ProblemReport | null>;
+  openReport: () => Promise<boolean>;
 }>()
 defineEmits<{ back: []; discover: []; showHidden: []; checkUpdate: []; installUpdate: [] }>()
 const tab = ref(props.initialTab)
@@ -289,9 +295,11 @@ async function confirmRemove(): Promise<void> {
         <NotificationSettings :settings="settings" :busy="busy" :failed-at="notificationFailedAt" :send-test="sendTestNotification" @change="patchSettings"/>
         <section class="settings-section">
           <h2>Startup</h2>
-          <div class="setting-row"><span id="autostart-label" class="setting-label">Launch at login</span><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event })"/></div>
+          <div class="setting-row"><span id="autostart-label" class="setting-label">Start at login</span><AppSwitch :model-value="settings.autostart" aria-labelledby="autostart-label" :disabled="busy" @update:model-value="patchSettings({ autostart: $event, autostartPromptDismissed: true })"/></div>
+          <InstallWarning v-if="installWarning"/>
         </section>
         <UpdateSettings :state="updateState" :busy="updateBusy" :demo="demo" :auto-check="settings.autoCheckUpdates" :settings-busy="busy" @check="$emit('checkUpdate')" @install="$emit('installUpdate')" @auto-check="patchSettings({ autoCheckUpdates: $event })"/>
+        <ReportProblem :busy="busy" :preview="previewReport" :open="openReport"/>
         <p class="settings-footnote">Version {{ version }}</p>
       </TabsContent>
 

@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { createDemoState, demoActivate, demoPreview } from './demo.ts'
+import { demoProblemReport, problemReportSchema, type ProblemReport } from './report.ts'
 import { accountSchema, activatedSchema, appStateSchema, defaultSettings, makeActivePreviewSchema, type AccountId, type AppState, type MakeActivePreview, type Provider, type Settings } from './model.ts'
 
 declare global {
@@ -11,7 +12,7 @@ declare global {
   }
 }
 
-type Command = 'refresh_accounts' | 'send_test_notification' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore'
+type Command = 'refresh_accounts' | 'send_test_notification' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore' | 'get_problem_report' | 'open_problem_report'
 export type ToastAction = { label: string; run: () => void }
 
 export function useMargin() {
@@ -20,6 +21,7 @@ export function useMargin() {
   const desktop = typeof window.__TAURI__?.core.invoke === 'function'
   const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [], switching: { activeAccountIds: [], restore: null }, notificationFailedAt: null })
   const demoRunning = query.get('running') === '1'
+  const installWarning = ref(demo && query.get('location') === 'outside')
   const loading = ref(desktop && !demo)
   const connectionError = ref<string | null>(null)
   const pending = ref<Command | null>(null)
@@ -47,6 +49,7 @@ export function useMargin() {
   if (demo && (layout === 'cards' || layout === 'compact')) state.value.settings.overviewLayout = layout
   const order = query.get('order')
   if (demo && (order === 'urgency' || order === 'added')) state.value.settings.accountOrder = order
+  if (demo && query.get('prompt') === '1') state.value.settings.autostartPromptDismissed = false
 
   function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
     clearTimeout(toastTimer)
@@ -207,7 +210,7 @@ export function useMargin() {
 
   async function resetStore(): Promise<boolean> {
     const reset = await perform('reset_store', undefined, () => {
-      state.value = { ...createDemoState(null), revision: state.value.revision, settings: { ...defaultSettings, theme: state.value.settings.theme } }
+      state.value = { ...createDemoState(null), revision: state.value.revision, settings: { ...defaultSettings, theme: state.value.settings.theme, autostartPromptDismissed: true } }
     })
     if (reset) notify('Settings reset. The old file was kept as a backup.')
     return reset
@@ -274,6 +277,27 @@ export function useMargin() {
     return perform('dismiss_switch_restore', { id }, () => { state.value.switching = { ...state.value.switching, restore: null } })
   }
 
+  async function previewProblemReport(version: string): Promise<ProblemReport | null> {
+    const result = await call('get_problem_report', {}, () => demoProblemReport(state.value.accounts, version))
+    if (result === undefined) return null
+    const report = problemReportSchema.safeParse(result)
+    if (!report.success) notify('Margin received an unreadable response. Try again.', 'error')
+    return report.success ? report.data : null
+  }
+
+  async function openProblemReport(): Promise<boolean> {
+    const result = await call('open_problem_report', {}, () => null)
+    if (result === undefined) return false
+    if (demo) notify('Preview only. The desktop app opens this issue in your browser.')
+    return true
+  }
+
+  async function loadInstallWarning(): Promise<void> {
+    try {
+      installWarning.value = await window.__TAURI__?.core.invoke('get_install_warning') === true
+    } catch { }
+  }
+
   async function hideWindow(): Promise<void> {
     if (!desktop || demo) return
     try {
@@ -287,6 +311,7 @@ export function useMargin() {
 
   onMounted(async () => {
     if (!desktop || demo) return
+    void loadInstallWarning()
     try {
       await reload()
     } catch {
@@ -305,5 +330,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport }
 }

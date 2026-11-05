@@ -60,7 +60,7 @@ Use dedicated test accounts for checks 5 to 7, not sign-ins you depend on. Margi
 
 ## Both platforms, over time
 
-17. **Autostart after a reboot.** Turn on **Launch at login** and reboot.
+17. **Autostart after a reboot.** Turn on **Start at login** and reboot.
     Expected: Margin is in the tray after login, once, and refreshes without being opened. Turn it off and reboot: Margin does not start.
 18. **Idle overnight, Claude.** Leave a Claude account unused overnight with Margin running, and don't run `claude`.
     Expected in the morning: the card shows either a current reading or a labeled signed-out state with its age, never a fresh-looking old number. It recovers after running `claude` and refreshing, without a "Usage not updating" notification for the expired token.

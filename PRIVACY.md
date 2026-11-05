@@ -11,6 +11,7 @@ This page describes Margin's current release. It is derived from the source code
 - CLI credential files are read, never written.
 - Tokens stay in the Rust process. The interface never receives them.
 - Margin stores settings, last-known usage, and usage history on your computer only.
+- **Report a problem** opens a GitHub issue page in your browser after you review its contents. GitHub receives those details when the page opens, and they become public only if you submit it.
 
 ## What Margin reads
 
@@ -63,6 +64,17 @@ The interface itself has no network access. Its content security policy allows c
 
 The Windows installer may download Microsoft's WebView2 setup program if WebView2 is missing. That is part of installation, not the app.
 
+## Report a problem
+
+**Report a problem** in Settings shows the details below, then opens `github.com/Abulkosim/margin/issues/new` in your default browser only when you choose **Open GitHub issue**. Margin makes no request itself. The details are in the page address, so your browser and GitHub receive them when the page opens, and they become public only if you submit the issue. You can edit them first.
+
+- Margin version.
+- Operating system and version.
+- Number of accounts per provider.
+- Error kinds per provider, such as `network`. A kind Margin doesn't recognize is listed as `other`.
+
+The report is built in Rust from these fields only ([`report.rs`](src-tauri/src/core/report.rs)). It never includes emails, account names, folder paths, tokens, error messages, or provider responses. The interface can't supply the address or its contents ([`support.rs`](src-tauri/src/support.rs)), and [`capabilities/main.json`](src-tauri/capabilities/main.json) gives it no permission to open URLs.
+
 ## What Margin writes
 
 Margin writes only to its own data folder:
@@ -74,7 +86,7 @@ Margin writes only to its own data folder:
 
 | File | Contents |
 | --- | --- |
-| `state.json` | Settings, account list (label, color, provider, folder path or Keychain source), account email, plan, and hashed account identifier, last-known usage and last error per account, notification thresholds already sent |
+| `state.json` | Settings (including your answer to the Start at login prompt), account list (label, color, provider, folder path or Keychain source), account email, plan, and hashed account identifier, last-known usage and last error per account, notification thresholds already sent |
 | `history/<account id>.json` | Usage readings for up to seven days or 10,000 window readings per account, with the account's source, email, plan, and a hashed account identifier |
 
 On macOS, both files are created with owner-only permissions (`0600`). Files are replaced atomically. Removing an account deletes its history file. See [`store.rs`](src-tauri/src/core/store.rs) and [`history.rs`](src-tauri/src/core/history.rs).
@@ -87,7 +99,7 @@ Other changes Margin makes, only when you turn them on or ask for them:
 
 - **Make active:** after you confirm, swaps the sign-in of the CLI's default folder (`~/.claude` or `~/.codex`) with the folder you chose. For Claude it swaps the credential (the Keychain item on macOS, else `.credentials.json`) and the `oauthAccount` entry of `~/.claude.json` and `<folder>/.claude.json`, leaving every other entry as it was. For Codex it swaps `auth.json`; the Codex desktop app shares that CLI sign-in, so it switches too once reopened. It holds Claude Code's lock folders while it writes, makes no network request, and checks the result. It refuses while Codex is running, including the desktop app's background helper (`codex app-server`), which keeps running for a few minutes after the app quits. Before writing it saves the old values, including the CLI tokens: on macOS in Keychain items named `Margin backup`; on Windows in `backups/<id>.json` in its data folder, a plain file readable by your user account that contains the tokens. `switches.json` in the same folder lists recent switches with folder paths and hashes, never tokens. Backups and entries older than 7 days, or beyond the last 5 switches, are deleted at the next switch; a failed switch keeps its backup for 30 minutes so it can be restored. See [`switch.rs`](src-tauri/src/core/switch.rs).
 
-- **Launch at login:** registers Margin with the OS. On macOS this is a LaunchAgent in `~/Library/LaunchAgents`. On Windows this is a per-user startup entry.
+- **Start at login:** registers Margin with the OS. On macOS this is a LaunchAgent in `~/Library/LaunchAgents`. On Windows this is a per-user startup entry.
 - **Notifications:** shown through the OS notification system.
 - **Updates:** replaces the installed app with the downloaded release.
 
@@ -127,7 +139,7 @@ Get-FileHash Margin_<version>_x64-setup.exe -Algorithm SHA256
 
 ## Removing your data
 
-Quit Margin, delete the app, then delete the data folder listed above. Turn off launch at login first, or remove the LaunchAgent or startup entry by hand.
+Quit Margin, delete the app, then delete the data folder listed above. Turn off Start at login first, or remove the LaunchAgent or startup entry by hand.
 
 ## Questions
 

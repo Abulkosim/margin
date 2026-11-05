@@ -6,7 +6,7 @@ Only the [latest release](https://github.com/Abulkosim/margin/releases/latest) r
 
 ## Report a vulnerability
 
-Report privately through [GitHub private vulnerability reporting](https://github.com/Abulkosim/margin/security/advisories/new).
+Report privately through [GitHub private vulnerability reporting](https://github.com/Abulkosim/margin/security/advisories/new). Don't use **Report a problem** in Settings for this; it opens a public issue.
 
 If that is disabled, open an [issue](https://github.com/Abulkosim/margin/issues/new) titled `Security` with no details. The maintainer will reach out.
 
@@ -37,6 +37,7 @@ In scope:
 - Requests to hosts other than those listed in [PRIVACY.md](PRIVACY.md#network-requests), or tokens sent to the wrong host.
 - Update checks or installs that accept an unsigned, altered, or mismatched-version release, or a download from an unexpected address.
 - Reading files or Keychain items beyond those listed in [PRIVACY.md](PRIVACY.md#what-margin-reads).
+- A **Report a problem** address that contains anything beyond the fields listed in [PRIVACY.md](PRIVACY.md#report-a-problem), or that opens without you choosing **Open GitHub issue**.
 - Code execution through crafted provider responses or malformed credential, config, or state files.
 
 Out of scope:

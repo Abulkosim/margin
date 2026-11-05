@@ -322,7 +322,7 @@ test('hidden removed accounts can be shown again', async ({ page }) => {
   await page.getByRole('button', { name: 'Show them', exact: true }).click()
   await expect(note).toHaveCount(0)
   const commands = await page.evaluate(() => window.__CONTROL_TEST__?.commands.map(entry => entry.command) ?? [])
-  expect(commands.filter(command => !['get_update_status', 'get_account_history'].includes(command))).toEqual(['restore_ignored_accounts'])
+  expect(commands.filter(command => !['get_update_status', 'get_account_history', 'get_install_warning'].includes(command))).toEqual(['restore_ignored_accounts'])
 })
 
 test('no hidden note without removed accounts', async ({ page }) => {
@@ -350,7 +350,7 @@ test('folder picker fills the path and typing still works', async ({ page }) => 
   await expect(input).toBeFocused()
   await page.getByRole('button', { name: 'Connect account', exact: true }).click()
   const commands = await page.evaluate(() => window.__CONTROL_TEST__?.commands ?? [])
-  expect(commands.filter(entry => !['get_update_status', 'get_account_history'].includes(entry.command))).toEqual([
+  expect(commands.filter(entry => !['get_update_status', 'get_account_history', 'get_install_warning'].includes(entry.command))).toEqual([
     { command: 'plugin:dialog|open', args: { options: { directory: true, multiple: false, title: 'Choose the Claude config folder' } } },
     { command: 'add_account', args: { provider: 'claude', path: '/Users/alex/.claude-work' } },
   ])

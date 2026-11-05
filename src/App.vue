@@ -7,13 +7,15 @@ import AccountCard from './components/AccountCard.vue'
 import AccountRow from './components/AccountRow.vue'
 import AppIcon from './components/AppIcon.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import StartAtLoginPrompt from './components/StartAtLoginPrompt.vue'
 import { accountIsStale, orderAccounts, relativeAge, tokenExpired } from './lib/format'
 import { useMargin } from './lib/margin'
+import { offersStartAtLogin } from './lib/startup'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
 import { liveRestoreOffer, popoverShownSchema, type Account, type AccountId, type Provider, type Settings } from './lib/model'
 
-const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore } = useMargin()
+const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport } = useMargin()
 const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
@@ -52,6 +54,7 @@ const expandedId = ref<AccountId | null>(null)
 const isActive = (account: Account): boolean => state.value.switching.activeAccountIds.includes(account.id)
 const isPinned = (account: Account): boolean => state.value.settings.trayMode === 'pinned' && state.value.settings.pinnedAccountId === account.id
 const fitsContent = computed(() => page.value === 'overview' && !loading.value && state.value.accounts.length > 0)
+const showStartPrompt = computed(() => offersStartAtLogin(state.value, loading.value, Boolean(connectionError.value)))
 const shell = ref<HTMLElement | null>(null)
 const popover = ref<HTMLElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
@@ -122,7 +125,7 @@ function observeFit(): void {
   scheduleFit()
 }
 
-watch([fitsContent, compact, () => state.value.accounts.length], () => { void nextTick(observeFit) })
+watch([fitsContent, compact, () => state.value.accounts.length, showStartPrompt, installWarning], () => { void nextTick(observeFit) })
 watch(compact, () => { expandedId.value = null })
 
 let settingsRequestedAt = Number.NEGATIVE_INFINITY
@@ -180,6 +183,10 @@ function moveRowFocus(event: KeyboardEvent): void {
 
 async function setLayout(layout: Settings['overviewLayout']): Promise<void> {
   if (state.value.settings.overviewLayout !== layout) await saveSettings({ ...state.value.settings, overviewLayout: layout })
+}
+
+async function answerStartPrompt(autostart: boolean): Promise<void> {
+  await saveSettings({ ...state.value.settings, autostart, autostartPromptDismissed: true })
 }
 
 function openSettings(tab: 'general' | 'accounts' = 'general'): void {
@@ -307,10 +314,11 @@ onUnmounted(() => {
               <div v-if="!visibleAccounts.length" class="filter-empty"><AppIcon :name="filter === 'claude' ? 'claude' : 'codex'" :size="25"/><p>No {{ filter === 'claude' ? 'Claude' : 'Codex' }} accounts yet.</p><button class="text-button" @click="openSettings('accounts')">Add an account<AppIcon name="plus" :size="13"/></button></div>
             </div>
           </main>
+          <StartAtLoginPrompt v-if="showStartPrompt" :warning="installWarning" :busy="busy" @accept="answerStartPrompt(true)" @dismiss="answerStartPrompt(false)"/>
           <footer class="app-footer"><span class="sync-status" :class="{ warning: staleCount || connectionError, pulsing: refreshing }" role="status"><span class="status-dot"/><button v-if="showsAttention" class="text-button attention-button" @click="showAttention">{{ status }}</button><template v-else>{{ status }}</template></span><button class="text-button footer-add" @click="openSettings('accounts')"><AppIcon name="plus" :size="13"/>Add account</button></footer>
         </template>
 
-        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" :active-ids="state.switching.activeAccountIds" :restore-offer="liveRestoreOffer(state.switching.restore, now)" :preview-make-active="previewMakeActive" :make-active="makeActive" :restore-backup="restoreSwitchBackup" :dismiss-restore="dismissSwitchRestore" :notification-failed-at="state.notificationFailedAt" :send-test-notification="sendTestNotification" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
+        <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" :active-ids="state.switching.activeAccountIds" :restore-offer="liveRestoreOffer(state.switching.restore, now)" :preview-make-active="previewMakeActive" :make-active="makeActive" :restore-backup="restoreSwitchBackup" :dismiss-restore="dismissSwitchRestore" :notification-failed-at="state.notificationFailedAt" :send-test-notification="sendTestNotification" :install-warning="installWarning" :preview-report="previewProblemReport" :open-report="openProblemReport" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
         <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button v-if="message.action" class="toast-action" :disabled="busy" @click="message.action.run()">{{ message.action.label }}</button><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
       </div>

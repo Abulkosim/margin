@@ -49,6 +49,8 @@ Open the printed URL with `?demo=1`. Sample accounts are labeled as such. The pl
 | `hidden` | Removed accounts kept out of discovery |
 | `notification-failed` | Last notification could not be sent (Settings) |
 
+Add `&prompt=1` to show the Start at login prompt, and `&location=outside` to show the warning for a copy outside Applications.
+
 States are defined in [`src/lib/demo.ts`](src/lib/demo.ts). Public screenshots follow [docs/screenshots.md](docs/screenshots.md). The [design study](design/directions.html) shows the initial visual directions.
 
 ## Test
@@ -70,12 +72,15 @@ Never commit real tokens, credential files, account IDs, unredacted emails, or r
 src-tauri/src/
   commands.rs          Tauri command surface
   updates.rs           explicit update check and install
+  support.rs           install location warning and Report a problem
   core/
     providers/         claude.rs, codex.rs: credentials, fetch, parsing
     accounts.rs        discovery and account list
     poller.rs          refresh schedule, backoff, stale handling
     store.rs           local state file
     history.rs         local usage history
+    install.rs         Applications folder check
+    report.rs          problem report allowlist
     notifications.rs   threshold notifications
     delivery.rs        notification submission and retries
     tray.rs, ring.rs   tray menu and icon rendering

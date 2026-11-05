@@ -3,6 +3,7 @@ mod commands;
 pub mod core;
 mod make_active;
 mod runtime;
+mod support;
 mod updates;
 
 use crate::core::{poller, tray};
@@ -24,9 +25,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(tray::Visibility::default())
         .manage(updates::Updates::default())
+        .manage(support::ReportPreview::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
             commands::get_account_history,
@@ -42,6 +45,9 @@ pub fn run() {
             commands::save_settings,
             commands::reset_store,
             commands::hide_window,
+            support::get_install_warning,
+            support::get_problem_report,
+            support::open_problem_report,
             make_active::preview_make_active,
             make_active::make_active,
             make_active::restore_switch_backup,
@@ -67,7 +73,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Ok(enabled) = handle.autolaunch().is_enabled() {
                     let mut inner = runtime.inner.lock().await;
-                    inner.view.settings.autostart = enabled;
+                    inner.view.settings.sync_autostart(enabled);
                     inner.view.changed();
                 }
                 if runtime.first_run {
