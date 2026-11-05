@@ -2,7 +2,11 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Next release: v0.10.0 (PRs #38, #39, #40)
+## Latest release: v0.10.0 (PRs #38, #39, #40)
+
+**[v0.10.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.0).** Published 2026-11-05 04:56 UTC from `eb00195`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/41969627325) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.10.0.md`. The public latest endpoint serves 0.10.0.
+
+The owner chose to publish before the real-machine checks, so this skipped the releasing guide's macOS artifact check and the macOS updater install test. No install or in-app update of this release has been run. The release notes say it hasn't been checked by hand.
 
 Checked 2026-11-04 on Linux on the combined stack at `650b636`: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). [Readings](https://github.com/Abulkosim/margin/actions/runs/41927918671), [alerts](https://github.com/Abulkosim/margin/actions/runs/41927925910) and [first run](https://github.com/Abulkosim/margin/actions/runs/41927932352) CI passed, including the macOS universal and Windows x64 jobs.
 
