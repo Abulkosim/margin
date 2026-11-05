@@ -20,7 +20,7 @@
 
 ## Install
 
-1. Download **v0.9.0**: [macOS 12+ (Universal DMG)](https://github.com/Abulkosim/margin/releases/download/v0.9.0/Margin_0.9.0_universal.dmg) · [Windows x64 (Setup EXE)](https://github.com/Abulkosim/margin/releases/download/v0.9.0/Margin_0.9.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.9.0/Margin_0.9.0_x64_en-US.msi)
+1. Download **v0.10.0**: [macOS 12+ (Universal DMG)](https://github.com/Abulkosim/margin/releases/download/v0.10.0/Margin_0.10.0_universal.dmg) · [Windows x64 (Setup EXE)](https://github.com/Abulkosim/margin/releases/download/v0.10.0/Margin_0.10.0_x64-setup.exe) · [MSI](https://github.com/Abulkosim/margin/releases/download/v0.10.0/Margin_0.10.0_x64_en-US.msi)
 2. Open it. Margin finds the Claude Code and Codex sign-ins already on your computer.
 
 Builds are not signed with an Apple Developer ID or Windows publisher certificate, so the first launch shows a warning:
