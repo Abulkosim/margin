@@ -125,7 +125,7 @@ Owner goal 2026-11-02: "Margin never surprises me with a limit." Threshold alert
 
 Written 2026-11-04 from independent Codex and Claude Opus reviews of v0.9.0; code claims checked against the source. Launch so far: 3 outside stars, 18 unique visitors, no issues. No new alert types until 7.2 passes.
 
-Status 2026-11-04: code for 7.1–7.3 is in PRs #38–#40, with automated checks passing (see `docs/verification.md`). Boxes stay open until the 👤 steps in `docs/native-checks.md` pass. If macOS notifications don't arrive, the next step is replacing the notification backend.
+Status 2026-11-05: 7.1–7.3 merged in #38–#40 and included in v0.10.0, which the owner chose to release before the native checks. Automated checks pass (see `docs/verification.md`). Boxes stay open until the 👤 steps in `docs/native-checks.md` pass. If macOS notifications don't arrive, the next step is replacing the notification backend.
 
 - [ ] **7.1 Truthful readings (S–M).** An idle Claude account whose token expired reads "Signed out" and stops alerting (`providers/claude.rs:94`, `src/lib/format.ts:174`, `poller.rs:391`), while the README says Margin updates while the CLI is idle. Show "Idle, last read 3h ago" on the card, row and CLI; keep "Signed out" for a real 401. After a reset has passed, show "Reset 14:00, not read since" with no percentage. Recheck expired accounts every 60 s. Qualify the README row. A malformed optional limit keeps the core windows and marks the reading incomplete (`providers/codex.rs:461`; check `providers/claude.rs:478`).
   Verify: fixture tests; e2e for each state; after an idle night no false "Signed out", and a reading returns within 60 s of running `claude` 👤.
