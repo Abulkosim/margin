@@ -6,7 +6,11 @@ Status must describe checks actually run, not the presence of test code. Record 
 
 Checked 2026-11-06 on Linux with the updated lockfiles: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). Vite 8.3.6 came after that run, followed by `pnpm build` and the frontend unit tests; CI ran the browser tests on the final code. `pnpm audit` reports nothing. `cargo audit` and `cargo deny` pass in CI, with 5 allowed notices (proc-macro-error, glib, zvariant, zvariant_derive, zbus_names), all in Tauri's dependencies with no update Margin can take.
 
-**Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md).
+**[v0.10.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.1).** Published 2026-11-06 06:53 UTC from `614bf31`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/42176194273) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; release notes matched `changelogs/v0.10.1.md`. The public latest endpoint serves 0.10.1.
+
+The owner asked for this release with the real-machine checks still to come, so it skipped the releasing guide's macOS artifact check and the macOS updater install test.
+
+**Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md), tracked in [#45](https://github.com/Abulkosim/margin/issues/45).
 
 ## Previous release: v0.10.0 (PRs #38, #39, #40)
 
