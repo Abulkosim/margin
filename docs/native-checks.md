@@ -63,11 +63,20 @@ Use dedicated test accounts for checks 5 to 7, not sign-ins you depend on. Margi
 17. **Autostart after a reboot.** Turn on **Start at login** and reboot.
     Expected: Margin is in the tray after login, once, and refreshes without being opened. Turn it off and reboot: Margin does not start.
 18. **Idle overnight, Claude.** Leave a Claude account unused overnight with Margin running, and don't run `claude`.
-    Expected in the morning: the card shows either a current reading or a labeled signed-out state with its age, never a fresh-looking old number. It recovers after running `claude` and refreshing, without a "Usage not updating" notification for the expired token.
+    Expected in the morning: the card shows a current reading or "Idle, last read …", not "Signed out", and never a fresh-looking old number. A limit whose reset passed overnight shows "Reset 14:00, not read since" with no percentage. After running `claude`, a reading returns within 60 seconds (Keychain accounts: at their next refresh), with no "Usage not updating" notification for the expired token.
 19. **Weekly digest.** Turn on **Weekly digest**.
     Expected: one notification the next Monday at or after 09:00, not two.
 20. **Uninstall.** Follow [install.md](install.md).
     Expected: Margin exits cleanly and CLI sign-ins still work.
+
+## First run and reporting
+
+21. **Start at login prompt.** On a fresh install with at least one account and **Start at login** off, open the popover.
+    Expected: a "Start at login" prompt with **Not now** and **Turn on**. **Not now** stays dismissed after a restart. **Turn on** turns it on in Settings, and the prompt doesn't come back.
+22. **Applications warning (Mac).** Open Margin from the mounted DMG or from Downloads, then from Applications.
+    Expected: "Move Margin to Applications so Start at login keeps working." shows outside Applications and not inside it.
+23. **Report a problem.** Settings → Support → **Report a problem**, then **Open GitHub issue**. Don't submit it.
+    Expected: the preview and the opened page show the version, OS, account counts and error kinds, with no emails, account names, folder paths, or tokens.
 
 ## Results
 
