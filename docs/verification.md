@@ -8,7 +8,7 @@ Checked 2026-11-06 on Linux with the updated lockfiles: `pnpm verify` (110 front
 
 **[v0.10.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.1).** Published 2026-11-06 06:53 UTC from `614bf31`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/42176194273) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; release notes matched `changelogs/v0.10.1.md`. The public latest endpoint serves 0.10.1.
 
-The owner chose to publish before the real-machine checks, so this skipped the releasing guide's macOS artifact check and the macOS updater install test.
+The owner asked for this release with the real-machine checks still to come, so it skipped the releasing guide's macOS artifact check and the macOS updater install test.
 
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md), tracked in [#45](https://github.com/Abulkosim/margin/issues/45).
 
