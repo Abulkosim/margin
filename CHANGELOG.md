@@ -2,6 +2,7 @@
 
 | Version | Date (UTC) | Changes |
 | --- | --- | --- |
+| [v0.10.1](changelogs/v0.10.1.md) | 2026-11-06 | Dependency updates. |
 | [v0.10.0](changelogs/v0.10.0.md) | 2026-11-05 | Idle accounts labeled correctly, test notification, wider outage alerts, Start at login prompt, Report a problem. |
 | [v0.9.0](changelogs/v0.9.0.md) | 2026-11-02 | Run-out warnings, alerts when an account stops updating, fewer settings writes, history fixes. |
 | [v0.8.2](changelogs/v0.8.2.md) | 2026-11-02 | Fixes for stale accounts, alerts, history and Make active safety. |
