@@ -12,6 +12,10 @@ The owner asked for this release with the real-machine checks still to come, so 
 
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md), tracked in [#45](https://github.com/Abulkosim/margin/issues/45).
 
+**[v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2), a draft since 2026-11-02, was published 2026-11-07 without being marked latest, at the owner's request,** so the rollback steps link to downloadable files. Checked first on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.8.2.md`. Afterwards the latest release and the public `latest.json` were still 0.10.1.
+
+Dependabot alerts were turned on 2026-11-07. One is open: glib 0.18 ([GHSA-wrw7-89jp-8q8g](https://github.com/advisories/GHSA-wrw7-89jp-8q8g), RUSTSEC-2024-0429). `cargo tree -i glib` finds it only for the Linux target, through Tauri's gtk 0.18, and not for the macOS or Windows targets Margin ships. Tauri has no compatible upgrade.
+
 ## Previous release: v0.10.0 (PRs #38, #39, #40)
 
 **[v0.10.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.0).** Published 2026-11-05 04:56 UTC from `eb00195`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/41969627325) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.10.0.md`. The public latest endpoint serves 0.10.0.
