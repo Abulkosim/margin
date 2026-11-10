@@ -34,6 +34,13 @@ struct CachedResetCredits {
 }
 
 impl ResetCreditCache {
+    /// Drops entries for accounts that `keep` rejects.
+    pub fn retain(&self, keep: impl Fn(&str) -> bool) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.retain(|account, _| keep(account));
+        }
+    }
+
     fn fresh(&self, account: &str, key: &[u8; 32]) -> Option<Option<ResetGrants>> {
         let cache = self.0.lock().ok()?;
         cache
@@ -1556,6 +1563,16 @@ mod tests {
             reset_credits_key(&url, &credentials, 1),
             reset_credits_key(&url, &credentials, 2)
         );
+    }
+
+    #[test]
+    fn removed_accounts_leave_the_reset_credit_cache() {
+        let cache = ResetCreditCache::default();
+        cache.store("a", [1; 32], None);
+        cache.store("b", [1; 32], None);
+        cache.retain(|account| account == "b");
+        assert!(cache.fresh("a", &[1; 32]).is_none());
+        assert!(cache.fresh("b", &[1; 32]).is_some());
     }
 
     #[tokio::test]
