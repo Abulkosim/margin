@@ -77,10 +77,14 @@ export function resetPassedText(window: UsageWindow, now: number): string {
   return `Reset ${clockTime(new Date(window.resetsAt ?? now), now)}, not read since`
 }
 
+export function timeOfDay(time: Date): string {
+  return time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
 export function clockTime(time: Date, now: number): string {
   const today = new Date(now)
   const sameDay = time.getFullYear() === today.getFullYear() && time.getMonth() === today.getMonth() && time.getDate() === today.getDate()
-  if (sameDay) return time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (sameDay) return timeOfDay(time)
   const withinWeek = Math.abs(time.getTime() - now) < 6 * 86_400_000
   return time.toLocaleString(undefined, withinWeek ? { weekday: 'short', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }

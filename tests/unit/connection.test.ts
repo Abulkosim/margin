@@ -158,7 +158,7 @@ test('hiding the window handles native failures without an unhandled rejection',
   t.after(() => harness.close())
   await assert.doesNotReject(harness.controller.hideWindow())
   assert.equal(harness.controller.message.value?.kind, 'error')
-  assert.equal(harness.controller.message.value?.text, 'Could not hide the window. Try again.')
+  assert.equal(harness.controller.message.value?.text, 'Couldn’t hide the window. Try again.')
 })
 
 test('preview removal advances the pinned account and preserves pinned mode', async t => {

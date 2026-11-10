@@ -96,7 +96,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       const unlisten = await tauri.event.listen('state_changed', event => {
         try { acceptState(event.payload) }
-        catch { notify(connectionError.value ?? 'Could not read the latest account state.', 'error') }
+        catch { notify(connectionError.value ?? 'Couldn’t read the latest account state.', 'error') }
       })
       if (destroyed) unlisten()
       else stopListening = unlisten
@@ -113,7 +113,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       payload = await tauri.core.invoke('get_state')
     } catch {
-      connectionError.value = 'Could not read your accounts. Refresh to reconnect.'
+      connectionError.value = 'Couldn’t read your accounts. Refresh to reconnect.'
       throw new Error(connectionError.value)
     }
     const accepted = acceptState(payload)
@@ -183,7 +183,7 @@ export function useMargin() {
       })
       return typeof selected === 'string' && selected ? selected : null
     } catch {
-      notify('Could not open the folder picker. Type the folder path instead.', 'error')
+      notify('Couldn’t open the folder picker. Type the folder path instead.', 'error')
       return null
     }
   }
@@ -323,7 +323,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       await tauri.core.invoke('hide_window')
     } catch {
-      notify('Could not hide the window. Try again.', 'error')
+      notify('Couldn’t hide the window. Try again.', 'error')
     }
   }
 
@@ -333,7 +333,7 @@ export function useMargin() {
     try {
       await reload()
     } catch {
-      connectionError.value ??= 'Could not connect to Margin. Close and reopen the app to try again.'
+      connectionError.value ??= 'Couldn’t connect to Margin. Close and reopen the app to try again.'
       notify(connectionError.value, 'error')
     } finally {
       loading.value = false
