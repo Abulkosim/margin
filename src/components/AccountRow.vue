@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, coreSummary, formatRemaining, idleStatus, idleStatusShort, providerName, resetClock, resetIn, resetPassedText, retryingMessage, unreadSinceReset } from '../lib/format'
+import { coreSummary, formatRemaining, idleStatusShort, providerName, quotaTone, resetClock, resetIn, resetPassedText, unreadSinceReset } from '../lib/format'
+import { useAccountStatus } from '../lib/accountStatus'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{ account: Account; settings: Settings; now: number; pinned: boolean; expanded: boolean; connectionError: string | null; controls: string }>()
 defineEmits<{ toggle: [] }>()
 
-const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const refreshing = computed(() => props.account.refreshing && !props.connectionError)
+const { stale, retrying, refreshing, idle, plan } = useAccountStatus(props)
 const unread = (window: UsageWindow | null): boolean => Boolean(window && props.account.snapshot && unreadSinceReset(window, props.account.snapshot.fetchedAt, props.now))
 const summary = computed(() => {
   const windows = props.account.snapshot?.windows ?? []
@@ -17,8 +16,6 @@ const summary = computed(() => {
 })
 const hasValues = computed(() => Boolean(props.account.snapshot && (summary.value.session || summary.value.weekly)))
 const reset = computed(() => summary.value.limiting ? resetIn(summary.value.limiting.resetsAt, props.now) : null)
-const idle = computed(() => props.connectionError ? null : idleStatus(props.account, props.now))
-const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 const status = computed(() => {
   const error = props.account.error
   if (!props.account.snapshot) {
@@ -33,7 +30,7 @@ const status = computed(() => {
   return props.account.snapshot.incomplete ? 'Incomplete' : null
 })
 const shownStatus = computed(() => status.value === idle.value ? idleStatusShort(props.account, props.now) : status.value)
-const tone = (window: UsageWindow | null) => unread(window) ? {} : { 'quota-low': (window?.usedPercent ?? 0) >= 80, 'quota-empty': (window?.usedPercent ?? 0) >= 100, limiting: window !== null && window === summary.value.limiting }
+const tone = (window: UsageWindow | null) => unread(window) ? {} : { ...quotaTone(window?.usedPercent ?? 0), limiting: window !== null && window === summary.value.limiting }
 const value = (window: UsageWindow | null): string => window && !unread(window) ? `${formatRemaining(window.usedPercent)}%` : '–'
 const passed = (window: UsageWindow | null): string | undefined => window && unread(window) ? resetPassedText(window, props.now) : undefined
 const spoken = (name: string, window: UsageWindow): string => unread(window) ? `${name} ${resetPassedText(window, props.now).toLowerCase()}` : `${name} ${formatRemaining(window.usedPercent)} percent left`

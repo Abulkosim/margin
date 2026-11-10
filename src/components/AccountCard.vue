@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, balanceLines, formatRemaining, groupWindows, idleAction, idleStatus, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, retryingMessage, signedOutMessage, unreadSinceReset } from '../lib/format'
+import { balanceLines, formatRemaining, groupWindows, idleAction, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, signedOutMessage, unreadSinceReset } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
-import { forecastPace, paceAt, paceWindowIds } from '../lib/pace'
+import { useAccountStatus } from '../lib/accountStatus'
+import { coversForecast, forecastPace, paceAt } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -14,21 +15,19 @@ const props = defineProps<{ account: Account; demo: boolean; settings: Settings;
 defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
-const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo)
+const paceWindows = (): UsageWindow[] => props.account.snapshot?.windows.filter(window => window.scope === 'core') ?? []
+const readAt = (): number => Date.parse(props.account.snapshot?.fetchedAt ?? '')
+const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo, () => historyOpen.value,
+  history => paceWindows().every(window => coversForecast(history.points, window, readAt())))
 const forecasts = computed(() => {
   const points = historyState.value.kind === 'ready' ? historyState.value.history.points : []
-  const snapshot = props.account.snapshot
-  const at = snapshot ? Date.parse(snapshot.fetchedAt) : Number.NaN
-  return new Map((snapshot?.windows ?? []).filter(window => paceWindowIds.has(window.id)).map(window => [window.id, forecastPace(points, window, at)]))
+  return new Map(paceWindows().map(window => [window.id, forecastPace(points, window, readAt())]))
 })
 const pace = (window: UsageWindow): string | null => {
   const forecast = forecasts.value.get(window.id)
   return stale.value || !forecast ? null : paceText(paceAt(forecast, window, props.now), props.now)
 }
-const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const refreshing = computed(() => props.account.refreshing && !props.connectionError)
-const idle = computed(() => props.connectionError ? null : idleStatus(props.account, props.now))
+const { stale, retrying, refreshing, idle, plan } = useAccountStatus(props)
 const idleHint = computed(() => props.connectionError ? null : idleAction(props.account))
 const signedOut = computed(() => props.connectionError ? null : signedOutMessage(props.account))
 const errorMessage = computed(() => props.connectionError ?? signedOut.value ?? props.account.error?.message)
@@ -45,7 +44,6 @@ const detailsLabel = computed(() => {
   if (count) return `${count} more ${count === 1 ? 'window' : 'windows'}`
   return props.account.snapshot?.balance ? 'Balance' : 'Extra usage'
 })
-const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 </script>
 
 <template>
@@ -70,7 +68,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
                 <span class="model-chip-name">{{ window.label }}</span>
                 <span class="model-chip-value">–</span>
               </span>
-              <span v-else class="model-chip" :class="{ 'quota-low': window.usedPercent >= 80, 'quota-empty': window.usedPercent >= 100 }" tabindex="0" role="progressbar" :aria-label="`${window.label} weekly remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining, ${spokenReset(window)}${stale ? ', last known' : ''}`">
+              <span v-else class="model-chip" :class="quotaTone(window.usedPercent)" tabindex="0" role="progressbar" :aria-label="`${window.label} weekly remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining, ${spokenReset(window)}${stale ? ', last known' : ''}`">
                 <span class="model-chip-name">{{ window.label }}</span>
                 <span class="model-chip-value">{{ formatRemaining(window.usedPercent) }}%</span>
                 <span class="model-chip-meter"><span :style="{ width: `${remainingPercent(window.usedPercent)}%` }" /></span>

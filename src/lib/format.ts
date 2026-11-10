@@ -1,8 +1,13 @@
-import type { Account, ResetGrants, Settings, UsageWindow, WindowScope } from './model'
+import type { Account, ResetGrants, Settings, UsageWindow } from './model'
 import type { Pace } from './pace'
 
 export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, 100 - used))
+}
+
+/** Class names for a window with 20% or less remaining, and for one with none. */
+export function quotaTone(usedPercent: number): { 'quota-low': boolean; 'quota-empty': boolean } {
+  return { 'quota-low': usedPercent >= 80, 'quota-empty': usedPercent >= 100 }
 }
 
 export function formatRemaining(used: number): string {
@@ -19,25 +24,17 @@ function shortDuration(milliseconds: number): string {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`
 }
 
+/** Rust's CoreWindow::Session; the scope itself comes from Rust with each window. */
 const sessionWindowIds = new Set(['five_hour', 'primary_window'])
-const coreWindowIds = new Set([...sessionWindowIds, 'seven_day', 'secondary_window'])
-const modelWindowIds = new Set(['seven_day_sonnet', 'seven_day_opus'])
-
-export function windowScope(window: UsageWindow): WindowScope {
-  if (window.scope) return window.scope
-  if (coreWindowIds.has(window.id)) return 'core'
-  if (modelWindowIds.has(window.id) || window.id.startsWith('weekly_scoped_')) return 'model'
-  return window.id.startsWith('extra_') && window.id.endsWith('_secondary_window') ? 'model' : 'other'
-}
 
 export function groupWindows(windows: UsageWindow[]): { rows: UsageWindow[]; models: UsageWindow[]; more: UsageWindow[] } {
-  const rows = windows.filter(window => windowScope(window) === 'core')
+  const rows = windows.filter(window => window.scope === 'core')
   if (!rows.length) return { rows: windows.slice(0, 2), models: [], more: windows.slice(2) }
-  return { rows, models: windows.filter(window => windowScope(window) === 'model'), more: windows.filter(window => windowScope(window) === 'other') }
+  return { rows, models: windows.filter(window => window.scope === 'model'), more: windows.filter(window => window.scope === 'other') }
 }
 
 export function coreSummary(windows: UsageWindow[]): { session: UsageWindow | null; weekly: UsageWindow | null; limiting: UsageWindow | null } {
-  const core = windows.filter(window => windowScope(window) === 'core')
+  const core = windows.filter(window => window.scope === 'core')
   const session = core.find(window => sessionWindowIds.has(window.id)) ?? null
   const weekly = core.find(window => window !== session) ?? null
   const limiting = [session, weekly].reduce<UsageWindow | null>((worst, window) => {
@@ -119,7 +116,7 @@ export function accountIsStale(account: Account, settings: Settings, now: number
   if (account.error && !(account.snapshot && transientErrors.has(account.error.kind))) return true
   if (!account.snapshot) return false
   const { windows } = account.snapshot
-  const core = windows.filter(window => windowScope(window) === 'core')
+  const core = windows.filter(window => window.scope === 'core')
   return now - Date.parse(account.snapshot.fetchedAt) > Math.max(settings.idlePollIntervalSeconds * 2, 180) * 1000
     || (core.length ? core : windows).some(window => window.resetsAt !== null && Date.parse(window.resetsAt) <= now)
 }
@@ -175,6 +172,10 @@ export function spendLimitLabel(unit: string | null): string {
   if (unit === 'credit') return 'Monthly credit limit'
   const word = unit?.trim().toLowerCase()
   return word ? `Monthly ${word} limit` : 'Monthly limit'
+}
+
+export function planName(plan: string | null): string | null {
+  return plan ? plan.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()) : null
 }
 
 export function providerName(provider: Account['provider']): string {

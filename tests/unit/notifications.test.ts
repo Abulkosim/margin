@@ -21,10 +21,10 @@ test('the preview can show a failed notification', () => {
 })
 
 test('help names each system’s settings and what Margin cannot see', () => {
-  const mac = notificationHelp('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')
+  const mac = notificationHelp('mac')
   assert.match(mac, /System Settings > Notifications/)
   assert.match(mac, /Focus/)
-  const windows = notificationHelp('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+  const windows = notificationHelp('windows')
   assert.match(windows, /Settings > System > Notifications/)
   assert.match(windows, /Do not disturb/)
   for (const help of [mac, windows]) assert.match(help, /not that it appeared/)

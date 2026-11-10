@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { formatRemaining, fullDateTime, remainingPercent, resetClock, resetCountdown, resetPassedText, unreadSinceReset } from '../lib/format'
+import { formatRemaining, fullDateTime, quotaTone, remainingPercent, resetClock, resetCountdown, resetPassedText, unreadSinceReset } from '../lib/format'
 import type { UsageWindow } from '../lib/model'
 import AppTooltip from './ui/AppTooltip.vue'
 
@@ -18,7 +18,7 @@ const resetTooltip = computed(() => fullDateTime(props.window.resetsAt))
     </div>
     <div class="quota-track" aria-hidden="true" />
   </div>
-  <div v-else class="quota-window" :class="{ 'quota-low': window.usedPercent >= 80, 'quota-empty': window.usedPercent >= 100 }">
+  <div v-else class="quota-window" :class="quotaTone(window.usedPercent)">
     <div class="quota-meta">
       <span class="quota-label">{{ window.label }}</span>
       <AppTooltip :text="resetTooltip"><span class="quota-reset">{{ resetCountdown(window.resetsAt, now) }}<span v-if="clock" class="quota-reset-at"> · {{ clock }}</span></span></AppTooltip>

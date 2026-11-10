@@ -9,7 +9,7 @@ const expired = { kind: 'signedOut', message: 'Token expired', retryAfterSeconds
 const rejected = { kind: 'signedOut', message: 'Signed out', retryAfterSeconds: null, signInCommand: 'claude' }
 
 function window(id: string, usedPercent: number, resetsAt: string | null): UsageWindow {
-  return { id, label: id, usedPercent, resetsAt, windowSeconds: 18_000 }
+  return { id, label: id, usedPercent, resetsAt, windowSeconds: 18_000, scope: id === 'five_hour' ? 'core' : 'other' }
 }
 
 function account(id: string, windows: UsageWindow[] | null, error: unknown = null, fetchedAt = '2026-10-16T11:00:00Z'): Account {

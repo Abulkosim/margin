@@ -10,7 +10,9 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import StartAtLoginPrompt from './components/StartAtLoginPrompt.vue'
 import { accountIsStale, orderAccounts, relativeAge, tokenExpired } from './lib/format'
 import { useMargin } from './lib/margin'
+import { isWindows, platform } from './lib/platform'
 import { offersStartAtLogin } from './lib/startup'
+import { invoke, useTauriEvent } from './lib/tauri'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
 import { liveRestoreOffer, popoverShownSchema, type Account, type AccountId, type Provider, type Settings } from './lib/model'
@@ -20,7 +22,6 @@ const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateStat
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
 const viewportWidth = ref(window.innerWidth)
-const isWindows = navigator.userAgent.includes('Windows')
 const nativeArrowX = computed(() => {
   const x = popoverPlacement.value.arrowX
   if (!desktop || demo || isWindows || x === null) return null
@@ -63,9 +64,6 @@ const fullHeight = 660
 const fitHeight = ref(0)
 let fitFrame = 0
 let fitObserver: ResizeObserver | undefined
-let stopSettingsListener: (() => void) | undefined
-let stopPlacementListener: (() => void) | undefined
-let stopShownListener: (() => void) | undefined
 let destroyed = false
 const latestFetch = computed(() => {
   const timestamps = state.value.accounts.flatMap(account => account.snapshot ? [account.snapshot.fetchedAt] : [])
@@ -94,7 +92,7 @@ watch(counts, value => {
 
 watchEffect(() => {
   document.documentElement.dataset.theme = dark.value ? 'dark' : 'light'
-  document.documentElement.dataset.platform = isWindows ? 'windows' : 'mac'
+  document.documentElement.dataset.platform = platform
   document.documentElement.style.colorScheme = dark.value ? 'dark' : 'light'
 })
 
@@ -112,7 +110,7 @@ function measureFit(): void {
   height = Math.min(height, fullHeight)
   if (height === fitHeight.value) return
   fitHeight.value = height
-  if (desktop && !demo) window.__TAURI__?.core.invoke('fit_popover', { height }).catch(() => {})
+  if (desktop && !demo) invoke('fit_popover', { height }).catch(() => {})
 }
 
 function scheduleFit(): void {
@@ -233,14 +231,15 @@ function acceptPopoverPlacement(payload: unknown): void {
   if (result.data.revision >= popoverPlacement.value.revision) popoverPlacement.value = result.data
 }
 
+const listenToPlacement = useTauriEvent('popover_placement_changed', acceptPopoverPlacement)
+const listenToOpenSettings = useTauriEvent('open_settings', () => { settingsRequestedAt = performance.now(); openSettings() })
+const listenToPopoverShown = useTauriEvent('popover_shown', payload => onPopoverShown(payload))
+
 async function connectPopoverPlacement(): Promise<void> {
-  const tauri = window.__TAURI__
-  if (!tauri) return
   try {
-    const unlisten = await tauri.event.listen('popover_placement_changed', event => acceptPopoverPlacement(event.payload))
-    if (destroyed) { unlisten(); return }
-    stopPlacementListener = unlisten
-    acceptPopoverPlacement(await tauri.core.invoke('get_popover_placement'))
+    await listenToPlacement()
+    if (destroyed) return
+    acceptPopoverPlacement(await invoke('get_popover_placement'))
   } catch {
     if (!destroyed) popoverPlacement.value = { ...popoverPlacement.value, arrowX: null }
   }
@@ -272,24 +271,13 @@ onMounted(async () => {
   observeFit()
   if (!desktop || demo) return
   void connectPopoverPlacement()
-  try {
-    const unlisten = await window.__TAURI__?.event.listen('open_settings', () => { settingsRequestedAt = performance.now(); openSettings() })
-    if (destroyed) unlisten?.()
-    else stopSettingsListener = unlisten
-  } catch { }
-  try {
-    const unlisten = await window.__TAURI__?.event.listen('popover_shown', event => onPopoverShown(event.payload))
-    if (destroyed) unlisten?.()
-    else stopShownListener = unlisten
-  } catch { }
+  try { await listenToOpenSettings() } catch { }
+  try { await listenToPopoverShown() } catch { }
 })
 onUnmounted(() => {
   destroyed = true
   fitObserver?.disconnect()
   cancelAnimationFrame(fitFrame)
-  stopSettingsListener?.()
-  stopPlacementListener?.()
-  stopShownListener?.()
   media.removeEventListener('change', syncSystemTheme)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', syncViewportWidth)

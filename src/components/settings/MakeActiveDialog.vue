@@ -47,7 +47,7 @@ function escape(event: KeyboardEvent): void {
 .make-active-dialog code {
   font: 500 12.5px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--card);
   color: var(--ink);
   display: inline-block;
@@ -69,7 +69,7 @@ function escape(event: KeyboardEvent): void {
   gap: 8px;
   align-items: flex-start;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--card);
   font-size: 13px;
   line-height: 1.5;

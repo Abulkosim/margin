@@ -51,7 +51,7 @@ test('observed hour uses percentage points and rejects stale, short, gapped or c
 })
 
 test('window choices use actual labels and never expose historical provider IDs', () => {
-  const windows = historyWindows([{ id: 'primary_window', label: 'Weekly', usedPercent: 0, resetsAt: null, windowSeconds: 604800 }], [point(0), point(0, { windowId: 'spark' })])
+  const windows = historyWindows([{ id: 'primary_window', label: 'Weekly', usedPercent: 0, resetsAt: null, windowSeconds: 604800, scope: 'core' }], [point(0), point(0, { windowId: 'spark' })])
   assert.deepEqual(windows, [{ id: 'primary_window', label: 'Weekly' }])
   assert.deepEqual(historyWindows([], [point(0)]), [{ id: 'primary_window', label: 'Previous window' }])
 })

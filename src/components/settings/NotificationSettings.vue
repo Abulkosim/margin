@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { timeOfDay } from '../../lib/format'
 import { burnThresholds, type Settings } from '../../lib/model'
 import { notificationFailureText, notificationHelp, testSentText } from '../../lib/notifications'
+import { isMac, platform } from '../../lib/platform'
 import AppIcon from '../AppIcon.vue'
 import AppSwitch from '../ui/AppSwitch.vue'
 
@@ -10,8 +11,8 @@ const props = defineProps<{ settings: Settings; busy: boolean; failedAt: string 
 const emit = defineEmits<{ change: [patch: Partial<Settings>] }>()
 const presets = [50, 80, 90, 95, 100]
 const choices = computed(() => [...new Set([...presets, ...props.settings.thresholds])].sort((a, b) => a - b))
-const systemSettings = navigator.userAgent.includes('Mac') ? 'System Settings' : 'Windows Settings'
-const help = notificationHelp(navigator.userAgent)
+const systemSettings = isMac ? 'System Settings' : 'Windows Settings'
+const help = notificationHelp(platform)
 const sentAt = ref<number | null>(null)
 const digestTime = timeOfDay(new Date(2026, 0, 5, 9, 0))
 const blocked = computed(() => props.settings.notifications && props.settings.notificationPermission === 'denied')

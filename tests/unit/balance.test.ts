@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { balanceLines, formatMoney, groupWindows, resetDay, spendLimitLabel, windowScope } from '../../src/lib/format.ts'
+import { balanceLines, formatMoney, groupWindows, resetDay, spendLimitLabel } from '../../src/lib/format.ts'
 import { accountSchema, usageWindowSchema, type Account } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -82,12 +82,10 @@ test('credits come before the limit and extra usage stays first', () => {
 })
 
 test('named codex weekly limits become chips while their session windows stay folded', () => {
-  const window = (id: string, label: string) => usageWindowSchema.parse({ id, label, usedPercent: 19, resetsAt: null, windowSeconds: null })
-  const weekly = window('extra_8f14e45fceea167a_secondary_window', 'Spark')
-  const session = window('extra_8f14e45fceea167a_primary_window', 'Spark · session')
-  assert.equal(windowScope(weekly), 'model')
-  assert.equal(windowScope(session), 'other')
-  const groups = groupWindows([window('primary_window', 'Session'), session, weekly])
+  const window = (id: string, label: string, scope: string) => usageWindowSchema.parse({ id, label, usedPercent: 19, resetsAt: null, windowSeconds: null, scope })
+  const weekly = window('extra_8f14e45fceea167a_secondary_window', 'Spark', 'model')
+  const session = window('extra_8f14e45fceea167a_primary_window', 'Spark · session', 'other')
+  const groups = groupWindows([window('primary_window', 'Session', 'core'), session, weekly])
   assert.deepEqual(groups.models.map(entry => entry.label), ['Spark'])
   assert.deepEqual(groups.more.map(entry => entry.label), ['Spark · session'])
 })

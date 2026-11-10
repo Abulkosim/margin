@@ -9,8 +9,8 @@ const resetsAt = '2026-10-16T14:00:00Z'
 
 function account(id: string, session: number | null, weekly: number | null, extra: Partial<Account> = {}): Account {
   const windows = [
-    ...session === null ? [] : [{ id: 'five_hour', label: 'Session', usedPercent: session, resetsAt, windowSeconds: 18000 }],
-    ...weekly === null ? [] : [{ id: 'seven_day', label: 'Weekly', usedPercent: weekly, resetsAt, windowSeconds: 604800 }],
+    ...session === null ? [] : [{ id: 'five_hour', label: 'Session', usedPercent: session, resetsAt, windowSeconds: 18000, scope: 'core' }],
+    ...weekly === null ? [] : [{ id: 'seven_day', label: 'Weekly', usedPercent: weekly, resetsAt, windowSeconds: 604800, scope: 'core' }],
   ]
   return accountSchema.parse({
     id, provider: 'claude', label: id, color: '#b8d1bf', source: { kind: 'configDir', path: `/example/.${id}` },

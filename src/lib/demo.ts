@@ -15,8 +15,8 @@ export function createDemoState(scenario: string | null): AppState {
         source: { kind: 'configDir', path: '~/.claude' },
         identity: { email: 'alex@example.com', plan: 'Max 5×' }, error: null, refreshing: false,
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, windows: [
-          { id: 'five_hour', label: 'Session', usedPercent: 28, resetsAt: future(2.3), windowSeconds: 18_000 },
-          { id: 'seven_day', label: 'Weekly', usedPercent: 58, resetsAt: future(102), windowSeconds: 604_800 },
+          { id: 'five_hour', label: 'Session', usedPercent: 28, resetsAt: future(2.3), windowSeconds: 18_000, scope: 'core' },
+          { id: 'seven_day', label: 'Weekly', usedPercent: 58, resetsAt: future(102), windowSeconds: 604_800, scope: 'core' },
           { id: 'weekly_scoped_5d1e5ac9f2d0b7a4', label: 'Fable', usedPercent: 66, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
           { id: 'weekly_scoped_0c3e7b2a91f4d658', label: 'Opus', usedPercent: 88, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
           { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 34, resetsAt: future(102), windowSeconds: 604_800, scope: 'model' },
@@ -27,8 +27,8 @@ export function createDemoState(scenario: string | null): AppState {
         source: { kind: 'configDir', path: '~/.codex-work' },
         identity: { email: 'alex@studio.example', plan: 'Pro' }, error: null, refreshing: false,
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: null, balance: { credits: { amount: 1250, unlimited: false }, spendLimit: { used: 320, limit: 500, usedPercent: 64, resetsAt: future(9 * 24 + 4), reached: false, unit: 'credit' } }, windows: [
-          { id: 'primary_window', label: 'Session', usedPercent: 9, resetsAt: future(3.68), windowSeconds: 18_000 },
-          { id: 'secondary_window', label: 'Weekly', usedPercent: 32, resetsAt: future(122), windowSeconds: 604_800 },
+          { id: 'primary_window', label: 'Session', usedPercent: 9, resetsAt: future(3.68), windowSeconds: 18_000, scope: 'core' },
+          { id: 'secondary_window', label: 'Weekly', usedPercent: 32, resetsAt: future(122), windowSeconds: 604_800, scope: 'core' },
           { id: 'extra_8f14e45fceea167a_primary_window', label: 'Spark · session', usedPercent: 12, resetsAt: future(3.68), windowSeconds: 18_000, scope: 'other' },
           { id: 'extra_8f14e45fceea167a_secondary_window', label: 'Spark', usedPercent: 19, resetsAt: future(122), windowSeconds: 604_800, scope: 'model' },
         ] },
@@ -38,8 +38,8 @@ export function createDemoState(scenario: string | null): AppState {
         source: { kind: 'configDir', path: '~/.claude-studio' },
         identity: { email: 'hello@studio.example', plan: 'Pro' }, error: null, refreshing: false,
         snapshot: { fetchedAt: new Date(now).toISOString(), extraUsage: { spent: 4.28, limit: 20, currency: 'USD' }, resetGrants: { available: 1, kind: null, expiresAt: future(74) }, windows: [
-          { id: 'five_hour', label: 'Session', usedPercent: 82, resetsAt: future(0.75), windowSeconds: 18_000 },
-          { id: 'seven_day', label: 'Weekly', usedPercent: 14, resetsAt: future(56), windowSeconds: 604_800 },
+          { id: 'five_hour', label: 'Session', usedPercent: 82, resetsAt: future(0.75), windowSeconds: 18_000, scope: 'core' },
+          { id: 'seven_day', label: 'Weekly', usedPercent: 14, resetsAt: future(56), windowSeconds: 604_800, scope: 'core' },
           { id: 'seven_day_sonnet', label: 'Sonnet', usedPercent: 21, resetsAt: future(56), windowSeconds: 604_800, scope: 'model' },
         ] },
       },
@@ -142,8 +142,8 @@ export function createDemoState(scenario: string | null): AppState {
       identity: { email: 'alex@side.example', plan: 'Plus' }, refreshing: false,
       error: { kind: 'network', message: 'Could not reach Codex. Check your connection.', retryAfterSeconds: null },
       snapshot: { fetchedAt: new Date(now - 47 * 60_000).toISOString(), extraUsage: null, windows: [
-        { id: 'primary_window', label: 'Session', usedPercent: 64, resetsAt: future(1.4), windowSeconds: 18_000 },
-        { id: 'secondary_window', label: 'Weekly', usedPercent: 91, resetsAt: future(30), windowSeconds: 604_800 },
+        { id: 'primary_window', label: 'Session', usedPercent: 64, resetsAt: future(1.4), windowSeconds: 18_000, scope: 'core' },
+        { id: 'secondary_window', label: 'Weekly', usedPercent: 91, resetsAt: future(30), windowSeconds: 604_800, scope: 'core' },
       ] },
     }), accountSchema.parse({
       id: 'demo-claude-client', provider: 'claude', label: 'Client work for Northwind Studio', color: '#b8d1bf',

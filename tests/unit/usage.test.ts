@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, coreSummary, formatRemaining, groupWindows, modelWindowSummary, remainingPercent, relativeAge, resetCountdown, resetIn, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, coreSummary, formatRemaining, groupWindows, modelWindowSummary, quotaTone, remainingPercent, relativeAge, resetCountdown, resetIn, retryingMessage, signedOutMessage } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -10,7 +10,7 @@ const account = accountSchema.parse({
   identity: { email: null, plan: 'pro' }, error: null, refreshing: false,
   snapshot: {
     fetchedAt: '2026-10-16T09:59:30Z', extraUsage: null,
-    windows: [{ id: 'session', label: 'Session', usedPercent: 93.2, resetsAt: '2026-10-16T12:00:00Z', windowSeconds: 18000 }],
+    windows: [{ id: 'session', label: 'Session', usedPercent: 93.2, resetsAt: '2026-10-16T12:00:00Z', windowSeconds: 18000, scope: 'other' }],
   },
 })
 
@@ -20,6 +20,13 @@ test('remaining quota never implies available quota below 1%', () => {
   assert.equal(formatRemaining(100), '0')
   assert.equal(formatRemaining(0), '100')
   assert.equal(formatRemaining(93.2), '7')
+})
+
+test('windows turn low at 20% remaining and empty at none', () => {
+  assert.deepEqual(quotaTone(79.9), { 'quota-low': false, 'quota-empty': false })
+  assert.deepEqual(quotaTone(80), { 'quota-low': true, 'quota-empty': false })
+  assert.deepEqual(quotaTone(99.9), { 'quota-low': true, 'quota-empty': false })
+  assert.deepEqual(quotaTone(100), { 'quota-low': true, 'quota-empty': true })
 })
 
 test('countdown preserves unknown and pending reset states', () => {
@@ -40,15 +47,15 @@ test('errors and elapsed resets mark last-known values stale', () => {
   assert.equal(accountIsStale(account, defaultSettings, Date.parse('2026-10-16T10:11:00Z')), true)
   const expired = accountSchema.parse({ ...account, snapshot: {
     fetchedAt: '2026-10-16T09:59:30Z', extraUsage: null,
-    windows: [{ id: 'session', label: 'Session', usedPercent: 93.2, resetsAt: '2026-10-16T09:59:45Z', windowSeconds: 18000 }],
+    windows: [{ id: 'session', label: 'Session', usedPercent: 93.2, resetsAt: '2026-10-16T09:59:45Z', windowSeconds: 18000, scope: 'other' }],
   } })
   assert.equal(accountIsStale(expired, defaultSettings, now), true)
   assert.equal(expired.snapshot?.windows[0]?.usedPercent, 93.2)
   const modelElapsed = accountSchema.parse({ ...account, snapshot: {
     fetchedAt: '2026-10-16T09:59:30Z', extraUsage: null,
     windows: [
-      { id: 'five_hour', label: 'Session', usedPercent: 20, resetsAt: '2026-10-16T12:00:00Z', windowSeconds: 18000 },
-      { id: 'seven_day_opus', label: 'Opus', usedPercent: 0, resetsAt: '2026-10-16T09:00:00Z', windowSeconds: 604800 },
+      { id: 'five_hour', label: 'Session', usedPercent: 20, resetsAt: '2026-10-16T12:00:00Z', windowSeconds: 18000, scope: 'core' },
+      { id: 'seven_day_opus', label: 'Opus', usedPercent: 0, resetsAt: '2026-10-16T09:00:00Z', windowSeconds: 604800, scope: 'model' },
     ],
   } })
   assert.equal(accountIsStale(modelElapsed, defaultSettings, now), false)
@@ -87,7 +94,7 @@ test('cached readings disclose their age', () => {
 })
 
 test('IPC validation rejects impossible or malformed quota data', () => {
-  const valid = { id: 'a', label: 'Session', usedPercent: 50, resetsAt: null, windowSeconds: 18000 }
+  const valid = { id: 'a', label: 'Session', usedPercent: 50, resetsAt: null, windowSeconds: 18000, scope: 'core' }
   for (const usedPercent of [-1, 101, NaN, Infinity, '50']) {
     assert.equal(usageWindowSchema.safeParse({ ...valid, usedPercent }).success, false)
   }
@@ -153,25 +160,25 @@ test('signed-out copy leads into the sign-in command', () => {
 })
 
 test('model limits are grouped apart from core rows and other windows', () => {
-  const window = (id: string, label: string, scope?: 'core' | 'model' | 'other') => usageWindowSchema.parse({ id, label, usedPercent: 10, resetsAt: '2026-10-20T16:00:00Z', windowSeconds: 604800, scope })
+  const window = (id: string, label: string, scope: 'core' | 'model' | 'other') => usageWindowSchema.parse({ id, label, usedPercent: 10, resetsAt: '2026-10-20T16:00:00Z', windowSeconds: 604800, scope })
   const windows = [
-    window('five_hour', 'Session'), window('seven_day', 'Weekly'),
-    window('weekly_scoped_0123456789abcdef', 'Fable'), window('seven_day_opus', 'Opus'),
-    window('seven_day_cowork', 'Cowork'), window('custom', 'Pinned', 'model'),
+    window('five_hour', 'Session', 'core'), window('seven_day', 'Weekly', 'core'),
+    window('weekly_scoped_0123456789abcdef', 'Fable', 'model'), window('seven_day_opus', 'Opus', 'model'),
+    window('seven_day_cowork', 'Cowork', 'other'), window('custom', 'Pinned', 'model'),
   ]
-  assert.deepEqual(windows.map(windowScope), ['core', 'core', 'model', 'model', 'other', 'model'])
   const groups = groupWindows(windows)
   assert.deepEqual(groups.rows.map(entry => entry.label), ['Session', 'Weekly'])
   assert.deepEqual(groups.models.map(entry => entry.label), ['Fable', 'Opus', 'Pinned'])
   assert.deepEqual(groups.more.map(entry => entry.label), ['Cowork'])
   assert.deepEqual(groupWindows(windows.slice(2)).rows.map(entry => entry.label), ['Fable', 'Opus'])
   assert.equal(modelWindowSummary(windows[2]!, now), 'Fable weekly · resets in 4d 6h')
-  assert.equal(windowScope(window('extra_0123456789abcdef_primary_window', 'Spark · session')), 'other')
   assert.throws(() => usageWindowSchema.parse({ id: 'x', label: 'X', usedPercent: 1, resetsAt: null, windowSeconds: null, scope: 'weekly' }))
+  assert.throws(() => usageWindowSchema.parse({ id: 'five_hour', label: 'Session', usedPercent: 1, resetsAt: null, windowSeconds: null }))
 })
 
 test('compact rows pick session, weekly, and the more constrained reset', () => {
-  const window = (id: string, usedPercent: number, resetsAt: string | null) => usageWindowSchema.parse({ id, label: id, usedPercent, resetsAt, windowSeconds: null })
+  const scopes: Record<string, string> = { seven_day_opus: 'model', seven_day_cowork: 'other' }
+  const window = (id: string, usedPercent: number, resetsAt: string | null) => usageWindowSchema.parse({ id, label: id, usedPercent, resetsAt, windowSeconds: null, scope: scopes[id] ?? 'core' })
   const session = window('five_hour', 82, '2026-10-16T10:45:00Z')
   const weekly = window('seven_day', 14, '2026-10-18T18:00:00Z')
   const summary = coreSummary([weekly, window('seven_day_opus', 99, null), session])

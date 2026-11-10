@@ -241,3 +241,47 @@ test('history is not loaded while the popover is hidden and catches up when show
   await expect(page.getByRole('region', { name: 'Usage history' }).getByText('No history yet.')).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-history-requests', '2')
 })
+
+test('closed history reloads only when the pace line needs newer readings', async ({ page }) => {
+  const state = createDemoState(null)
+  state.accounts = state.accounts.slice(0, 1)
+  const account = state.accounts[0]
+  const snapshot = account?.snapshot
+  if (!account || !snapshot) throw new Error('Missing fixture')
+  const loadedAt = snapshot.fetchedAt
+  const points = snapshot.windows.map(window => ({ windowId: window.id, at: loadedAt, usedPercent: window.usedPercent, resetsAt: window.resetsAt, windowSeconds: window.windowSeconds, gapBefore: false }))
+  await page.addInitScript(({ state, points }) => {
+    let requests = 0
+    Object.defineProperty(globalThis, '__TAURI__', { value: {
+      core: { invoke: async (command: string) => {
+        if (command === 'get_state') return state
+        if (command === 'get_account_history') {
+          document.documentElement.dataset.historyRequests = String(++requests)
+          return { accountId: state.accounts[0]?.id, points, error: null }
+        }
+        return null
+      } }, event: { listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
+        const listener = (event: Event): void => { if (event instanceof CustomEvent) handler({ payload: event.detail }) }
+        window.addEventListener(name, listener)
+        return () => window.removeEventListener(name, listener)
+      } },
+    } })
+  }, { state, points })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '1')
+  const publish = async (minutes: number, label: string): Promise<void> => {
+    account.label = label
+    snapshot.fetchedAt = new Date(Date.parse(loadedAt) + minutes * 60_000).toISOString()
+    state.revision++
+    await page.evaluate(state => window.dispatchEvent(new CustomEvent('state_changed', { detail: state })), state)
+    await expect(page.getByRole('article', { name: `${label}, Claude` })).toBeVisible()
+  }
+  await publish(1, 'One minute')
+  await publish(30, 'Half an hour')
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '1')
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '2')
+  await page.getByRole('button', { name: 'Hide history', exact: true }).click()
+  await publish(90, 'Later')
+  await expect(page.locator('html')).toHaveAttribute('data-history-requests', '3')
+})
