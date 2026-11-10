@@ -1,4 +1,4 @@
-use super::model::{Account, AccountSource, Identity, Provider};
+use super::model::{same_email, Account, AccountSource, Identity, Provider};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -195,7 +195,10 @@ impl HistoryStore {
             let mut resets_at = window.resets_at.clone();
             if let Some(index) = latest {
                 let previous = &entry.saved.points[index];
-                let previous_at = timestamp(&previous.at).expect("validated history timestamp");
+                let Some(previous_at) = timestamp(&previous.at) else {
+                    entry.gap = true;
+                    continue;
+                };
                 if at <= previous_at {
                     entry.gap = true;
                     continue;
@@ -254,7 +257,10 @@ impl HistoryStore {
         let saved = &entry.saved.identity;
         let same_identity = match (&saved.history_key, &account.identity.history_key) {
             (Some(before), Some(now)) => before == now,
-            (None, None) => saved.email.is_some() && saved.email == account.identity.email,
+            (None, None) => match (&saved.email, &account.identity.email) {
+                (Some(before), Some(now)) => same_email(before, now),
+                _ => false,
+            },
             _ => false,
         };
         if entry.unreadable
@@ -308,7 +314,10 @@ fn reconcile(entry: &mut Entry, account: &Account) -> bool {
                 entry.gap = true;
                 return false;
             };
-            previous.email.as_ref() == Some(email)
+            previous
+                .email
+                .as_deref()
+                .is_some_and(|previous| same_email(previous, email))
         }
     };
     if !same_identity
@@ -1100,6 +1109,52 @@ mod tests {
         stranger.identity.email = Some("someone@example.test".into());
         store.relocate(&stranger);
         assert!(store.get(&stranger, at(0)).points.is_empty());
+    }
+
+    #[test]
+    fn email_letter_case_is_the_same_person_for_history_and_alerts() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        let before = account(0, 10.0);
+        store.record(&before, 60, at(0));
+        let mut after = account(60, 20.0);
+        after.identity.email = Some("Example@Example.TEST".into());
+        assert!(before.identity.same_person(&after.identity));
+        store.record(&after, 60, at(60));
+        assert_eq!(store.get(&after, at(60)).points.len(), 2);
+
+        after.source = AccountSource::ConfigDir {
+            path: directory
+                .path()
+                .join(".codex")
+                .to_string_lossy()
+                .into_owned(),
+            keychain_suffix: None,
+        };
+        after.identity.email = Some("EXAMPLE@example.test".into());
+        store.relocate(&after);
+        assert_eq!(store.get(&after, at(60)).points.len(), 2);
+
+        after.identity.email = None;
+        assert!(store.get(&after, at(60)).points.is_empty());
+        assert_eq!(
+            store.get(&after, at(60)).error.as_deref(),
+            Some(IDENTITY_ERROR)
+        );
+    }
+
+    #[test]
+    fn unreadable_previous_timestamp_marks_a_gap_instead_of_panicking() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = HistoryStore::new(directory.path().into());
+        store.record(&account(0, 10.0), 60, at(0));
+        store.entries.get_mut("codex-test").unwrap().saved.points[0].at = "unreadable".into();
+        store.record(&account(60, 20.0), 60, at(60));
+        assert!(store.get(&account(60, 20.0), at(60)).points.is_empty());
+        store.record(&account(120, 30.0), 60, at(120));
+        let points = store.get(&account(120, 30.0), at(120)).points;
+        assert_eq!(points.len(), 1);
+        assert!(points[0].gap_before);
     }
 
     #[test]

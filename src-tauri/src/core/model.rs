@@ -88,11 +88,16 @@ impl Identity {
         match (&self.history_key, &other.history_key) {
             (Some(a), Some(b)) => a == b,
             _ => match (&self.email, &other.email) {
-                (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+                (Some(a), Some(b)) => same_email(a, b),
                 _ => true,
             },
         }
     }
+}
+
+/// Providers may change an address's letter case between readings.
+pub fn same_email(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
