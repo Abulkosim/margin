@@ -13,7 +13,8 @@ pub use process::{running, Running};
 use super::accounts;
 use super::model::{Account, AccountSource, Provider};
 use super::providers::claude::{keychain_service, keychain_suffix};
-use base64::engine::general_purpose::{STANDARD, URL_SAFE, URL_SAFE_NO_PAD};
+use super::providers::codex::jwt_claims;
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -672,15 +673,6 @@ fn text_field(value: Option<&Value>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty() && value.len() <= 65_536)
         .map(str::to_owned)
-}
-
-fn jwt_claims(token: &str) -> Option<Value> {
-    let payload = token.split('.').nth(1)?;
-    let bytes = URL_SAFE_NO_PAD
-        .decode(payload)
-        .or_else(|_| URL_SAFE.decode(payload))
-        .ok()?;
-    serde_json::from_slice(&bytes).ok()
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -229,12 +229,9 @@ fn request_error(error: reqwest::Error) -> UsageError {
     }
 }
 
+/// Callers report 401 as [`signed_out`] before reaching this.
 fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderMap) -> UsageError {
     match status.as_u16() {
-        401 => UsageError::new("auth", match provider {
-            Provider::Claude => "Claude sign-in expired. Open Claude Code in this account's configuration folder and sign in again.",
-            Provider::Codex => "Codex sign-in expired. Run codex login with this account's CODEX_HOME, then refresh.",
-        }),
         403 => UsageError::new("auth", match provider {
             Provider::Claude => "Claude usage access was denied. Sign in with a token that includes user:profile.",
             Provider::Codex => "Codex usage access was denied. Check this account's sign-in and subscription.",
@@ -400,14 +397,13 @@ mod tests {
         assert_eq!(error.kind, "rateLimited");
         assert_eq!(error.retry_after_seconds, Some(90));
         assert_eq!(
-            http_error(
-                Provider::Claude,
-                reqwest::StatusCode::UNAUTHORIZED,
-                &headers
-            )
-            .kind,
+            http_error(Provider::Claude, reqwest::StatusCode::FORBIDDEN, &headers).kind,
             "auth"
         );
+        let rejected = signed_out(Provider::Claude, None, None);
+        assert_eq!(rejected.kind, "signedOut");
+        assert!(rejected.signed_out_since.is_none());
+        assert_eq!(rejected.sign_in_command.as_deref(), Some("claude"));
         assert_eq!(
             http_error(Provider::Codex, reqwest::StatusCode::FOUND, &headers).kind,
             "redirect"

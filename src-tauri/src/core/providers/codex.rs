@@ -5,7 +5,7 @@ use super::{
 };
 use crate::core::model::{
     Account, AccountSource, Balance, Credits, Identity, Provider, ResetGrants, Snapshot,
-    SpendLimit, UsageError, UsageWindow,
+    SpendLimit, UsageError, UsageWindow, MAX_WINDOWS,
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -34,6 +34,13 @@ struct CachedResetCredits {
 }
 
 impl ResetCreditCache {
+    /// Drops entries for accounts that `keep` rejects.
+    pub fn retain(&self, keep: impl Fn(&str) -> bool) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.retain(|account, _| keep(account));
+        }
+    }
+
     fn fresh(&self, account: &str, key: &[u8; 32]) -> Option<Option<ResetGrants>> {
         let cache = self.0.lock().ok()?;
         cache
@@ -341,7 +348,7 @@ fn parse_account_id(value: Option<&Value>) -> Result<Option<String>, UsageError>
     Ok(Some(id.to_owned()))
 }
 
-pub(super) fn jwt_claims(token: &str) -> Option<Value> {
+pub(crate) fn jwt_claims(token: &str) -> Option<Value> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 || parts[1].len() > 32_768 {
         return None;
@@ -428,7 +435,6 @@ pub(super) fn usage_url(base: &str) -> Result<Url, UsageError> {
     Ok(url)
 }
 
-const MAX_WINDOWS: usize = 64;
 /// The largest integer the interface reads exactly.
 const MAX_WINDOW_SECONDS: u64 = (1 << 53) - 1;
 
@@ -1556,6 +1562,16 @@ mod tests {
             reset_credits_key(&url, &credentials, 1),
             reset_credits_key(&url, &credentials, 2)
         );
+    }
+
+    #[test]
+    fn removed_accounts_leave_the_reset_credit_cache() {
+        let cache = ResetCreditCache::default();
+        cache.store("a", [1; 32], None);
+        cache.store("b", [1; 32], None);
+        cache.retain(|account| account == "b");
+        assert!(cache.fresh("a", &[1; 32]).is_none());
+        assert!(cache.fresh("b", &[1; 32]).is_some());
     }
 
     #[tokio::test]

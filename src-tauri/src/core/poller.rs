@@ -316,67 +316,60 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                 last_digest_check = None;
             }
             last_tick = tick;
-            let ids: Vec<String> = inner
-                .view
-                .accounts
-                .iter()
-                .map(|account| account.id.clone())
-                .collect();
-            for (index, id) in ids.iter().enumerate() {
-                inner
-                    .schedules
-                    .entry(id.clone())
-                    .or_insert_with(|| Schedule::new(Duration::from_millis(index as u64 * 800)));
+            let state = &mut *inner;
+            for (index, account) in state.view.accounts.iter().enumerate() {
+                if !state.schedules.contains_key(&account.id) {
+                    state.schedules.insert(
+                        account.id.clone(),
+                        Schedule::new(Duration::from_millis(index as u64 * 800)),
+                    );
+                }
             }
             not_updating(&mut inner, chrono::Utc::now());
             let failure_changed = submit_pending(&app, &runtime, &mut inner);
             let now = Instant::now();
             let mut due = Vec::new();
-            let running = inner
+            let state = &mut *inner;
+            let running = state
                 .schedules
                 .values()
                 .filter(|schedule| schedule.in_flight)
                 .count();
-            for id in ids {
+            for account in &mut state.view.accounts {
                 if due.len() + running >= 3 {
                     break;
                 }
-                let ready = inner
+                let Some(schedule) = state
                     .schedules
-                    .get(&id)
-                    .is_some_and(|schedule| schedule.ready(now));
-                if ready {
-                    let generation = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-                    if let Some(schedule) = inner.schedules.get_mut(&id) {
-                        schedule.in_flight = true;
-                        schedule.generation = generation;
-                    }
-                    if let Some(account) = inner
-                        .view
-                        .accounts
-                        .iter_mut()
-                        .find(|account| account.id == id)
-                    {
-                        account.refreshing = true;
-                        due.push((account.clone(), generation));
-                    }
-                }
+                    .get_mut(&account.id)
+                    .filter(|schedule| schedule.ready(now))
+                else {
+                    continue;
+                };
+                let generation = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+                schedule.in_flight = true;
+                schedule.generation = generation;
+                account.refreshing = true;
+                due.push((account.clone(), generation));
             }
             inner.view.refreshing = inner.view.accounts.iter().any(|account| account.refreshing);
-            if !due.is_empty() || failure_changed {
+            let publish_now = !due.is_empty() || failure_changed;
+            let tray_due = last_tray_update.elapsed() >= Duration::from_secs(5);
+            if publish_now {
                 inner.view.changed();
             }
-            let view = inner.view.clone();
+            let view = (publish_now || tray_due).then(|| inner.view.clone());
             drop(inner);
-            if !due.is_empty() || failure_changed {
-                publish(&app, &view);
+            if let Some(view) = view {
+                if publish_now {
+                    publish(&app, &view);
+                } else {
+                    tray::update(&app, &view);
+                }
                 last_tray_update = Instant::now();
-                if view.settings.notifications {
+                if publish_now && view.settings.notifications {
                     sync_permission(&app, &runtime).await;
                 }
-            } else if last_tray_update.elapsed() >= Duration::from_secs(5) {
-                tray::update(&app, &view);
-                last_tray_update = Instant::now();
             }
             if last_digest_check.is_none_or(|at| at.elapsed() >= DIGEST_CHECK_INTERVAL) {
                 last_digest_check = Some(Instant::now());
