@@ -97,14 +97,12 @@ async fn fetch_from(
         .filter(|expires_at| *expires_at <= chrono::Utc::now().timestamp_millis() + EXPIRY_SKEW_MS)
     {
         let directory = sign_in_directory(&account.source);
-        return Err(match chrono::DateTime::from_timestamp_millis(expires_at) {
-            Some(since) => token_expired(
-                Provider::Claude,
-                directory,
-                since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            ),
-            None => signed_out(Provider::Claude, directory, None),
-        });
+        return Err(
+            match chrono::DateTime::from_timestamp_millis(expires_at).and_then(super::rfc3339) {
+                Some(since) => token_expired(Provider::Claude, directory, since),
+                None => signed_out(Provider::Claude, directory, None),
+            },
+        );
     }
     let mut response = usage_request(client, base_url, &credentials.access_token, true).await?;
     if needs_query_fallback(response.status()) {
@@ -639,10 +637,14 @@ fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetG
             soonest = Some(soonest.map_or(ends, |soonest| soonest.min(ends)));
         }
     }
-    (available > 0).then(|| ResetGrants {
+    let expires_at = match soonest {
+        Some(date) => Some(super::rfc3339(date)?),
+        None => None,
+    };
+    (available > 0).then_some(ResetGrants {
         available: available as u32,
         kind: None,
-        expires_at: soonest.map(|date| date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        expires_at,
     })
 }
 
@@ -820,6 +822,7 @@ mod tests {
             ))
             .unwrap()["cedar_ember"]
                 .clone(),
+            json!({"eligible": true, "grants": [{"resets_left": 1, "paused": false, "ends_at": "9999-12-31T23:30:00-05:00"}]}),
         ] {
             assert!(parse_reset_grants(Some(&block), Utc::now()).is_none());
         }
@@ -1063,6 +1066,11 @@ mod tests {
         let value: Value =
             serde_json::from_str(include_str!("../../../fixtures/claude-core-malformed.json"))
                 .unwrap();
+        assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/claude-reset-out-of-range.json"
+        ))
+        .unwrap();
         assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
         for core in [
             json!({"five_hour": "full", "seven_day": {"utilization": 1}}),
@@ -1351,6 +1359,26 @@ attributes:
             command,
             super::super::sign_in_command(Provider::Claude, Some(directory.path()))
         );
+    }
+
+    #[tokio::test]
+    async fn an_expiry_before_year_zero_has_no_since_time() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"synthetic","expiresAt":-62167219201000}}"#,
+        )
+        .unwrap();
+        let error = fetch_from(
+            &reqwest::Client::new(),
+            &config_account(directory.path()),
+            &ProfileCache::default(),
+            "https://127.0.0.1:9",
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, "signedOut");
+        assert_eq!(error.signed_out_since, None);
     }
 
     #[tokio::test]

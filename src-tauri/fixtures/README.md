@@ -13,6 +13,8 @@ Observed cases covered by regression tests:
 
 `claude-reset-grants-overflow.json` is constructed: a grant count that would overflow a running total. The grants must be dropped, not wrap to a small count.
 
+`claude-reset-out-of-range.json` is constructed: a reset time that becomes year 10000 in UTC. The interface reads four-digit years only, so the reading must fail rather than send it.
+
 `claude-partial-limits.json` and `codex-partial-limits.json` are constructed responses with valid core windows and malformed optional limits; the reading must keep the rest and be marked incomplete. `claude-core-malformed.json` and `codex-core-malformed.json` have a malformed core window; the reading must fail.
 
 The other fixtures are constructed examples covering additional documented shapes. All parser tests run without network or real credentials. Live verification did not refresh credentials, overwrite CLI files, or redeem reset credits.

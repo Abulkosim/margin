@@ -9,7 +9,7 @@ use crate::core::model::{
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use reqwest::Url;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -224,10 +224,14 @@ fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> 
         .then(|| kinds.into_iter().next())
         .flatten()
         .filter(|kind| kind.len() <= 64);
+    let expires_at = match soonest {
+        Some(date) => Some(super::rfc3339(date)?),
+        None => None,
+    };
     Some(ResetGrants {
         available: available as u32,
         kind,
-        expires_at: soonest.map(|date| date.to_rfc3339_opts(SecondsFormat::Secs, true)),
+        expires_at,
     })
 }
 
@@ -1338,6 +1342,7 @@ mod tests {
             json!({"available_count": 1, "credits": {}}),
             json!({"available_count": 1, "credits": [{"status": "available", "expires_at": "soon"}]}),
             json!({"available_count": 0, "credits": []}),
+            json!({"available_count": 1, "credits": [{"status": "available", "expires_at": "9999-12-31T23:30:00-05:00"}]}),
         ] {
             assert!(parse_reset_credits(&malformed, at).is_none());
         }
