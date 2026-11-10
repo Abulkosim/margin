@@ -4,17 +4,16 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 
 ## Where we stand
 
-- v0.3.0 shipped. 0 stars, ~4 real visitors, downloads ≈ owner only. Nobody has found it.
-- Health: 32 frontend + 93 Rust tests pass, clippy clean, release flow solid.
+- v0.10.2 shipped 2026-11-10 ([CHANGELOG.md](../CHANGELOG.md)). Automated checks for each release are in [verification.md](verification.md).
+- Nothing has run on a real Mac or Windows machine since v0.8.1. Owner checks: [native-checks.md](native-checks.md), tracked in [#45](https://github.com/Abulkosim/margin/issues/45).
 - Space is crowded (CodexBar 22.7k★, ccusage 19k★, dozens of 0–3-point Show HNs). Anthropic/OpenAI now show single-account usage natively.
 - Nothing official covers: **many accounts, Claude + Codex together, usage while the CLI is idle, Windows, OS alerts, history.** That is the wedge. Lead every pitch with it.
-- Blocking bug: on macOS, Claude Code stores extra accounts as Keychain items `Claude Code-credentials-<hash>` (4 exist on this Mac). Margin reads only the default item and rejects custom config dirs that have no `.credentials.json`. **Multi-account Claude on Mac, our headline feature, does not work.**
 
 ## Rules for the loop
 
-- One task per iteration. Smallest shippable slice. Commit per task, one-line imperative, email `abulkasimkattaev@gmail.com`, no trailers.
+- One task per iteration. Smallest shippable slice. Commit per task: Conventional Commits `type(scope): summary`, imperative, lowercase, with a body saying what and why. Email `abulkasimkattaev@gmail.com`. No AI attribution trailers.
 - Each task has a **Verify** line. Not done until it passes. Record evidence in `docs/verification.md` (short).
-- Always run before commit: `pnpm typecheck && pnpm test && pnpm test:e2e` and `cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
+- Always run before commit: `pnpm verify`, `pnpm test:scripts` and `pnpm test:e2e`.
 - UI change → screenshot light + dark via existing Playwright preview; look at it; refresh `docs/images` if copy/visuals changed.
 - Never write CLI credential files. Never redeem credits. Read-only.
 - Copy: plain, short. "Usage remaining", not slogans.
@@ -74,16 +73,16 @@ Written 2026-10-22 from a code audit, competitor/user-demand research, and distr
 - [x] **3.1 README rewrite.** Hero: one real Mac menu-bar screenshot + one Windows tray screenshot (owner VM 👤 for Windows; use existing preview until then). 3-bullet value statement, Install within first screen. "Why Margin" table vs CodexBar / Claude-Usage-Tracker / official indicators (macOS+Windows, multi-account, Claude+Codex, OAuth-only, idle updates, free/MIT). Badges: release, downloads, platforms. Move Develop/Preview to CONTRIBUTING.md. Done 2026-10-22: hero, badges, comparison table, 112 lines. Real menu-bar + Windows screenshots still 👤.
 - [x] **3.2 Install docs for macOS 15/26.** Lead with Privacy & Security → Open Anyway (with screenshot); `xattr -d com.apple.quarantine /Applications/Margin.app` as fallback only. Windows: SmartScreen "More info → Run anyway"; note Smart App Control blocks unsigned apps entirely.
   Done 2026-10-22: `docs/install.md` + README Install; screenshots (Open Anyway, SmartScreen) still 👤, filenames listed in docs/install.md TODO.
-- [x] **3.3 15s demo GIF** (tray → popover → countdown tick → history) from the real app, light theme. Also a 1280×640 social preview PNG; 👤 owner uploads it in repo settings. Done 2026-10-22 from the browser preview (no screen-recording permission here): `docs/images/demo.gif` 2.1 MB 15 s, `docs/images/social-preview.png`. 👤 upload the preview in repo Settings; re-record from the real app later.
+- [x] **3.3 15s demo GIF** (tray → popover → countdown tick → history) from the real app, light theme. Also a 1280×640 social preview PNG; 👤 owner uploads it in repo settings. Done 2026-10-22 from the browser preview (no screen-recording permission here): `docs/images/demo.gif` 2.1 MB 15 s, `docs/images/social-preview.png`. 👤 upload the preview in repo Settings; re-record from the real app later. The GIF was removed 2026-11-10 as stale (`4a13ec4`).
 - [x] **3.4 Artifact attestations + SBOM** in the release job (`actions/attest-build-provenance`, `anchore/sbom-action`; perms `id-token: write`, `attestations: write`). README: `gh attestation verify <file> --repo Abulkosim/margin`.
   Verify: next release assets verify. Added 2026-10-22; first real check at the v0.4.0 tag build.
 - [x] **3.5 PRIVACY.md + SECURITY.md.** Exact files/Keychain items read, exact hosts contacted (api.anthropic.com, chatgpt.com, github.com for updates), no telemetry, never writes. Private vulnerability reporting and Discussions enabled 2026-10-22. Keychain section to update after 1.1.
 - [x] **3.6 CI hardening.** `cargo audit`/`cargo deny`, `pnpm audit`, OpenSSF Scorecard action + badge, CodeQL default 👤 (settings), wiremock tests for provider `fetch` (400 fallback, 401, 429, swap), poller tests.
-  Done 2026-10-22: `security.yml` (cargo audit, cargo deny with `src-tauri/deny.toml`, pnpm audit high), `scorecard.yml` (publishes results; needs code scanning on 👤), wiremock fetch tests for both providers. Fixed 3 RustSEC advisories (webpki) and vue 3.5.43 (GHSA-g2v6-rqmx-r4w6). CodeQL default setup still 👤.
+  Done 2026-10-22: `security.yml` (cargo audit, cargo deny with `src-tauri/deny.toml`, pnpm audit high), `scorecard.yml` (publishes results; needs code scanning on 👤), wiremock fetch tests for both providers. Fixed 3 RustSEC advisories (webpki) and vue 3.5.43 (GHSA-g2v6-rqmx-r4w6). CodeQL runs from `codeql.yml` since #48 (v0.10.2).
 - [ ] **3.7 Own Homebrew tap** `Abulkosim/homebrew-tap` with cask `margin`, `auto_updates true`, updated from release job (needs PAT 👤). Prepared 2026-10-22: `packaging/homebrew/Casks/margin.rb`, `update-cask.mjs`, gated `homebrew` job (workflow_dispatch on a tag, `vars.HOMEBREW_TAP_ENABLED`). 👤 create tap repo + PAT, see docs/releasing.md.
 - [ ] **3.8 winget manifest** `Abulkosim.Margin` via `wingetcreate`, then `winget-releaser` action (PAT + fork 👤). Submit Defender false-positive if flagged. Prepared 2026-10-22: `packaging/winget/Abulkosim.Margin/0.4.0/`, gated `winget` job (`vars.WINGET_ENABLED`). 👤 fork winget-pkgs, first submission by hand, classic PAT.
 - [x] **3.9 Repo hygiene.** Discussions on, feature-request + account issue forms, `config.yml`, PR template, CONTRIBUTING.md, CODE_OF_CONDUCT.md. Done 2026-10-22.
-- [x] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath. Done 2026-10-22: `site/index.html`, `og.png`, `pages.yml`. 👤 Settings → Pages → Source "GitHub Actions", then set homepage to https://abulkosim.github.io/margin/.
+- [x] **3.10 GitHub Pages one-pager** (`site/`), set as homepage. Needed later for SignPath. Done 2026-10-22: `site/index.html`, `og.png`, `pages.yml`. Pages is live and set as the homepage: https://abulkosim.github.io/margin/.
 - [x] **3.11 Decide repo name** — renamed to `Abulkosim/margin` 2026-10-22; GitHub redirects the old slug. Updater manifest still uses the old slug until v0.4.0 is the oldest supported version.
 - [ ] **3.12 Listings.** PRs: awesome-mac, open-source-mac-os-apps (drafts prepared by loop, submitted 👤). awesome-claude-code via web form 👤 on/after **2026-10-30**. Drafts ready 2026-10-22 in `docs/launch/listings.md` (awesome-mac AI Tools, open-source-mac-os-apps `applications.json`, awesome-claude-code form ≥2026-10-30). 👤 submit.
 - [ ] **3.13 Launch posts 👤** — drafts prepared by loop, posted by owner in own words, spaced over days: r/ClaudeAI (showcase flair), r/ClaudeCode, r/codex, r/macapps, r/windowsapps, X clip. Show HN last, after 3.1–3.4, owner-written. Drafts ready 2026-10-22 in `docs/launch/posts.md`; r/macapps main feed needs 100★ or 1 year → megathread PCP comment instead.
@@ -96,8 +95,8 @@ From a performance and usability audit on 2026-10-25: buffered settings/history 
 ## Phase 4 — Depth (v0.7+)
 
 - [x] **4.1 Burn-rate alerts** ("used 20% in the last hour"), quiet by default. Done in v0.7.0 as Fast usage alerts (10/20/30% within an hour, off by default).
-- [ ] **4.2 Credits / extra-usage balance** on the card (Claude extra_usage already parsed; Codex credits if present).
-- [ ] **4.3 "Make active"** account switch: confirm, back up, then swap the default folder's sign-in with the chosen folder's (move only when the default is empty), so each refresh-token family lives in one place. Implemented in `core/switch.rs`; shipped in v0.7.0; needs the owner's manual checks on a real Mac and Windows before ticking 👤.
+- [x] **4.2 Credits / extra-usage balance** on the card (Claude extra_usage already parsed; Codex credits if present). Shipped v0.8.0 as 5.1.
+- [ ] **4.3 "Make active"** account switch: confirm, back up, then swap the default folder's sign-in with the chosen folder's (move only when the default is empty), so each refresh-token family lives in one place. Implemented in `core/switch.rs`; shipped in v0.7.0; needs the owner's manual checks on a real Mac and Windows before ticking 👤 ([#45](https://github.com/Abulkosim/margin/issues/45)).
 - [x] **4.4 Local CLI / JSON output** (`margin --json`) for statuslines and scripts. Done in v0.7.0: `--json` (schema 1) and `--line [--all]`, read-only, no network.
 - [ ] **4.5 Linux build** (AppImage/deb, menu-only tray since Tauri emits no tray click on Linux) — only after a demand signal.
 - [ ] **4.6 Cost history from `~/.claude/projects/**/*.jsonl`** — low priority; ccusage shows it is fragile.
@@ -118,22 +117,22 @@ Owner goal 2026-11-02: "Margin never surprises me with a limit." Threshold alert
 
 - [x] **6.1 Run-out warnings**, on by default. One forecast model in Rust and the card pace line. Verify: mirrored unit tests; e2e settings. Done 2026-11-02.
 - [x] **6.2 "Usage not updating" alert**, on by default, 30 minutes. Verify: unit tests on outage tracking. Done 2026-11-02.
-- [ ] **6.3 Native check** 👤: a run-out warning and a not-updating alert arrive on the owner's Mac (e.g. block `api.anthropic.com` for 30 min).
+- [ ] **6.3 Native check** 👤 ([#45](https://github.com/Abulkosim/margin/issues/45)): a run-out warning and a not-updating alert arrive on the owner's Mac (e.g. block `api.anthropic.com` for 30 min).
 - Known gap: a Claude account used only on claude.ai, with an expired Claude Code token, reads as signed out with no notification (the card and tray show it). Alerting on every idle token expiry would be noise.
 
 ## Phase 7 — Make the claims true, prove them, then launch again
 
 Written 2026-11-04 from independent Codex and Claude Opus reviews of v0.9.0; code claims checked against the source. Launch so far: 3 outside stars, 18 unique visitors, no issues. No new alert types until 7.2 passes.
 
-Status 2026-11-05: 7.1–7.3 merged in #38–#40 and included in v0.10.0, which the owner chose to release before the native checks. Automated checks pass (see `docs/verification.md`). Boxes stay open until the 👤 steps in `docs/native-checks.md` pass. If macOS notifications don't arrive, the next step is replacing the notification backend.
+Status 2026-11-10: 7.1–7.3 merged in #38–#40 and shipped in v0.10.0, which the owner chose to release before the native checks; v0.10.2 is current. Automated checks pass (see `docs/verification.md`). The 👤 steps in `docs/native-checks.md` are tracked in [#45](https://github.com/Abulkosim/margin/issues/45). If macOS notifications don't arrive, the next step is replacing the notification backend.
 
-- [ ] **7.1 Truthful readings (S–M).** An idle Claude account whose token expired reads "Signed out" and stops alerting (`providers/claude.rs:94`, `src/lib/format.ts:174`, `poller.rs:391`), while the README says Margin updates while the CLI is idle. Show "Idle, last read 3h ago" on the card, row and CLI; keep "Signed out" for a real 401. After a reset has passed, show "Reset 14:00, not read since" with no percentage. Recheck expired accounts every 60 s. Qualify the README row. A malformed optional limit keeps the core windows and marks the reading incomplete (`providers/codex.rs:461`; check `providers/claude.rs:478`).
+- [x] **7.1 Truthful readings (S–M).** Shipped v0.10.0; native check pending #45. An idle Claude account whose token expired reads "Signed out" and stops alerting (`providers/claude.rs:94`, `src/lib/format.ts:174`, `poller.rs:391`), while the README says Margin updates while the CLI is idle. Show "Idle, last read 3h ago" on the card, row and CLI; keep "Signed out" for a real 401. After a reset has passed, show "Reset 14:00, not read since" with no percentage. Recheck expired accounts every 60 s. Qualify the README row. A malformed optional limit keeps the core windows and marks the reading incomplete (`providers/codex.rs:461`; check `providers/claude.rs:478`).
   Verify: fixture tests; e2e for each state; after an idle night no false "Signed out", and a reading returns within 60 s of running `claude` 👤.
-- [ ] **7.2 Alerts you can trust (S–M code, half a day 👤).** Delivery errors are dropped (`poller.rs:211`) and thresholds are marked sent before delivery (`notifications.rs:378`). Network errors never count as an outage (`outage.rs:16`), which misses a failure of only the usage host. Add "Send test notification" with a pointer to OS settings, show delivery failures, retry within a limit, and alert once when the usage host fails for 30 minutes while the connection works.
+- [x] **7.2 Alerts you can trust (S–M code, half a day 👤).** Shipped v0.10.0; native check pending #45. Delivery errors are dropped (`poller.rs:211`) and thresholds are marked sent before delivery (`notifications.rs:378`). Network errors never count as an outage (`outage.rs:16`), which misses a failure of only the usage host. Add "Send test notification" with a pointer to OS settings, show delivery failures, retry within a limit, and alert once when the usage host fails for 30 minutes while the connection works.
   Verify: tests with injected failures; dated pass/fail rows in `docs/verification.md` for a real alert, a real Make active with Undo and next-day sign-in, and a Windows install, in-app update, toast and DPI check 👤. Label Make active "beta" until they pass; turn it off on any platform that fails.
-- [ ] **7.3 Keep running, and report problems (S).** Launch at login is off by default (`settings.rs:102`), so a reboot ends the alerts. Offer it on first run; on macOS warn when the app is outside Applications. Add "Report a problem": a prefilled issue with version, OS and error kinds, with a preview and no emails, paths or tokens. Record `latest.json` downloads weekly as a telemetry-free count of installs.
+- [x] **7.3 Keep running, and report problems (S).** Shipped v0.10.0; native check pending #45. Start at login is off by default (`settings.rs:102`), so a reboot ends the alerts. Offer it on first run; on macOS warn when the app is outside Applications. Add "Report a problem": a prefilled issue with version, OS and error kinds, with a preview and no emails, paths or tokens. Record `latest.json` downloads weekly as a telemetry-free count of installs.
   Verify: e2e; secret-leak test on the report; a fresh install returns after a reboot 👤.
-- [ ] **7.4 Release v0.10.0, then launch again with proof (S, mostly 👤).** Starts after 7.1 and 7.2. 20-second recording of the real app at the top of the README and site; turn on the Homebrew tap (3.7); submit listings (3.12); space the posts (3.13). Follow five real users from install to day 7 and fix what repeats before adding features.
+- [ ] **7.4 Launch again with proof (S, mostly 👤).** v0.10.2 is out; starts once the 7.1 and 7.2 native checks in #45 pass. 20-second recording of the real app at the top of the README and site; turn on the Homebrew tap (3.7); submit listings (3.12); space the posts (3.13). Follow five real users from install to day 7 and fix what repeats before adding features.
   Verify: five install outcomes and day-7 answers recorded; 150+ unique visitors, 50+ installer downloads and a first outside issue within 14 days. These targets are estimates.
 
 ## Explicitly not doing
@@ -144,6 +143,4 @@ Status 2026-11-05: 7.1–7.3 merged in #38–#40 and included in v0.10.0, which 
 
 ## Open questions for owner
 
-1. Rename repo to `margin`? (3.11)
-2. Windows VM available for real screenshots + winget test? (3.1, 3.8)
-3. OK to enable GitHub Discussions, private vuln reporting, CodeQL in repo settings? (all free)
+1. Windows VM available for real screenshots + winget test? (3.1, 3.8)
