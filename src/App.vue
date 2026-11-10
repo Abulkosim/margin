@@ -15,7 +15,7 @@ import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
 import { liveRestoreOffer, popoverShownSchema, type Account, type AccountId, type Provider, type Settings } from './lib/model'
 
-const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport } = useMargin()
+const { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport, holdToast } = useMargin()
 const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateState(new URLSearchParams(location.search).get('state')) : undefined })
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
@@ -199,6 +199,27 @@ async function togglePin(account: Account): Promise<void> {
   await saveSettings({ ...state.value.settings, trayMode: pinned ? 'lowest' : 'pinned', pinnedAccountId: pinned ? null : account.id })
 }
 
+const toastRoles = ['status', 'alert'] as const
+const toastRegion = ref<HTMLElement | null>(null)
+let toastHovered = false
+let toastFocused = false
+
+function syncToastHold(): void { holdToast(toastHovered || toastFocused) }
+
+function onToastFocusOut(event: FocusEvent): void {
+  toastFocused = event.relatedTarget instanceof Node && Boolean(toastRegion.value?.contains(event.relatedTarget))
+  syncToastHold()
+}
+
+watch(message, () => {
+  void nextTick(() => {
+    const region = toastRegion.value
+    toastHovered = Boolean(region?.matches(':hover'))
+    toastFocused = Boolean(region?.contains(document.activeElement))
+    syncToastHold()
+  })
+})
+
 function syncSystemTheme(event: MediaQueryListEvent): void { systemDark.value = event.matches }
 function syncViewportWidth(): void { viewportWidth.value = window.innerWidth }
 
@@ -320,7 +341,9 @@ onUnmounted(() => {
 
         <SettingsPanel v-else :update-state="updater.state.value" :update-busy="updater.busy.value" :demo="demo" @check-update="updater.check" @install-update="updater.install" :accounts="state.accounts" :recovered="state.recovered" :hidden-count="state.ignoredSources.length" :can-choose-folder="desktop || demo" :choose-folder="pickFolder" :settings="state.settings" :busy="busy" :initial-tab="settingsTab" :save="saveSettings" :add="addAccount" :remove="removeAccount" :rename="renameAccount" :active-ids="state.switching.activeAccountIds" :restore-offer="liveRestoreOffer(state.switching.restore, now)" :preview-make-active="previewMakeActive" :make-active="makeActive" :restore-backup="restoreSwitchBackup" :dismiss-restore="dismissSwitchRestore" :notification-failed-at="state.notificationFailedAt" :send-test-notification="sendTestNotification" :install-warning="installWarning" :preview-report="previewProblemReport" :open-report="openProblemReport" @back="page = 'overview'" @discover="discover" @show-hidden="restoreIgnored"/>
         <div v-if="demo" class="preview-ribbon"><span class="preview-dot"/>Interface preview<span>Sample data</span></div>
-        <Transition name="toast"><div v-if="message" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }" :role="message.kind === 'error' ? 'alert' : 'status'"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button v-if="message.action" class="toast-action" :disabled="busy" @click="message.action.run()">{{ message.action.label }}</button><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition>
+        <div ref="toastRegion" class="toast-region" @pointerenter="toastHovered = true; syncToastHold()" @pointerleave="toastHovered = false; syncToastHold()" @focusin="toastFocused = true; syncToastHold()" @focusout="onToastFocusOut">
+          <div v-for="live in toastRoles" :key="live" :role="live"><Transition name="toast"><div v-if="message && (message.kind === 'error') === (live === 'alert')" class="toast-message" :class="{ 'toast-error': message.kind === 'error' }"><AppIcon :name="message.kind === 'error' ? 'alert' : 'check'" :size="15"/><span>{{ message.text }}</span><button v-if="message.action" class="toast-action" :disabled="busy" @click="message.action.run()">{{ message.action.label }}</button><button class="icon-button" aria-label="Dismiss message" @click="message = null"><AppIcon name="close" :size="13"/></button></div></Transition></div>
+        </div>
       </div>
     </div>
   </div>

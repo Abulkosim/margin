@@ -1005,12 +1005,14 @@ button:disabled:hover {
   font-size: 13px;
   margin: 22px 0;
 }
-.toast-message {
+.toast-region>div {
   position: absolute;
   left: 16px;
   right: 16px;
   bottom: 38px;
   z-index: 80;
+}
+.toast-message {
   display: flex;
   align-items: center;
   gap: 8px;

@@ -31,6 +31,9 @@ export function useMargin() {
   let connectingListener: Promise<void> | null = null
   let destroyed = false
   let toastTimer: ReturnType<typeof setTimeout> | undefined
+  let toastRemaining = 0
+  let toastStartedAt = 0
+  let toastHeld = false
   let clock: number | undefined
   const tick = (): void => { now.value = Date.now() }
   function syncClock(): void {
@@ -51,10 +54,25 @@ export function useMargin() {
   if (demo && (order === 'urgency' || order === 'added')) state.value.settings.accountOrder = order
   if (demo && query.get('prompt') === '1') state.value.settings.autostartPromptDismissed = false
 
-  function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
+  function scheduleDismiss(): void {
     clearTimeout(toastTimer)
+    toastTimer = undefined
+    if (!message.value || toastHeld) return
+    toastStartedAt = Date.now()
+    toastTimer = setTimeout(() => { message.value = null }, toastRemaining)
+  }
+
+  function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
     message.value = { kind, text, action }
-    toastTimer = setTimeout(() => { message.value = null }, kind === 'error' || action ? 9000 : 3500)
+    toastRemaining = kind === 'error' || action ? 9000 : 3500
+    scheduleDismiss()
+  }
+
+  function holdToast(held: boolean): void {
+    if (held === toastHeld) return
+    if (held && toastTimer !== undefined) toastRemaining = Math.max(toastRemaining - (Date.now() - toastStartedAt), 2000)
+    toastHeld = held
+    scheduleDismiss()
   }
 
   function acceptState(payload: unknown): boolean {
@@ -330,5 +348,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport, holdToast }
 }
