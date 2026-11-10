@@ -1,6 +1,6 @@
 use super::{
     digest::DigestState,
-    model::{Account, Snapshot},
+    model::{Account, Snapshot, MAX_LABEL_CHARS, MAX_WINDOWS},
     notifications::AlertMemory,
     settings::Settings,
 };
@@ -15,8 +15,9 @@ use std::{
 };
 
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_ACCOUNTS: usize = 100;
-const MAX_WINDOWS: usize = 64;
+pub const MAX_ACCOUNTS: usize = 100;
+pub const STATE_VERSION: u32 = 1;
+const KEEP_BACKUPS: usize = 5;
 use super::accounts::MAX_IGNORED_SOURCES;
 
 #[derive(Default, Deserialize, Serialize)]
@@ -56,7 +57,7 @@ pub fn read(path: &Path) -> Result<StoredState, String> {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(StoredState {
-                version: 1,
+                version: STATE_VERSION,
                 ..StoredState::default()
             });
         }
@@ -114,6 +115,7 @@ pub fn save(path: &Path, state: &StoredState) -> Result<(), String> {
 pub fn backup(path: &Path) -> Result<PathBuf, String> {
     let target = backup_path(path)?;
     fs::copy(path, &target).map_err(|_| "Margin could not back up its settings file.")?;
+    prune_backups(path, &target);
     Ok(target)
 }
 
@@ -122,6 +124,7 @@ pub fn reset(path: &Path, state: &StoredState) -> Result<Option<PathBuf>, String
         Ok(_) => {
             let target = backup_path(path)?;
             fs::rename(path, &target).map_err(|_| "Margin could not back up its settings file.")?;
+            prune_backups(path, &target);
             Some(target)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -146,13 +149,51 @@ fn backup_path(path: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "Margin could not choose a backup file name.".into())
 }
 
+/// Keeps `latest` and the newest other backups, `KEEP_BACKUPS` in all. Files
+/// that don't match `backup_path`'s naming are left alone.
+fn prune_backups(path: &Path, latest: &Path) {
+    let (Some(parent), Some(name)) = (
+        path.parent(),
+        path.file_name().and_then(|name| name.to_str()),
+    ) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    let prefix = format!("{name}.bak-");
+    let mut backups: Vec<((String, u32), PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let order = backup_order(entry.file_name().to_str()?.strip_prefix(&prefix)?)?;
+            let path = entry.path();
+            (path != latest && entry.file_type().is_ok_and(|kind| kind.is_file()))
+                .then_some((order, path))
+        })
+        .collect();
+    backups.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, stale) in backups.into_iter().skip(KEEP_BACKUPS - 1) {
+        let _ = fs::remove_file(stale);
+    }
+}
+
+fn backup_order(suffix: &str) -> Option<(String, u32)> {
+    let (stamp, attempt) = match suffix.split_once('-') {
+        Some((stamp, attempt)) => (stamp, attempt.parse().ok().filter(|attempt| *attempt > 0)?),
+        None => (suffix, 0),
+    };
+    let canonical =
+        stamp.len() == 16 && chrono::NaiveDateTime::parse_from_str(stamp, "%Y%m%dT%H%M%SZ").is_ok();
+    canonical.then(|| (stamp.to_owned(), attempt))
+}
+
 fn decode(value: Value) -> Result<StoredState, String> {
     let Value::Object(mut root) = value else {
         return Err(invalid_store());
     };
     match root.get("version").and_then(Value::as_u64) {
-        Some(1) => {}
-        Some(version) if version > 1 => return Err(newer_store()),
+        Some(version) if version == u64::from(STATE_VERSION) => {}
+        Some(version) if version > u64::from(STATE_VERSION) => return Err(newer_store()),
         _ => return Err(invalid_store()),
     }
     let mut recovered = Vec::new();
@@ -164,7 +205,9 @@ fn decode(value: Value) -> Result<StoredState, String> {
                 let name = item
                     .get("label")
                     .and_then(Value::as_str)
-                    .filter(|label| valid_text(label, 192) && label.chars().count() <= 48)
+                    .filter(|label| {
+                        valid_text(label, 192) && label.chars().count() <= MAX_LABEL_CHARS
+                    })
                     .map(|label| format!("“{label}”"))
                     .unwrap_or_else(|| (index + 1).to_string());
                 if accounts.len() >= MAX_ACCOUNTS {
@@ -267,7 +310,7 @@ fn decode(value: Value) -> Result<StoredState, String> {
         },
     };
     Ok(StoredState {
-        version: 1,
+        version: STATE_VERSION,
         accounts,
         settings,
         alerts,
@@ -324,7 +367,7 @@ fn invalid_store() -> String {
 }
 
 fn validate(state: &StoredState) -> Result<(), String> {
-    if state.version != 1 {
+    if state.version != STATE_VERSION {
         return Err(newer_store());
     }
     state.settings.validate()?;
@@ -378,7 +421,7 @@ fn validate(state: &StoredState) -> Result<(), String> {
 fn validate_account(account: &Account) -> Result<(), String> {
     if !valid_id(&account.id)
         || !valid_text(&account.label, 192)
-        || account.label.chars().count() > 48
+        || account.label.chars().count() > MAX_LABEL_CHARS
         || account.color.len() != 7
         || !account.color.starts_with('#')
         || !account.color[1..]
@@ -1065,6 +1108,52 @@ mod tests {
         assert!(reset(&directory.path().join("missing.json"), &defaults)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn backups_keep_the_newest_few_and_leave_other_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        fs::write(&path, "current").unwrap();
+        let name = |suffix: &str| format!("state.json.bak-{suffix}");
+        for suffix in [
+            "20260101T000000Z",
+            "20260103T000000Z",
+            "20260103T000000Z-9",
+            "20260103T000000Z-10",
+            "20260105T000000Z",
+            "20990101T000000Z",
+            "notes",
+            "2026013T000000Z",
+        ] {
+            fs::write(directory.path().join(name(suffix)), suffix).unwrap();
+        }
+        fs::write(directory.path().join("other.json.bak-20200101T000000Z"), "").unwrap();
+        let latest = backup(&path).unwrap();
+        let mut left: Vec<String> = fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|file| file.contains(".bak-"))
+            .collect();
+        left.sort();
+        let mut expected: Vec<String> = [
+            "20260103T000000Z-9",
+            "20260103T000000Z-10",
+            "20260105T000000Z",
+            "20990101T000000Z",
+            "notes",
+            "2026013T000000Z",
+        ]
+        .into_iter()
+        .map(name)
+        .chain([
+            latest.file_name().unwrap().to_string_lossy().into_owned(),
+            "other.json.bak-20200101T000000Z".into(),
+        ])
+        .collect();
+        expected.sort();
+        assert_eq!(left, expected);
+        assert_eq!(fs::read_to_string(latest).unwrap(), "current");
     }
 
     #[test]

@@ -89,7 +89,7 @@ impl Runtime {
             Ok(saved) => (saved, None),
             Err(error) => (
                 StoredState {
-                    version: 1,
+                    version: store::STATE_VERSION,
                     ..StoredState::default()
                 },
                 Some(format!("{error} Settings file: {}.", store_path.display())),
@@ -111,7 +111,7 @@ impl Runtime {
             alerts: saved.alerts,
             delivery: Delivery::default(),
             schedules: HashMap::new(),
-            history: HistoryStore::new(store_path.with_file_name("history")),
+            history: HistoryStore::new(history_dir(&store_path)),
         };
         if recovery_error.is_none() {
             crate::make_active::recover(&mut state, &mut journal(&store_path));
@@ -172,7 +172,7 @@ impl Runtime {
         store::reset(
             &self.store_path,
             &StoredState {
-                version: 1,
+                version: store::STATE_VERSION,
                 settings: next.settings.clone(),
                 ..StoredState::default()
             },
@@ -186,6 +186,9 @@ impl Runtime {
         inner.alerts.clear();
         inner.delivery = Delivery::default();
         inner.schedules.clear();
+        inner.history = HistoryStore::new(history_dir(&self.store_path));
+        self.profiles.retain(|_| false);
+        self.resets.retain(|_| false);
         self.set_digest_state(None);
         Ok(next)
     }
@@ -206,7 +209,7 @@ impl Runtime {
         store::save(
             &self.store_path,
             &StoredState {
-                version: 1,
+                version: store::STATE_VERSION,
                 accounts: view.accounts.clone(),
                 settings: view.settings.clone(),
                 alerts: delivery.saved_alerts(alerts),
@@ -318,14 +321,19 @@ impl Runtime {
         }
         inner.view = next.clone();
         inner.alerts = alerts;
-        inner
-            .schedules
-            .retain(|id, _| next.accounts.iter().any(|account| &account.id == id));
+        let kept = |id: &str| next.accounts.iter().any(|account| account.id == id);
+        inner.schedules.retain(|id, _| kept(id));
+        self.profiles.retain(kept);
+        self.resets.retain(kept);
         drop(inner);
         publish(app, &next);
         self.wake.notify_one();
         Ok(next)
     }
+}
+
+fn history_dir(store_path: &std::path::Path) -> PathBuf {
+    store_path.with_file_name("history")
 }
 
 fn journal(store_path: &std::path::Path) -> switch::DiskJournal {
@@ -379,7 +387,7 @@ mod tests {
             refreshing: false,
         };
         let saved = StoredState {
-            version: 1,
+            version: store::STATE_VERSION,
             accounts: vec![account.clone()],
             ..StoredState::default()
         };
@@ -400,6 +408,49 @@ mod tests {
             .persist(&inner.view, &inner.alerts, &inner.delivery)
             .is_ok());
         assert_eq!(std::fs::read_to_string(history_path).unwrap(), "{damaged");
+    }
+
+    #[tokio::test]
+    async fn reset_keeps_history_files_and_reloads_history_from_disk() {
+        use crate::core::model::{AccountSource, Identity, Provider};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let account = Account {
+            id: "codex-test".into(),
+            provider: Provider::Codex,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: directory.path().to_string_lossy().into_owned(),
+                keychain_suffix: None,
+            },
+            identity: Identity::default(),
+            snapshot: None,
+            error: None,
+            refreshing: false,
+        };
+        let history = directory.path().join("history");
+        std::fs::create_dir(&history).unwrap();
+        std::fs::write(history.join("codex-test.json"), "{damaged").unwrap();
+        std::fs::write(history.join("codex-other.json"), "{kept").unwrap();
+        let runtime = Runtime::new(path).unwrap();
+        let now = chrono::Utc::now();
+        assert!(runtime
+            .inner
+            .lock()
+            .await
+            .history
+            .get(&account, now)
+            .error
+            .is_some_and(|error| error.contains("could not be read")));
+        std::fs::remove_file(history.join("codex-test.json")).unwrap();
+        runtime.reset_store().await.unwrap();
+        let error = runtime.inner.lock().await.history.get(&account, now).error;
+        assert!(error.is_none_or(|error| !error.contains("could not be read")));
+        assert_eq!(
+            std::fs::read_to_string(history.join("codex-other.json")).unwrap(),
+            "{kept"
+        );
     }
 
     #[tokio::test]

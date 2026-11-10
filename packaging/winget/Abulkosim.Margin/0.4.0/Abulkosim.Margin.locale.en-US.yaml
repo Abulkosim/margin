@@ -10,8 +10,8 @@ PackageName: Margin
 PackageUrl: https://abulkosim.github.io/margin/
 License: MIT
 LicenseUrl: https://github.com/Abulkosim/margin/blob/main/LICENSE
-ShortDescription: Claude and Codex usage at a glance
-Description: Track Claude and Codex usage across multiple accounts. See remaining quota and reset times in the Windows system tray.
+ShortDescription: Claude Code and Codex usage remaining, in the system tray
+Description: Track Claude and Codex usage across multiple accounts. See usage remaining and reset times in the Windows system tray.
 Moniker: margin
 Tags:
   - claude

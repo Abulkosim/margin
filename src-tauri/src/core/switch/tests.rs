@@ -1,6 +1,7 @@
 use super::*;
 use crate::core::history::HistoryStore;
 use crate::core::model::{Identity, Snapshot, UsageWindow};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -1795,4 +1796,41 @@ fn only_the_switch_module_writes_cli_files() {
         }
     }
     assert!(checked >= 3);
+}
+
+#[test]
+fn codex_login_reads_claims_only_from_well_formed_tokens() {
+    let fixture = codex_fixture();
+    let claims = |pad: usize| {
+        URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&serde_json::json!({
+                "email": "work@example.com",
+                "pad": "x".repeat(pad),
+                "https://api.openai.com/auth": { "chatgpt_account_id": "workspace", "chatgpt_user_id": "work" }
+            }))
+            .unwrap(),
+        )
+    };
+    let login_for = |token: String| {
+        let auth = serde_json::json!({
+            "auth_mode": "chatgpt",
+            "tokens": { "access_token": token, "refresh_token": "secret-refresh" }
+        })
+        .to_string();
+        fixture.store.set(&fixture.source.credentials[0], &auth);
+        codex_login(&read_slot(&fixture.source, &fixture.store).unwrap())
+            .unwrap()
+            .unwrap()
+    };
+    let valid = login_for(format!("e30.{}.sig", claims(0)));
+    assert_eq!(valid.key.as_deref(), Some("workspace/work"));
+    assert_eq!(valid.email.as_deref(), Some("work@example.com"));
+    for token in [
+        format!("e30.{}", claims(0)),
+        format!("e30.{}.sig.extra", claims(0)),
+        format!("e30.{}.sig", claims(30_000)),
+    ] {
+        let login = login_for(token);
+        assert_eq!((login.key, login.email), (None, None));
+    }
 }

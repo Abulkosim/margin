@@ -6,7 +6,7 @@ Margin shows Claude Code and Codex usage in the menu bar or system tray. Questio
 
 - Two providers only: Claude and Codex.
 - Usage comes from the providers' OAuth usage APIs only. No browser cookies, no CLI scraping, no running the CLIs.
-- Read-only. Never write, move, or refresh CLI credential files or Keychain items. Never redeem or spend reset credits.
+- Read-only by default. Write CLI credential files or Keychain items only in the confirmed **Make active** flow (`core/switch.rs`). Never refresh tokens. Never redeem or spend reset credits.
 - If a request fails, show the last reading with its age. Never estimate a missing value.
 - Tokens stay in Rust. The interface receives account details and snapshots only.
 - No telemetry, analytics, or crash reporting. Network hosts are listed in [PRIVACY.md](PRIVACY.md#network-requests); adding one needs a strong reason and a PRIVACY.md update.
@@ -57,12 +57,13 @@ States are defined in [`src/lib/demo.ts`](src/lib/demo.ts). Public screenshots f
 
 ```sh
 pnpm verify       # build, unit tests, cargo fmt --check, strict Clippy, cargo test
+pnpm test:scripts # release and packaging script tests
 pnpm test:e2e
 ```
 
 `pnpm verify` builds first because the native checks need the frontend assets. `pnpm lint:rust` and `pnpm test:rust` run the Rust steps alone.
 
-CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks) and the [native checks](docs/native-checks.md). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test. Property tests in `src-tauri/src/core/providers/properties.rs` run with `cargo test`. For longer fuzzing of the usage parsers, run `cargo +nightly fuzz run usage` in `src-tauri` after `pnpm build`; it needs [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) and is not run in CI.
+CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [native checks](docs/native-checks.md). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test. Property tests in `src-tauri/src/core/providers/properties.rs` run with `cargo test`. For longer fuzzing of the usage parsers, run `cargo +nightly fuzz run usage` in `src-tauri` after `pnpm build`; it needs [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) and is not run in CI.
 
 Never commit real tokens, credential files, account IDs, unredacted emails, or raw provider responses.
 
@@ -95,7 +96,7 @@ tests/unit/, tests/e2e/
 
 ## Commits and pull requests
 
-- One-line, imperative commit subjects, e.g. `Add a folder picker`. No trailers.
+- [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`, imperative and lowercase, e.g. `feat(accounts): add a folder picker`. The body says what changed and why. An optional `Refs:` trailer is fine; no AI attribution lines.
 - Keep pull requests focused. Fill in the template checklist.
 - User-facing changes add a short bullet to the next `changelogs/vX.Y.Z.md`.
 - UI changes include light and dark screenshots from the preview, with sample data.

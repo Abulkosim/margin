@@ -7,7 +7,7 @@ use super::{
 use crate::core::model::WindowScope;
 use crate::core::model::{
     valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, ResetGrants,
-    Snapshot, UsageError, UsageWindow,
+    Snapshot, UsageError, UsageWindow, MAX_WINDOWS,
 };
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
@@ -39,6 +39,13 @@ struct CachedProfile {
 }
 
 impl ProfileCache {
+    /// Drops entries for accounts that `keep` rejects.
+    pub fn retain(&self, keep: impl Fn(&str) -> bool) {
+        if let Ok(mut cache) = self.0.lock() {
+            cache.retain(|account, _| keep(account));
+        }
+    }
+
     fn fresh(&self, account: &str, token: &[u8; 32]) -> Option<Identity> {
         let cache = self.0.lock().ok()?;
         cache
@@ -460,7 +467,6 @@ const OPTIONAL_WINDOWS: [(&str, &str, u64); 4] = [
     ("seven_day_routines", "Routines", 604_800),
     ("seven_day_cowork", "Cowork", 604_800),
 ];
-const MAX_WINDOWS: usize = 64;
 
 fn fixed_window(
     value: &Value,
@@ -1269,6 +1275,20 @@ mod tests {
         let rotated = cache.fallback("a", &[2; 32], &stored);
         assert_eq!(rotated.email, cached.email);
         assert_eq!(rotated.history_key, None);
+    }
+
+    #[test]
+    fn removed_accounts_leave_the_profile_cache() {
+        let cache = ProfileCache::default();
+        let identity = Identity {
+            email: Some("cached@example.test".into()),
+            ..Identity::default()
+        };
+        cache.store("a", [1; 32], identity.clone());
+        cache.store("b", [1; 32], identity.clone());
+        cache.retain(|account| account == "b");
+        assert_eq!(cache.fresh("a", &[1; 32]), None);
+        assert_eq!(cache.fresh("b", &[1; 32]), Some(identity));
     }
 
     #[test]

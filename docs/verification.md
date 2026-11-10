@@ -1,21 +1,23 @@
 # Verification
 
-Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
+Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file. One `## vX.Y.Z (YYYY-MM-DD)` section per release, newest first, dated as in [CHANGELOG.md](../CHANGELOG.md). Real-machine checks are in [native-checks.md](native-checks.md).
 
-## Latest release: v0.10.2 (PRs #48–#51)
+## v0.10.2 (2026-11-10)
 
-Checked 2026-11-10 on Linux on the combined code, whose tree matches `main` after #51: `pnpm verify` (110 frontend unit tests, 425 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` because the disk was low) and `node --test scripts/*.test.mjs` (20). No frontend code changed, so `pnpm test:e2e` ran only in CI. CI passed on each PR, including the macOS universal and Windows x64 jobs.
+PRs #48–#51. Checked 2026-11-10 on Linux on the combined code, whose tree matches `main` after #51: `pnpm verify` (110 frontend unit tests, 425 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` because the disk was low) and `node --test scripts/*.test.mjs` (20). No frontend code changed, so `pnpm test:e2e` ran only in CI. CI passed on each PR, including the macOS universal and Windows x64 jobs.
 
 - **#50 Start at login after a move.** `is_enabled()` in `tauri-plugin-autostart` 2.7.0 only checks that an entry exists (read from source), so a moved app kept a stale path. On launch Margin compares the registered program with its own path. On macOS it re-registers only from Applications; on Windows only when the registered program no longer exists. Unit tests cover the decision. The plist and registry reads compile in CI only, and no reboot test has been run.
 - **#49 Alerts across restarts.** Queued alerts and digests are left out of the saved alert memory until shown, so a quit before delivery raises them again on the first reading after restart, if they still apply. A fixed Claude window standing in for a malformed scoped limit keeps that limit's id. Before the fix, six alternating readings raised the same Opus 80% alert three times; now it fires once. Remaining gap: if the save after a successful retry fails, a restart can repeat that alert.
 - **#51 Parser properties.** 16 `proptest` properties, 256 cases each, add about 2 s. They found five bugs, each now fixed with a fixture and a regression test: reset-grant count overflow, reset times outside years 0000–9999, Codex window lengths above 2^53−1, unreadable core windows not marking the reading incomplete, and blank Codex limit names. Out-of-range values used to fail the interface's schema for the whole app state. `src-tauri/fuzz/` holds a cargo-fuzz target (`cargo +nightly fuzz run usage`). It has been checked to build but not run, and CI doesn't build it.
 - **#48 CodeQL** scans workflows, TypeScript and Rust. Its first run found nothing.
 
+**[v0.10.2 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.2).** Published 2026-11-10 17:20 UTC from `4811a08`, after main CI and the [release build](https://github.com/Abulkosim/margin/actions/runs/42862053835) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; release notes matched `changelogs/v0.10.2.md`. The public latest endpoint serves 0.10.2. As with v0.10.1, the macOS artifact check and updater install test were skipped.
+
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
 
-## Previous release: v0.10.1 (dependency updates)
+## v0.10.1 (2026-11-06)
 
-Checked 2026-11-06 on Linux with the updated lockfiles: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). Vite 8.3.6 came after that run, followed by `pnpm build` and the frontend unit tests; CI ran the browser tests on the final code. `pnpm audit` reports nothing. `cargo audit` and `cargo deny` pass in CI, with 5 allowed notices (proc-macro-error, glib, zvariant, zvariant_derive, zbus_names), all in Tauri's dependencies with no update Margin can take.
+Dependency updates. Checked 2026-11-06 on Linux with the updated lockfiles: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). Vite 8.3.6 came after that run, followed by `pnpm build` and the frontend unit tests; CI ran the browser tests on the final code. `pnpm audit` reports nothing. `cargo audit` and `cargo deny` pass in CI, with 5 allowed notices (proc-macro-error, glib, zvariant, zvariant_derive, zbus_names), all in Tauri's dependencies with no update Margin can take.
 
 **[v0.10.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.1).** Published 2026-11-06 06:53 UTC from `614bf31`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/42176194273) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; release notes matched `changelogs/v0.10.1.md`. The public latest endpoint serves 0.10.1.
 
@@ -23,11 +25,11 @@ The owner asked for this release with the real-machine checks still to come, so 
 
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: every check in [native-checks.md](native-checks.md), tracked in [#45](https://github.com/Abulkosim/margin/issues/45).
 
-**[v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2), a draft since 2026-11-02, was published 2026-11-07 without being marked latest, at the owner's request,** so the rollback steps link to downloadable files. Checked first on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.8.2.md`. Afterwards the latest release and the public `latest.json` were still 0.10.1.
-
 Dependabot alerts were turned on 2026-11-07. One is open: glib 0.18 ([GHSA-wrw7-89jp-8q8g](https://github.com/advisories/GHSA-wrw7-89jp-8q8g), RUSTSEC-2024-0429). `cargo tree -i glib` finds it only for the Linux target, through Tauri's gtk 0.18, and not for the macOS or Windows targets Margin ships. Tauri has no compatible upgrade.
 
-## Previous release: v0.10.0 (PRs #38, #39, #40)
+## v0.10.0 (2026-11-05)
+
+PRs #38, #39, #40.
 
 **[v0.10.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.0).** Published 2026-11-05 04:56 UTC from `eb00195`, after [main CI](https://github.com/Abulkosim/margin/commits/main) and the [release build](https://github.com/Abulkosim/margin/actions/runs/41969627325) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.10.0.md`. The public latest endpoint serves 0.10.0.
 
@@ -41,15 +43,19 @@ Checked 2026-11-04 on Linux on the combined stack at `650b636`: `pnpm verify` (1
 - Screens were read from `?demo=1` Playwright screenshots in light and dark. Public screenshots are unchanged: on 2026-11-05 new overview and compact captures matched the current images apart from clock times, and the new copy appears only in states and Settings sections they don't show.
 - Accepted limits: retries are lost on quit; a malformed scoped limit with a valid fixed fallback can repeat one threshold alert; turning on Start at login and then moving the app leaves autostart on the old path until toggled.
 
-## Next release: v0.9.0 (run-out warnings, not-updating alerts)
+## v0.9.0 (2026-11-02)
 
-Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend unit tests, 14 release-script tests, 232 Chromium/WebKit browser cases, `cargo fmt --check`, strict Clippy, and 333 Rust tests passed. Notification delivery, the 30-minute not-updating alert, and the Windows build are not checked natively yet 👤.
+Run-out warnings and not-updating alerts. Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend unit tests, 14 release-script tests, 232 Chromium/WebKit browser cases, `cargo fmt --check`, strict Clippy, and 333 Rust tests passed. Notification delivery, the 30-minute not-updating alert, and the Windows build are not checked natively yet 👤.
 
 - `core/forecast.rs` and `src/lib/pace.ts` share one model and mirrored test cases: average rate over the last fifth of the window (1 h session, ~34 h week), readings spanning a tenth of it, current period only, interpolated between readings except across a gap. A run-out within a sixtieth of the window before the reset counts as on pace.
 - Run-out warning fires once per period when the run-out is within the look-back from the reading; a usage alert in the same poll carries the run-out time instead. Session, weekly and model windows; routines, cowork and extra windows are skipped.
 - Not-updating alert: once per outage after 30 minutes of failures with a reading at least that old. Network failures and tokens expired on disk never count; waking from sleep restarts the clock.
 
-## Current release: v0.8.1
+## v0.8.2 (2026-11-02)
+
+**[v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2), a draft since 2026-11-02, was published 2026-11-07 without being marked latest, at the owner's request,** so the rollback steps link to downloadable files. Checked first on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the DMG; release notes matched `changelogs/v0.8.2.md`. Afterwards the latest release and the public `latest.json` were still 0.10.1.
+
+## v0.8.1 (2026-10-27)
 
 **[v0.8.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.8.1).** Published by the owner 2026-10-27 09:50 UTC; built, verified and installed the same day on macOS 26.6.2. Clock format follows the system, Make active names accounts by label and plan when emails match, the Add account hint gives the sign-in command, and dependencies moved to Tauri 2.12.5, tokio 1.54, base64 0.23, sha2 0.11, toml 1.x, windows-registry 0.100, Vite 8, Playwright 1.64 and @types/node 26. TypeScript stays on 5.9 until vue-tsc supports 7.
 
@@ -59,7 +65,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - Installed on the owner's Mac over v0.8.0 from the verified archive (backup under `.cache/`); one instance, accounts refreshed, `margin --line` prints both providers.
 - The public latest endpoint serves 0.8.1. Pending: a real 12-hour-clock check on a Mac set to 12-hour time.
 
-## Previous release: v0.8.0
+## v0.8.0 (2026-10-26)
 
 **[v0.8.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.8.0).** Published 2026-10-26 14:14 UTC; verified on 2026-10-26 on macOS 26.6.2. Adds the two-provider statusline, the weekly digest, Codex balances and chips, Codex desktop-app detection for Make active, and the duration-based Codex window mapping.
 
@@ -72,7 +78,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - Installed on the owner's Mac over v0.7.0 from the verified archive (backup under `.cache/`). All accounts refreshed within 25 seconds; settings were kept and the new fields added with defaults.
 - Pending, owner: the statusline inside Claude Code, a real weekly digest next Monday, a real Make active switch (see v0.7.0), Windows.
 
-## Previous release: v0.7.0
+## v0.7.0 (2026-10-26)
 
 **[v0.7.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.7.0).** Published 2026-10-26 04:38 UTC; verified on 2026-10-26 on macOS 26.6.2. Adds Make active, fast usage alerts, and `margin --json` / `--line`.
 
@@ -84,7 +90,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - Installed on the owner's Mac over v0.6.0 from the verified archive (backup under `.cache/`). Both accounts refreshed within 15 seconds; settings were kept and the fast-alert fields added with defaults.
 - Pending, owner: a real Make active switch and Undo on the Mac (no Keychain prompt, four `Margin backup` items, `/status` in both folders), both folders still signed in the next day, the same for Codex, Windows switching with the CLIs closed and open, the Windows command line, and a real fast usage alert.
 
-## Previous release: v0.6.0
+## v0.6.0 (2026-10-25)
 
 **[v0.6.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.6.0).** Published 2026-10-25 03:07 UTC; verified on 2026-10-25 on macOS 26.6.2. Comfort and efficiency release from a performance and usability audit of v0.5.1.
 
@@ -96,7 +102,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - Installed on the owner's Mac by replacing v0.5.1 with the verified archive (backup kept under `.cache/`). Both accounts refreshed within 20 seconds of launch; existing settings were kept and `accountOrder` was added. The real Codex history compacted from 1414 points (214 KB) to 408 points (62 KB) on first load.
 - Pending: Windows checks of `visibilityState` for the paused clock and skipped history loads, the native popover reset after a minute, and notification wording on a real threshold.
 
-## Previous release: v0.5.1
+## v0.5.1 (2026-10-23)
 
 **[v0.5.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.1).** Published 2026-10-23 04:53 UTC; verified on 2026-10-22/23 on macOS 26.6.2. A layout patch: the popover opens straight on the accounts, the title block is gone, and provider filters sit in the header and only appear when both Claude and Codex accounts exist.
 
@@ -105,7 +111,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - All eight listed checksums matched. The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and 0.5.1 installed for x86_64 and arm64. `latest.json` reports 0.5.1 and still points at the `Abulkosim/usagebar` slug; the public latest endpoint serves it.
 - Attestations were not re-verified from this network (see v0.5.0). Native checks remain pending: in-app update of the owner's Mac, the compact header on a real menu bar, notifications, and Windows.
 
-## Previous release: v0.5.0
+## v0.5.0 (2026-10-22)
 
 **[v0.5.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.5.0).** Published 2026-10-22 16:19 UTC; verified on 2026-10-22 on macOS 26.6.2. Adds tray metric selection, a more legible tray ring, pace lines, model-limit chips, read-only reset grants, notifications on by default, absolute reset times, a native folder picker with an ignore list, daily update checks, and a compact overview with a popover that fits its content.
 
@@ -118,7 +124,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - The attestations API reports two attestations (provenance and SBOM) for the DMG, Mac archive, installer, and MSI, and one for `latest.json` and `SHA256SUMS.txt`. Full `gh attestation verify` runs timed out on the verifying network on 2026-10-22; re-run them from another network before relying on them.
 - Pending: in-app update of the owner's installed v0.3.0, a manual notification and sleep/wake check on the Mac, the real folder picker, Windows tray tiers and toast clicks, interactive Windows installation, and privileged macOS installation.
 
-## Previous release: v0.4.0
+## v0.4.0 (2026-10-22)
 
 **[v0.4.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.4.0).** Verified on 2026-10-22 on macOS 26.6.2. Adds Keychain-backed Claude accounts on macOS, a signed-out state, refresh after wake, calmer retry handling, settings recovery, and release provenance. The repository moved from `Abulkosim/usagebar` to `Abulkosim/margin` during this release.
 
@@ -132,7 +138,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - The exact universal Mac archive passed the real updater test: altered bytes and mismatched signed versions were rejected, and valid installation passed for x86_64 and arm64. GitHub release notes and updater notes match `changelogs/v0.4.0.md`; the public latest endpoint serves the checked manifest.
 - Pending: in-app update of the owner's installed v0.3.0 through **Check for updates** (manual, requires the tray UI), interactive Windows installation, and privileged macOS installation.
 
-## Previous release: v0.3.0
+## v0.3.0 (2026-10-17)
 
 **[v0.3.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.3.0).** Verified on 2026-10-17 on macOS 26.6.2. Adds local usage history and includes the readability patch below.
 
@@ -147,7 +153,7 @@ Checked 2026-11-02 on Linux (Rust 1.99.1, Node 24): `pnpm build`, 90 frontend un
 - The downloaded release launched with saved history intact. Native scrolling exposed the complete compact chart and legend. The installed v0.2.2 app then found and installed v0.3.0 through **Install and restart**. Both accounts, the pinned account, theme, polling intervals, disabled notification/autostart preferences, and recorded history were preserved. Settings reports version 0.3.0 and “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
 - Interactive Windows installation/updating and privileged macOS installation remain unverified. The Windows results above cover automated checks and installer packaging, not native UI testing.
 
-## Readability patch included in v0.3.0
+### Readability patch (included in v0.3.0)
 
 Prepared on 2026-10-17 on macOS without a separate release or tag. The initial patch retained version 0.2.2; it is included in v0.3.0.
 
@@ -157,7 +163,7 @@ Prepared on 2026-10-17 on macOS without a separate release or tag. The initial p
 - `pnpm tauri build --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked` produced an optimized, ad-hoc-signed local Mac app. Automatic approval review initially blocked launch pending action-time confirmation. The owner subsequently authorized building, testing, and releasing v0.3.0; native light/dark inspection then passed with the history feature included.
 - This initial patch changed only styles and screenshot documentation. The v0.3.0 work above adds usage history; native window geometry and updater behavior remain unchanged.
 
-## Previous release: v0.2.2
+## v0.2.2 (2026-10-16)
 
 **[v0.2.2 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.2).** Verified on 2026-10-16.
 
@@ -172,7 +178,7 @@ This release simplifies interface copy and adds per-version changelogs based on 
 - The downloaded release launched with “Usage remaining” and the shorter Settings copy, without clipping. The installed v0.2.1 app then found and installed v0.2.2 through **Install and restart**. Accounts, the pinned account, theme, polling intervals, and disabled notification/autostart preferences were preserved. Settings shows version 0.2.2 and a new check reports “Up to date.” The installed executable and plist match the verified release; strict signature validation passed.
 - The four older GitHub release descriptions were replaced with their concise historical changelogs. Their published installers, manifests, signatures, and tags were not changed. Interactive Windows updating and privileged macOS installation remain unverified.
 
-## Previous release: v0.2.1
+## v0.2.1 (2026-10-16)
 
 **[v0.2.1 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.1).** Verified on 2026-10-16.
 
@@ -196,7 +202,7 @@ MARGIN_TEST_NATIVE_GEOMETRY=1 cargo test --manifest-path src-tauri/Cargo.toml --
 
 It uses AppKit on the process main thread, never orders the test window on screen, and does not access Margin accounts or settings. Normal CI skips this desktop-only check.
 
-## Previous release: v0.2.0
+## v0.2.0 (2026-10-16)
 
 **[v0.2.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.2.0).** Verified on 2026-10-16. This release adds explicit update checks and signed installation through GitHub Releases, and removes the clipped CSS shadow around native windows. The native OS shadow remains.
 
@@ -214,7 +220,7 @@ It uses AppKit on the process main thread, never orders the test window on scree
 
 v0.1.1 and earlier require one manual upgrade. Subsequent releases use Settings → General → Updates; checks/downloads are explicit, and installation requires the Install and restart action. Publisher signing/notarization, privileged macOS installation, and interactive Windows self-updating remain separate checks.
 
-## Published release: v0.1.1
+## v0.1.1 (2026-10-16)
 
 **v0.1.1 is published.** This update replaces platform-rendered controls with Reka UI selects, tooltips, switches, tabs, and account-removal confirmation. It keeps Margin's existing visual direction and provider behavior. The v0.1.0 results below are historical evidence, not verification of this update.
 
@@ -230,7 +236,7 @@ v0.1.1 and earlier require one manual upgrade. Subsequent releases use Settings 
 | Screenshots | Verified locally | Five 840×1320 browser previews were generated and visually inspected: light/dark overview, light settings, and light/dark open settings menus. All show sample data; see [screenshot notes](screenshots.md). |
 | Release artifacts and publication | Published | [v0.1.1](https://github.com/Abulkosim/margin/releases/tag/v0.1.1) includes a universal DMG, x64 EXE/MSI, and checksums. All SHA-256 values match. The DMG passed integrity checks, strict ad-hoc signature verification, version validation, and Intel/Apple Silicon architecture checks; it matches the installed tag artifact byte-for-byte. Windows installer formats and the MSI x64 template were verified. |
 
-## Published baseline: v0.1.0
+## v0.1.0 (2026-10-16)
 
 Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, and packaged macOS smoke tests passed. [CI run 38840596545](https://github.com/Abulkosim/margin/actions/runs/38840596545) passed all frontend, macOS universal, and Windows x64 jobs for release commit `a03e880`. The [v0.1.0 tag run](https://github.com/Abulkosim/margin/actions/runs/38841132411) passed all jobs and prepared the release assets.
 
@@ -257,32 +263,9 @@ Verification on 2026-10-16. Local frontend/Rust checks, live provider requests, 
 
 Live probes did not log or save tokens, raw identities, or personal usage values. Public screenshots use explicit sample accounts. The main and tag CI runs passed. Release downloads passed SHA-256 verification, DMG integrity, strict ad-hoc signature, universal architecture, and Windows installer-format checks. Interactive Windows and DPI checks are planned separately in the owner's VM.
 
-## Native smoke checks
+## Native checks
 
-The Windows cells below are the original detailed checklist. The owner subsequently reported successful Windows testing for v0.1.1 on 2026-10-16; individual scenario results and display-scale values were not recorded. Do not treat that report as validation of v0.2.0 installation or updating.
-
-Use downloaded release artifacts and at least one authenticated account from each provider. Use a dedicated custom configuration folder for failure scenarios. Never replace a working CLI credential file just to test Margin.
-
-| Check | macOS | Windows |
-| --- | --- | --- |
-| Install and launch using the documented unsigned-app flow | Pending | Pending |
-| Click tray icon; popover appears on the correct screen and within display bounds | Pending | Pending |
-| Hide on blur/Escape; reopen; second launch keeps one instance | Pending | Pending |
-| Light, dark, and system themes; reduced-motion preference | Pending | Pending |
-| Tray icon contrast on light/dark menu bars or taskbars | Pending | Pending |
-| Settings remain usable at small display sizes and with keyboard navigation | Pending | Pending |
-| Multiple accounts retain labels, pins, and last-known readings after restart | Observed with both existing accounts | Pending |
-| Claude and Codex values match fresh provider responses; reset countdowns agree | Pending | Pending |
-| Offline, expired-token, malformed-response, and rate-limit states preserve last good values | Pending | Pending |
-| One failing account does not prevent another account refreshing | Observed: Claude rate-limited while Codex refreshed | Pending |
-| Notification thresholds deduplicate; permission denial is handled | Pending | Pending |
-| Launch at login reflects OS registration and can be disabled | Pending explicit approval for the native toggle test; remains off | Pending |
-| Suspend/resume and display changes do not strand the popover | Pending | Pending |
-| Retina layout and popover placement follow the menu-bar icon | Pending | N/A |
-| 100%, 125%, 150%, and 200% scaling; taskbar and secondary monitor placement | N/A | Pending |
-| Uninstall exits cleanly and leaves CLI credentials untouched | Pending | Pending |
-
-Confirm CLI credential files are unchanged after normal use. Treat account emails, configuration paths, screenshots, and snapshots as private even though they contain no tokens. Share only sanitized fixtures.
+Real-machine checks live in [native-checks.md](native-checks.md); results for the current release are tracked in [#45](https://github.com/Abulkosim/margin/issues/45). Use downloaded release artifacts and dedicated test accounts. Never replace a working CLI credential file just to test Margin, and confirm CLI credential files are unchanged after normal use. Treat account emails, configuration paths, screenshots, and snapshots as private even though they contain no tokens. Share only sanitized fixtures.
 
 ## Boundary checks
 

@@ -48,7 +48,7 @@ body:
     id: version
     attributes:
       label: Margin version
-      placeholder: 0.4.0
+      placeholder: 0.10.2
     validations:
       required: true
   - type: input
@@ -70,7 +70,7 @@ body:
       description: Apps started from Finder or the Start menu may not see terminal environment variables.
       options:
         - Finder, Dock, or Start menu
-        - Launch at login
+        - Start at login
         - Terminal
   - type: textarea
     id: shown

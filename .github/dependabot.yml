@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci
+    cooldown:
+      default-days: 3
     groups:
       actions:
         patterns: ["*"]
@@ -11,6 +15,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 3
     ignore:
       # vue-tsc 3.3.x cannot load TypeScript 7 (no lib/tsc export); lift once it can.
       - dependency-name: typescript
@@ -22,6 +31,11 @@ updates:
     directory: /src-tauri
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 3
     groups:
       rust:
         patterns: ["*"]

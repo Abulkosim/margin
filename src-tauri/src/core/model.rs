@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub const MAX_LABEL_CHARS: usize = 48;
+pub const MAX_WINDOWS: usize = 64;
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Provider {
@@ -88,11 +91,16 @@ impl Identity {
         match (&self.history_key, &other.history_key) {
             (Some(a), Some(b)) => a == b,
             _ => match (&self.email, &other.email) {
-                (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+                (Some(a), Some(b)) => same_email(a, b),
                 _ => true,
             },
         }
     }
+}
+
+/// Providers may change an address's letter case between readings.
+pub fn same_email(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
