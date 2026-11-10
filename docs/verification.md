@@ -2,6 +2,17 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file. One `## vX.Y.Z (YYYY-MM-DD)` section per release, newest first, dated as in [CHANGELOG.md](../CHANGELOG.md). Real-machine checks are in [native-checks.md](native-checks.md).
 
+## v0.11.0 (2026-11-10)
+
+Technical-debt sweep, PRs #55–#66 (plus Dependabot #59–#61). Checked 2026-11-10 on Linux at `9872571` (`main` after #66): `pnpm verify` (120 frontend unit tests, 446 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` for disk space), `pnpm test:scripts` (30) and `pnpm test:e2e` (314, Chromium and WebKit). CI passed on each PR, including the macOS universal and Windows x64 jobs.
+
+- **Rust (#58, #63, #65).** The poller copies the app state only when it publishes. History matches emails case-insensitively, like alerts, and an unreadable stored timestamp marks a gap instead of aborting. Settings backups are pruned to the newest five. One `/usr/bin/security` runner, shared capped reads and private atomic writes (`core/fsutil.rs`), one session/weekly classification, and the fetch-result handler extracted into `apply_result` with 7 tests. The `image-png` Tauri feature was unused and is gone. Keychain paths compile on macOS in CI only; the native checks in #45 cover them.
+- **Frontend (#64, #66).** Light focus ring raised from 2.3–3.1:1 to 3.6–4.7:1 against its backgrounds. Inter is bundled (latin variable woff2, +73 KB) and the app mounts after it loads, at most 1 s. Toast live regions stay mounted, and dismissal pauses on hover or focus. A closed card reloads history only when the loaded points no longer cover its forecast: at the 80k-point cap a reload was about 12 MB of JSON and ~150 ms of parsing per account per poll. Before/after `?demo=1` screenshots at 340/420/470 px in light and dark matched pixel for pixel, apart from clock digits and the Linux-preview platform fix.
+- **CI and docs (#55–#57, #62).** Release scripts are tested (`pnpm test:scripts`). Native jobs build the frontend once; on tag builds `beforeBuildCommand` is skipped through `--config`, first exercised by this release's build. Public copy now says Make active writes CLI sign-ins.
+- Skipped on purpose: disk writes off the state lock (saves must succeed before a change commits or rolls back), an error-kind enum (persisted and frontend contract), and module splits (no user value).
+
+**Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
+
 ## v0.10.2 (2026-11-10)
 
 PRs #48–#51. Checked 2026-11-10 on Linux on the combined code, whose tree matches `main` after #51: `pnpm verify` (110 frontend unit tests, 425 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` because the disk was low) and `node --test scripts/*.test.mjs` (20). No frontend code changed, so `pnpm test:e2e` ran only in CI. CI passed on each PR, including the macOS universal and Windows x64 jobs.

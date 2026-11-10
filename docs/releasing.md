@@ -83,7 +83,7 @@ Quit Margin and reinstall an older release. Each row says what that version does
 
 | Reinstall | What it ignores or changes |
 | --- | --- |
-| [v0.10.1](https://github.com/Abulkosim/margin/releases/tag/v0.10.1) or [v0.10.0](https://github.com/Abulkosim/margin/releases/tag/v0.10.0) | Nothing; the settings format is identical to v0.10.2. |
+| [v0.10.2](https://github.com/Abulkosim/margin/releases/tag/v0.10.2), [v0.10.1](https://github.com/Abulkosim/margin/releases/tag/v0.10.1) or [v0.10.0](https://github.com/Abulkosim/margin/releases/tag/v0.10.0) | Nothing; the settings format is identical to v0.11.0. Settings backups beyond the newest five, already deleted by v0.11.0, don't come back. |
 | [v0.9.0](https://github.com/Abulkosim/margin/releases/tag/v0.9.0) | Ignores `autostartPromptDismissed` and `incomplete` on saved readings; keeps everything else. Start at login stays as you set it. |
 | [v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2) | Ignores `paceAlerts`, `staleAlerts` and the run-out alert memory; keeps everything else. The card pace line goes back to the older estimate. |
 | [v0.8.1](https://github.com/Abulkosim/margin/releases/tag/v0.8.1) or [v0.8.0](https://github.com/Abulkosim/margin/releases/tag/v0.8.0) | Nothing; the settings format is identical to v0.8.2. |
