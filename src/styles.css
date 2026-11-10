@@ -25,7 +25,7 @@
   --button-ink: #f8fbf5;
   --shadow: 0 18px 70px -20px #1c32283d,0 1px 5px #22352a14;
   --stage: #dce2d9;
-  --focus: #7d9a7e;
+  --focus: #5e7a61;
 }
 :root[data-theme=dark] {
   color-scheme: dark;
