@@ -1742,6 +1742,7 @@ fn only_the_switch_module_writes_cli_files() {
     let own_writers = [
         root.join("core").join("store.rs"),
         root.join("core").join("history.rs"),
+        root.join("core").join("fsutil.rs"),
     ];
     let writers = [
         "fs::write",
@@ -1755,6 +1756,7 @@ fn only_the_switch_module_writes_cli_files() {
         "remove_file",
         "set_permissions",
         "set_len",
+        "write_private_atomic",
     ];
     let mut checked = 0;
     for (path, source) in found {

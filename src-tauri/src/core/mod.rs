@@ -4,6 +4,7 @@ pub mod burn;
 pub mod delivery;
 pub mod digest;
 pub mod forecast;
+pub mod fsutil;
 pub mod history;
 pub mod install;
 pub mod model;

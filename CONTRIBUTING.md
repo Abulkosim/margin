@@ -79,6 +79,7 @@ src-tauri/src/
     poller.rs          refresh schedule, backoff, stale handling
     store.rs           local state file
     history.rs         local usage history
+    fsutil.rs          size-capped reads and private atomic writes
     security.rs        macOS Keychain access through /usr/bin/security
     install.rs         Applications folder check
     autostart.rs       Start at login path repair

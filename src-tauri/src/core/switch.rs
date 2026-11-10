@@ -11,6 +11,7 @@ pub use lock::{LockError, LockSet, ProperLockfile};
 pub use process::{running, Running};
 
 use super::accounts;
+use super::fsutil;
 use super::model::{Account, AccountSource, Provider};
 use super::providers::claude::{keychain_service, keychain_suffix};
 use super::providers::codex::jwt_claims;
@@ -19,7 +20,6 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::io::{Read, Write as _};
 use std::path::{Path, PathBuf};
 
 const OAUTH_ACCOUNT: &str = "oauthAccount";
@@ -184,41 +184,20 @@ fn remove_keychain(service: &str, account: &str) -> Result<(), StoreError> {
     }
 }
 
+/// Symlinks are refused rather than followed.
 fn read_file(path: &Path) -> Result<Option<Vec<u8>>, StoreError> {
-    let metadata = match std::fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(StoreError::Io),
-    };
-    if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
-        return Err(StoreError::Io);
+        _ => return Err(StoreError::Io),
     }
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .map_err(|_| StoreError::Io)?
-        .take(MAX_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| StoreError::Io)?;
-    if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err(StoreError::Io);
-    }
-    Ok(Some(bytes))
+    fsutil::read_capped(path, MAX_FILE_BYTES)
+        .map(Some)
+        .map_err(|_| StoreError::Io)
 }
 
 fn write_file(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
-    let parent = path.parent().ok_or(StoreError::Io)?;
-    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| StoreError::Io)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.as_file()
-            .set_permissions(std::fs::Permissions::from_mode(0o600))
-            .map_err(|_| StoreError::Io)?;
-    }
-    file.write_all(bytes).map_err(|_| StoreError::Io)?;
-    file.as_file().sync_all().map_err(|_| StoreError::Io)?;
-    file.persist(path).map_err(|_| StoreError::Io)?;
-    Ok(())
+    fsutil::write_private_atomic(path, bytes).map_err(|_| StoreError::Io)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

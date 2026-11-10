@@ -3,12 +3,12 @@ pub mod codex;
 #[cfg(test)]
 mod properties;
 
+use super::fsutil;
 use super::model::{Account, Identity, Provider, Snapshot, UsageError};
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
 
@@ -74,8 +74,10 @@ fn credentials_changed() -> UsageError {
 }
 
 fn read_private_file(path: &Path) -> Result<Vec<u8>, UsageError> {
-    let read_error = |error: std::io::Error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
+    fsutil::read_capped(path, MAX_PRIVATE_FILE_BYTES).map_err(|error| {
+        if fsutil::step(&error).is_some() {
+            malformed_credentials()
+        } else if error.kind() == std::io::ErrorKind::NotFound {
             UsageError::new(
                 "credentials",
                 "CLI credentials were not found. Sign in with the CLI, then refresh.",
@@ -86,24 +88,7 @@ fn read_private_file(path: &Path) -> Result<Vec<u8>, UsageError> {
                 "CLI credentials could not be read. Check the folder permissions.",
             )
         }
-    };
-    let metadata = std::fs::metadata(path).map_err(read_error)?;
-    if !metadata.is_file() || metadata.len() > MAX_PRIVATE_FILE_BYTES {
-        return Err(malformed_credentials());
-    }
-    let file = std::fs::File::open(path).map_err(read_error)?;
-    let metadata = file.metadata().map_err(|_| malformed_credentials())?;
-    if !metadata.is_file() || metadata.len() > MAX_PRIVATE_FILE_BYTES {
-        return Err(malformed_credentials());
-    }
-    let mut bytes = Vec::new();
-    file.take(MAX_PRIVATE_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| malformed_credentials())?;
-    if bytes.len() as u64 > MAX_PRIVATE_FILE_BYTES {
-        return Err(malformed_credentials());
-    }
-    Ok(bytes)
+    })
 }
 
 async fn read_credentials<T>(
