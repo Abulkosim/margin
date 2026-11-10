@@ -429,6 +429,8 @@ fn usage_url(base: &str) -> Result<Url, UsageError> {
 }
 
 const MAX_WINDOWS: usize = 64;
+/// The largest integer the interface reads exactly.
+const MAX_WINDOW_SECONDS: u64 = (1 << 53) - 1;
 
 /// A malformed core window fails the reading. Anything else is dropped and the reading is marked
 /// incomplete.
@@ -651,7 +653,7 @@ fn append_windows(
             Some(value) => Some(
                 value
                     .as_u64()
-                    .filter(|seconds| *seconds > 0)
+                    .filter(|seconds| (1..=MAX_WINDOW_SECONDS).contains(seconds))
                     .ok_or_else(malformed_response)?,
             ),
             None => None,
@@ -1034,6 +1036,7 @@ mod tests {
             json!("full"),
             json!({"primary_window": "full"}),
             json!({"primary_window": {"used_percent": 1, "reset_at": "soon"}}),
+            json!({"primary_window": {"used_percent": 1, "limit_window_seconds": MAX_WINDOW_SECONDS + 1}}),
         ] {
             assert!(parse_usage(&json!({"rate_limit": rate_limit})).is_err());
         }
@@ -1079,6 +1082,20 @@ mod tests {
         let snapshot = parse_usage(&json!({"rate_limit": {"secondary_window": {"used_percent": 50, "limit_window_seconds": 18_000}}})).unwrap();
         assert_eq!(snapshot.windows[0].label, "Session");
         assert_eq!(snapshot.windows[0].id, "primary_window");
+    }
+
+    #[test]
+    fn durations_the_interface_cannot_read_drop_the_limit() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-duration-out-of-range.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Session");
+        let snapshot = parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 1, "limit_window_seconds": MAX_WINDOW_SECONDS}}})).unwrap();
+        assert_eq!(snapshot.windows[0].window_seconds, Some(MAX_WINDOW_SECONDS));
     }
 
     #[test]
