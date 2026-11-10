@@ -13,6 +13,8 @@ pub mod poller;
 pub mod providers;
 pub mod report;
 pub mod ring;
+#[cfg(any(target_os = "macos", test))]
+pub mod security;
 pub mod settings;
 pub mod store;
 pub mod switch;

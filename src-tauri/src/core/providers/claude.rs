@@ -416,45 +416,9 @@ fn read_keychain_bytes(service: &str) -> Result<Vec<u8>, UsageError> {
 
 #[cfg(target_os = "macos")]
 fn run_security(args: &[&str], limit: u64) -> Result<Vec<u8>, UsageError> {
-    use std::io::Read;
-    use std::process::{Command, Stdio};
-    use std::time::Instant;
-
-    let mut child = Command::new("/usr/bin/security")
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| keychain_error())?;
-    let stdout = child.stdout.take().ok_or_else(keychain_error)?;
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout
-            .take(limit + 1)
-            .read_to_end(&mut bytes)
-            .map(|_| bytes)
-    });
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let succeeded = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status.success(),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(25)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break false;
-            }
-        }
-    };
-    let bytes = reader
-        .join()
-        .map_err(|_| keychain_error())?
-        .map_err(|_| keychain_error())?;
-    if !succeeded || bytes.len() as u64 > limit {
-        return Err(keychain_error());
-    }
-    Ok(bytes)
+    crate::core::security::run(args, None, limit)
+        .and_then(crate::core::security::Output::succeeded)
+        .map_err(|_| keychain_error())
 }
 
 const CORE_WINDOWS: [(&str, &str, u64); 2] = [
