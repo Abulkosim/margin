@@ -527,8 +527,8 @@ fn unreadable_window(value: &Value, id: &str) -> bool {
         .is_some_and(|window| !window.is_empty() && !window.contains_key("utilization"))
 }
 
-/// A malformed core window fails the reading. Anything else is dropped and the reading is marked
-/// incomplete.
+/// A malformed core window fails the reading. Anything else, including an unreadable core window,
+/// is dropped and the reading is marked incomplete.
 pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if !value.is_object() {
         return Err(malformed_response());
@@ -536,7 +536,9 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     let mut windows: Vec<UsageWindow> = Vec::new();
     let mut incomplete = false;
     for entry in CORE_WINDOWS {
-        windows.extend(fixed_window(value, entry)?);
+        let window = fixed_window(value, entry)?;
+        incomplete |= window.is_none() && unreadable_window(value, entry.0);
+        windows.extend(window);
     }
     if let Some(limits) = value.get("limits").filter(|value| !value.is_null()) {
         let mut scoped_ids = HashSet::new();
@@ -921,6 +923,24 @@ mod tests {
             "seven_day_sonnet": {"utilization": null, "resets_at": null},
             "seven_day_opus": {},
             "limits": [{"kind": "weekly_scoped", "percent": null, "scope": {"model": {"display_name": "Opus"}}}],
+        }))
+        .unwrap();
+        assert!(!snapshot.incomplete);
+    }
+
+    #[test]
+    fn an_unreadable_core_window_is_dropped_and_marks_the_reading_incomplete() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/claude-core-unreadable.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Weekly");
+        let snapshot = parse_usage(&json!({
+            "five_hour": {"utilization": null, "resets_at": null},
+            "seven_day": {"utilization": 48},
         }))
         .unwrap();
         assert!(!snapshot.incomplete);

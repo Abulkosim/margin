@@ -439,10 +439,10 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         return Err(malformed_response());
     }
     let mut windows = Vec::new();
-    if let Some(rate_limit) = value.get("rate_limit").filter(|value| !value.is_null()) {
-        append_windows(rate_limit, "", None, &mut windows)?;
-    }
     let mut incomplete = false;
+    if let Some(rate_limit) = value.get("rate_limit").filter(|value| !value.is_null()) {
+        incomplete |= append_windows(rate_limit, "", None, &mut windows)?;
+    }
     if let Some(additional) = value
         .get("additional_rate_limits")
         .filter(|value| !value.is_null())
@@ -505,12 +505,14 @@ fn additional_windows(
     let digest = Sha256::digest(key.as_bytes());
     let fingerprint = crate::core::hex(&digest);
     let mut windows = Vec::new();
-    append_windows(
+    if append_windows(
         rate_limit,
         &format!("extra_{}_", &fingerprint[..16]),
         Some(&name),
         &mut windows,
-    )?;
+    )? {
+        return Err(malformed_response());
+    }
     Ok(windows)
 }
 
@@ -623,15 +625,18 @@ fn parse_spend_limit(value: Option<&Value>) -> Result<Option<SpendLimit>, UsageE
     }))
 }
 
+/// Appends the readable windows. `true` means a window was sent with fields but no
+/// `used_percent`; a null `used_percent` means inactive.
 fn append_windows(
     rate_limit: &Value,
     prefix: &str,
     name: Option<&str>,
     windows: &mut Vec<UsageWindow>,
-) -> Result<(), UsageError> {
+) -> Result<bool, UsageError> {
     if !rate_limit.is_object() {
         return Err(malformed_response());
     }
+    let mut unreadable = false;
     let mut taken: Vec<&str> = Vec::new();
     for (key, default_label) in [
         ("primary_window", "Session"),
@@ -644,6 +649,9 @@ fn append_windows(
             return Err(malformed_response());
         }
         let Some(utilization) = window.get("used_percent").filter(|value| !value.is_null()) else {
+            unreadable |= window
+                .as_object()
+                .is_some_and(|window| !window.is_empty() && !window.contains_key("used_percent"));
             continue;
         };
         let duration = match window
@@ -690,7 +698,7 @@ fn append_windows(
             window_seconds: duration,
         });
     }
-    Ok(())
+    Ok(unreadable)
 }
 
 #[cfg(test)]
@@ -1007,6 +1015,28 @@ mod tests {
             assert!(snapshot.incomplete, "{optional}");
             assert_eq!(snapshot.windows.len(), 1, "{optional}");
         }
+    }
+
+    #[test]
+    fn an_unreadable_window_is_dropped_and_marks_the_reading_incomplete() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-window-unreadable.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        let ids: Vec<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.id.as_str())
+            .collect();
+        assert_eq!(ids, ["secondary_window"]);
+        let snapshot = parse_usage(&json!({"rate_limit": {
+            "primary_window": {"used_percent": null, "reset_at": null},
+            "secondary_window": {"used_percent": 40},
+        }}))
+        .unwrap();
+        assert!(!snapshot.incomplete);
     }
 
     #[test]
