@@ -572,6 +572,9 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
             },
             now,
         );
+        inner.view.notice = runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .err();
     }
 }
 

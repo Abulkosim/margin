@@ -59,6 +59,11 @@ impl Message {
         }
     }
 
+    /// Alerts and digests stay out of the saved state until shown or dropped.
+    fn affects_saved_state(&self) -> bool {
+        !matches!(self, Self::NotUpdating { .. })
+    }
+
     fn still_wanted(
         &self,
         settings: &Settings,
@@ -100,8 +105,8 @@ struct Pending {
 
 /// Notifications waiting to be submitted, in memory. Alert memory and the digest state record a
 /// notification when it is raised, so it is never raised twice; this queue is what gets it to the
-/// OS. While a notification waits for a retry, the saved copy of that state leaves it out, so the
-/// first reading after a restart raises it again from current usage and settings.
+/// OS. Until a notification is shown or dropped, the saved copy of that state leaves it out, so
+/// the first reading after a restart raises it again from current usage and settings.
 #[derive(Debug, Default)]
 pub struct Delivery {
     pending: Vec<Pending>,
@@ -111,7 +116,7 @@ pub struct Delivery {
 pub struct Attempt {
     /// `failed_at` changed.
     pub failure_changed: bool,
-    /// A notification started or stopped waiting for a retry, so the saved state changed.
+    /// An alert or digest was shown or dropped, so the saved state changed.
     pub save: bool,
 }
 
@@ -137,11 +142,10 @@ impl Delivery {
             .retain(|pending| pending.account_id.as_deref() != Some(account_id));
     }
 
-    /// Alerts waiting for a retry, with their account and the memory from before them.
-    fn retrying_alerts(&self) -> impl Iterator<Item = (&str, &Alert, Option<&WindowAlerts>)> {
+    /// Alerts not yet shown, with their account and the memory from before them.
+    fn waiting_alerts(&self) -> impl Iterator<Item = (&str, &Alert, Option<&WindowAlerts>)> {
         self.pending
             .iter()
-            .filter(|pending| pending.retries > 0)
             .filter_map(|pending| match (&pending.account_id, &pending.message) {
                 (Some(account_id), Message::Alert { alert, before, .. }) => {
                     Some((account_id.as_str(), alert, before.as_ref()))
@@ -153,8 +157,8 @@ impl Delivery {
     /// Alert memory as it should be saved.
     pub fn saved_alerts(&self, memory: &AlertMemory) -> AlertMemory {
         let mut saved = memory.clone();
-        for (account_id, alert, before) in self.retrying_alerts() {
-            let threshold_waiting = self.retrying_alerts().any(|(id, other, _)| {
+        for (account_id, alert, before) in self.waiting_alerts() {
+            let threshold_waiting = self.waiting_alerts().any(|(id, other, _)| {
                 id == account_id
                     && other.window_id == alert.window_id
                     && matches!(other.kind, AlertKind::Threshold(_))
@@ -168,7 +172,6 @@ impl Delivery {
     pub fn saved_digest(&self, current: Option<DigestState>) -> Option<DigestState> {
         self.pending
             .iter()
-            .filter(|pending| pending.retries > 0)
             .find_map(|pending| match &pending.message {
                 Message::Digest { before, .. } => Some(before.clone()),
                 _ => None,
@@ -195,7 +198,7 @@ impl Delivery {
                 .as_deref()
                 .and_then(|id| accounts.iter().find(|account| account.id == id));
             let wanted = allowed && pending.message.still_wanted(settings, account, now);
-            save |= !wanted && pending.retries > 0;
+            save |= !wanted && pending.message.affects_saved_state();
             wanted
         });
         let before = failed_at.clone();
@@ -206,15 +209,14 @@ impl Delivery {
             let (title, body) = pending.message.render(now, clock);
             if submit(&title, body.as_deref()) {
                 *failed_at = None;
-                save |= pending.retries > 0;
+                save |= pending.message.affects_saved_state();
                 return false;
             }
             *failed_at = Some(now.to_rfc3339());
             let Some(delay) = RETRY_DELAYS_SECONDS.get(pending.retries) else {
-                save = true;
+                save |= pending.message.affects_saved_state();
                 return false;
             };
-            save |= pending.retries == 0;
             pending.retries += 1;
             pending.due = now + Duration::seconds(*delay);
             true
@@ -426,7 +428,7 @@ mod tests {
             changed,
             Attempt {
                 failure_changed: true,
-                save: false
+                save: true
             }
         );
         assert_eq!(failed_at, None);
@@ -576,12 +578,47 @@ mod tests {
     }
 
     #[test]
+    fn an_alert_not_yet_submitted_at_quit_is_raised_once_after_restart() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        let mut saved = delivery.saved_alerts(&memory);
+        let mut restarted = Delivery::default();
+        assert_eq!(
+            raise(&mut saved, &mut restarted, &reading(81.0), at(600)),
+            vec![AlertKind::Threshold(80)]
+        );
+        assert!(raise(&mut saved, &mut restarted, &reading(81.0), at(660)).is_empty());
+    }
+
+    #[test]
+    fn an_alert_shown_on_the_first_attempt_is_saved_and_not_raised_again() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[account("a")],
+            at(0),
+            Clock12h(false),
+            |_, _| true,
+        );
+        assert!(attempt.save);
+        assert_eq!(
+            serde_json::to_value(delivery.saved_alerts(&memory)).unwrap(),
+            serde_json::to_value(&memory).unwrap()
+        );
+        assert!(after_restart(&memory, &delivery, &reading(81.0), &[80]).is_empty());
+    }
+
+    #[test]
     fn a_retry_lost_on_quit_is_raised_again_by_the_next_reading() {
         let mut memory = AlertMemory::new();
         let mut delivery = Delivery::default();
         let mut failed_at = None;
         raise(&mut memory, &mut delivery, &reading(81.0), at(0));
-        assert!(after_restart(&memory, &delivery, &reading(81.0), &[80]).is_empty());
         let attempt = delivery.attempt(
             &mut failed_at,
             &settings(),
@@ -590,7 +627,7 @@ mod tests {
             Clock12h(false),
             |_, _| false,
         );
-        assert!(attempt.save);
+        assert!(!attempt.save);
         assert_eq!(
             after_restart(&memory, &delivery, &reading(81.0), &[80, 95]),
             vec![AlertKind::Threshold(80)]
@@ -720,10 +757,7 @@ mod tests {
             },
             at(0),
         );
-        assert_eq!(
-            delivery.saved_digest(Some(sent.clone())),
-            Some(sent.clone())
-        );
+        assert_eq!(delivery.saved_digest(Some(sent.clone())), Some(old.clone()));
         run(&mut delivery, &mut failed_at, &settings(), at(0), false);
         assert_eq!(delivery.saved_digest(Some(sent.clone())), Some(old));
         run(&mut delivery, &mut failed_at, &settings(), at(60), true);
