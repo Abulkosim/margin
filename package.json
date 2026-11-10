@@ -24,7 +24,8 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
     "lint:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
     "verify": "pnpm build && pnpm test && pnpm lint:rust && pnpm test:rust",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:scripts": "node --test scripts/*.test.mjs packaging/homebrew/*.test.mjs"
   },
   "dependencies": {
     "reka-ui": "2.11.0",
