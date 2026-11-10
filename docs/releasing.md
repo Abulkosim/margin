@@ -124,7 +124,7 @@ A dispatch also re-runs the frontend and native checks; the release job stays sk
 👤 Owner steps:
 
 1. Fork `microsoft/winget-pkgs` to `Abulkosim`.
-2. First submission, manual: on Windows, `winget validate --manifest packaging\winget\Abulkosim.Margin\0.11.0`, test with `winget install --manifest packaging\winget\Abulkosim.Margin\0.11.0`, then either `wingetcreate submit --token <PAT> packaging\winget\Abulkosim.Margin\0.11.0` or copy the folder to `manifests/a/Abulkosim/Margin/0.4.0/` in the fork and open a PR. If the version is stale by then, run `wingetcreate update Abulkosim.Margin` against the new EXE instead.
+2. First submission, manual: on Windows, `winget validate --manifest packaging\winget\Abulkosim.Margin\0.11.0`, test with `winget install --manifest packaging\winget\Abulkosim.Margin\0.11.0`, then either `wingetcreate submit --token <PAT> packaging\winget\Abulkosim.Margin\0.11.0` or copy the folder to `manifests/a/Abulkosim/Margin/0.11.0/` in the fork and open a PR. If the version is stale by then, run `wingetcreate update Abulkosim.Margin` against the new EXE instead.
 3. Create a **classic** PAT with `public_repo` (add `workflow` so the action can sync the fork). Fine-grained PATs are not supported by the action.
 4. After the first PR merges: add secret `WINGET_TOKEN` and variable `WINGET_ENABLED=true`. Dispatch after each published release; the action opens the PR from the fork.
 5. If Defender or SmartScreen flags the installer during review, submit it at the [Microsoft Security Intelligence portal](https://www.microsoft.com/wdsi/filesubmission).
