@@ -36,7 +36,7 @@ test('sample data hides the prompt so public screenshots stay unchanged', () => 
 
 test('the preview report holds counts and known error kinds only', () => {
   const { accounts } = createDemoState('compact')
-  const report = problemReportSchema.parse(demoProblemReport(accounts, '0.9.0', 'Macintosh'))
+  const report = problemReportSchema.parse(demoProblemReport(accounts, '0.9.0', 'mac'))
   assert.equal(report.version, '0.9.0')
   assert.equal(report.system, 'macOS 15.1')
   assert.equal(report.diagnostics, 'Claude accounts: 3\nClaude errors: signedOut\nCodex accounts: 2\nCodex errors: network')
@@ -53,7 +53,7 @@ test('the preview report replaces unknown error kinds', () => {
   const [account] = createDemoState('single').accounts
   assert.ok(account)
   const leaky = { ...account, error: { kind: 'alex@example.com', message: 'secret', retryAfterSeconds: null } }
-  const report = demoProblemReport([leaky], '0.9.0', 'Windows NT 10.0')
+  const report = demoProblemReport([leaky], '0.9.0', 'windows')
   assert.equal(report.system, 'Windows 11 (10.0.22631)')
   assert.equal(report.diagnostics, 'Claude accounts: 1\nClaude errors: other\nCodex accounts: 0\nCodex errors: none')
 })

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Account, Provider } from './model.ts'
+import { platform, type Platform } from './platform.ts'
 
 export const problemReportSchema = z.object({
   version: z.string().min(1).max(64),
@@ -17,10 +18,10 @@ function providerLines(name: string, provider: Provider, accounts: Account[]): s
 }
 
 /** Browser preview only; the desktop app builds the real report in Rust (`core/report.rs`). */
-export function demoProblemReport(accounts: Account[], version: string, userAgent: string = globalThis.navigator?.userAgent ?? ''): ProblemReport {
+export function demoProblemReport(accounts: Account[], version: string, system: Platform = platform): ProblemReport {
   return {
     version,
-    system: userAgent.includes('Windows') ? 'Windows 11 (10.0.22631)' : 'macOS 15.1',
+    system: system === 'windows' ? 'Windows 11 (10.0.22631)' : 'macOS 15.1',
     diagnostics: [...providerLines('Claude', 'claude', accounts), ...providerLines('Codex', 'codex', accounts)].join('\n'),
   }
 }

@@ -1,7 +1,8 @@
 import { clockTime } from './format.ts'
+import type { Platform } from './platform.ts'
 
-export function notificationHelp(userAgent: string): string {
-  const where = userAgent.includes('Mac') ? 'System Settings > Notifications, and check Focus' : 'Settings > System > Notifications, and check Do not disturb'
+export function notificationHelp(platform: Platform): string {
+  const where = platform === 'mac' ?'System Settings > Notifications, and check Focus' : 'Settings > System > Notifications, and check Do not disturb'
   return `If nothing appears, allow Margin in ${where}. Margin can tell it sent a notification, not that it appeared.`
 }
 

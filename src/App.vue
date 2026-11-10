@@ -10,6 +10,7 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import StartAtLoginPrompt from './components/StartAtLoginPrompt.vue'
 import { accountIsStale, orderAccounts, relativeAge, tokenExpired } from './lib/format'
 import { useMargin } from './lib/margin'
+import { isWindows, platform } from './lib/platform'
 import { offersStartAtLogin } from './lib/startup'
 import { useUpdater } from './lib/updater'
 import { createDemoUpdateState } from './lib/demo'
@@ -20,7 +21,6 @@ const updater = useUpdater({ demo, desktop, initial: demo ? createDemoUpdateStat
 const popoverPlacementSchema = z.object({ revision: z.number().int().nonnegative(), arrowX: z.number().finite().nullable() })
 const popoverPlacement = ref<z.infer<typeof popoverPlacementSchema>>({ revision: 0, arrowX: null })
 const viewportWidth = ref(window.innerWidth)
-const isWindows = navigator.userAgent.includes('Windows')
 const nativeArrowX = computed(() => {
   const x = popoverPlacement.value.arrowX
   if (!desktop || demo || isWindows || x === null) return null
@@ -94,7 +94,7 @@ watch(counts, value => {
 
 watchEffect(() => {
   document.documentElement.dataset.theme = dark.value ? 'dark' : 'light'
-  document.documentElement.dataset.platform = isWindows ? 'windows' : 'mac'
+  document.documentElement.dataset.platform = platform
   document.documentElement.style.colorScheme = dark.value ? 'dark' : 'light'
 })
 

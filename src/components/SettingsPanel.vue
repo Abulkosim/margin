@@ -4,6 +4,7 @@ import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDia
 import { version } from '../../package.json'
 import { accountIdSchema, providerSchema, type Account, type AccountId, type MakeActivePreview, type Provider, type RestoreOffer, type Settings } from '../lib/model'
 import { accountSource, providerName } from '../lib/format'
+import { isMac } from '../lib/platform'
 import AppIcon from './AppIcon.vue'
 import InstallWarning from './InstallWarning.vue'
 import MakeActiveDialog from './settings/MakeActiveDialog.vue'
@@ -80,7 +81,6 @@ const orderOptions: { value: Settings['accountOrder']; label: string }[] = [
   { value: 'urgency', label: 'Lowest remaining' },
   { value: 'added', label: 'As added' },
 ]
-const isMac = navigator.userAgent.includes('Mac')
 const layoutShortcuts = isMac ? '⌘1 / ⌘2' : 'Ctrl+1 / Ctrl+2'
 const pathPlaceholder = computed(() => provider.value === 'claude' ? '~/.claude-work' : '~/.codex-work')
 /** On macOS Claude Code keeps the sign-in in the Keychain, so no .credentials.json exists to point at. */
