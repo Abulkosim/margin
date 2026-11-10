@@ -1,10 +1,10 @@
-# Launch kit (v0.8.1, 2026-10-31)
+# Launch kit (v0.10.2)
 
-Current facts for every post. Older drafts in [posts.md](posts.md) predate Make active; use the facts here.
+Facts for every post, checked against the README for v0.10.2 on 2026-11-10. Older drafts in [posts.md](posts.md) predate Make active; use the facts here.
 
 - Free, MIT. macOS 12+ (universal), Windows x64. Unsigned: macOS → Privacy & Security → Open Anyway; Windows → More info → Run anyway. Checksums and build attestations on each release.
 - Reads the sign-ins Claude Code and Codex already stored and calls their OAuth usage endpoints. No cookies, no CLI scraping, no telemetry, no backend.
-- Read-only, with one exception you trigger yourself: **Make active** swaps the default CLI sign-in with another folder's, after a confirm, with a backup. Swap, not copy, because both CLIs rotate refresh tokens.
+- Read-only, with one exception you trigger yourself: **Make active (beta)** swaps the default CLI sign-in with another folder's, after a confirm, with a backup. Swap, not copy, because both CLIs rotate refresh tokens.
 - Endpoints are undocumented. On failure it shows the last reading with its age, never guesses.
 
 ## 1. Show HN
@@ -39,6 +39,8 @@ Show HN: Margin - Claude Code and Codex usage for all your accounts, in the tray
 - *Against ToS?* Not settled. It reads your own token on your computer and sends it only to the provider, to read your own usage. [Anthropic's terms](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use) restrict how third-party developers handle Claude.ai credentials and don't address local tools like this directly. Decide with that in mind.
 
 ## 2. awesome-claude-code (form opened 2026-10-30)
+
+Submitted 2026-11-01 as [#3408](https://github.com/hesreallyhim/awesome-claude-code/issues/3408). Kept for reference.
 
 Web form only, no PR, no `gh`: https://github.com/hesreallyhim/awesome-claude-code/issues/new?template=recommend-resource.yml
 
@@ -81,5 +83,5 @@ Still worth doing in repo Settings while you're there: upload `docs/images/socia
 
 1. Screenshots (so the README shows the real thing).
 2. Social preview upload.
-3. awesome-claude-code form.
+3. ~~awesome-claude-code form.~~ Submitted.
 4. Show HN, on a Tuesday to Thursday.
