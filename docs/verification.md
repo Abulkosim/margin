@@ -2,7 +2,18 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file.
 
-## Latest release: v0.10.1 (dependency updates)
+## Latest release: v0.10.2 (PRs #48–#51)
+
+Checked 2026-11-10 on Linux on the combined code, whose tree matches `main` after #51: `pnpm verify` (110 frontend unit tests, 425 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` because the disk was low) and `node --test scripts/*.test.mjs` (20). No frontend code changed, so `pnpm test:e2e` ran only in CI. CI passed on each PR, including the macOS universal and Windows x64 jobs.
+
+- **#50 Start at login after a move.** `is_enabled()` in `tauri-plugin-autostart` 2.7.0 only checks that an entry exists (read from source), so a moved app kept a stale path. On launch Margin compares the registered program with its own path. On macOS it re-registers only from Applications; on Windows only when the registered program no longer exists. Unit tests cover the decision. The plist and registry reads compile in CI only, and no reboot test has been run.
+- **#49 Alerts across restarts.** Queued alerts and digests are left out of the saved alert memory until shown, so a quit before delivery raises them again on the first reading after restart, if they still apply. A fixed Claude window standing in for a malformed scoped limit keeps that limit's id. Before the fix, six alternating readings raised the same Opus 80% alert three times; now it fires once. Remaining gap: if the save after a successful retry fails, a restart can repeat that alert.
+- **#51 Parser properties.** 16 `proptest` properties, 256 cases each, add about 2 s. They found five bugs, each now fixed with a fixture and a regression test: reset-grant count overflow, reset times outside years 0000–9999, Codex window lengths above 2^53−1, unreadable core windows not marking the reading incomplete, and blank Codex limit names. Out-of-range values used to fail the interface's schema for the whole app state. `src-tauri/fuzz/` holds a cargo-fuzz target (`cargo +nightly fuzz run usage`). It has been checked to build but not run, and CI doesn't build it.
+- **#48 CodeQL** scans workflows, TypeScript and Rust. Its first run found nothing.
+
+**Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
+
+## Previous release: v0.10.1 (dependency updates)
 
 Checked 2026-11-06 on Linux with the updated lockfiles: `pnpm verify` (110 frontend unit tests, 387 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy), `node --test scripts/*.test.mjs` (20), and `pnpm test:e2e` (306, Chromium and WebKit). Vite 8.3.6 came after that run, followed by `pnpm build` and the frontend unit tests; CI ran the browser tests on the final code. `pnpm audit` reports nothing. `cargo audit` and `cargo deny` pass in CI, with 5 allowed notices (proc-macro-error, glib, zvariant, zvariant_derive, zbus_names), all in Tauri's dependencies with no update Margin can take.
 
