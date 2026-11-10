@@ -14,7 +14,7 @@ Use Playwright WebKit at 420×660 CSS pixels and 2× scale, with Inter installed
 | `docs/images/settings-light.png` | Top of Settings, General tab: theme, Overview, Account order, Tray account, Tray shows, Show percentage, and Refresh while open. Notifications and updates are below the fold and not shown. |
 | `docs/images/settings-menu-light.png`, `settings-menu-dark.png` | Settings with the Tray account menu open and its selected option visible. |
 
-All nine PNGs are 840×1320 pixels and retain the sample-data label. `site/overview-light.png` and `site/overview-dark.png` are copies of the overview images; `site/og.png` embeds `overview-light.png`. Earlier screenshots remain available at their release tags.
+All nine PNGs are 840×1320 pixels and retain the sample-data label. The Pages workflow copies the two overview images into the site when it deploys; `site/og.png` embeds `overview-light.png`. Earlier screenshots remain available at their release tags.
 
 Caption browser captures as browser previews with sample data. Native screenshots need their own platform label. Release image URLs should use the release tag, not `main`.
 
@@ -28,7 +28,6 @@ Both are browser previews with sample data (`?demo=1`, light theme), not recordi
 
 | Image | Size | State |
 | --- | --- | --- |
-| `docs/images/demo.gif` | 420×660, 15 fps, 15 s, about 2.1 MB. Predates the v0.8 header; not linked from the README until re-recorded. | Overview → Fable chip tooltip → History on Personal → Weekly tab → hide history → Settings → Overview: Compact → compact list. 1 s hold at start and end. |
 | `docs/images/social-preview.png` | 1280×640, about 95 KB. `site/og.png` uses the same layout with “Multiple accounts · macOS and Windows · Open source”. | Wordmark, “Claude Code and Codex usage in your menu bar”, “macOS · Windows · Free · MIT”, and `overview-light.png`. Upload in repo Settings → Social preview. |
 
 The GIF is recorded with Playwright Chromium `recordVideo` (420×660 viewport, 2× scale, video at 420×660) and converted with ffmpeg using a two-pass palette (`palettegen`, `paletteuse`). Playwright’s bundled ffmpeg has no palette filters; use a full ffmpeg build. Reset countdowns change once a minute, so the GIF has no countdown beat.
