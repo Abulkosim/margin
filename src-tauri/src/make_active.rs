@@ -6,7 +6,7 @@ use crate::{
             RecordState, RestoreOffer, SlotSpec, SwitchError, SwitchRecord, SystemStore,
         },
     },
-    runtime::{publish, AppState, Runtime, RuntimeState},
+    runtime::{AppState, Runtime, RuntimeState},
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -200,29 +200,28 @@ impl Drop for Switching<'_> {
 /// Stops polling both accounts so no fetch reads half-swapped files; in-flight
 /// results are dropped because their generation no longer matches.
 async fn pause(app: &AppHandle, runtime: &Runtime, ids: &[String]) {
-    let mut inner = runtime.inner.lock().await;
-    let later = Instant::now() + Duration::from_secs(120);
-    for id in ids {
-        if let Some(schedule) = inner.schedules.get_mut(id) {
-            schedule.in_flight = false;
-            schedule.generation = 0;
-            schedule.next = later;
-            schedule.not_before = later;
-        }
-    }
-    for account in inner
-        .view
-        .accounts
-        .iter_mut()
-        .filter(|account| ids.contains(&account.id))
-    {
-        account.refreshing = false;
-    }
-    inner.view.refreshing = inner.view.accounts.iter().any(|account| account.refreshing);
-    inner.view.changed();
-    let view = inner.view.clone();
-    drop(inner);
-    publish(app, &view);
+    runtime
+        .update_and_publish(app, |inner| {
+            let later = Instant::now() + Duration::from_secs(120);
+            for id in ids {
+                if let Some(schedule) = inner.schedules.get_mut(id) {
+                    schedule.in_flight = false;
+                    schedule.generation = 0;
+                    schedule.next = later;
+                    schedule.not_before = later;
+                }
+            }
+            for account in inner
+                .view
+                .accounts
+                .iter_mut()
+                .filter(|account| ids.contains(&account.id))
+            {
+                account.refreshing = false;
+            }
+            inner.view.refreshing = inner.view.accounts.iter().any(|account| account.refreshing);
+        })
+        .await;
 }
 
 fn resume(inner: &mut RuntimeState, ids: &[String]) {
@@ -242,19 +241,18 @@ async fn finish(
     ids: &[String],
     change: impl FnOnce(&mut RuntimeState),
 ) -> (AppState, bool) {
-    let mut inner = runtime.inner.lock().await;
-    change(&mut inner);
-    resume(&mut inner, ids);
-    inner.view.switching.active_account_ids = switch::active_ids(&inner.view.accounts);
-    inner.view.notice = runtime
-        .persist(&inner.view, &inner.alerts, &inner.delivery)
-        .err();
-    let persisted = inner.view.notice.is_none();
-    inner.view.changed();
-    let view = inner.view.clone();
-    drop(inner);
-    publish(app, &view);
+    let view = runtime
+        .update_and_publish(app, |inner| {
+            change(inner);
+            resume(inner, ids);
+            inner.view.switching.active_account_ids = switch::active_ids(&inner.view.accounts);
+            inner.view.notice = runtime
+                .persist(&inner.view, &inner.alerts, &inner.delivery)
+                .err();
+        })
+        .await;
     runtime.wake.notify_one();
+    let persisted = view.notice.is_none();
     (view, persisted)
 }
 
@@ -474,21 +472,19 @@ pub async fn dismiss_switch_restore(
     id: String,
 ) -> Result<AppState, String> {
     let _ = runtime.journal().mark(&id, RecordState::Dismissed);
-    let mut inner = runtime.inner.lock().await;
-    if inner
-        .view
-        .switching
-        .restore
-        .as_ref()
-        .is_some_and(|offer| offer.id == id)
-    {
-        inner.view.switching.restore = None;
-    }
-    inner.view.changed();
-    let view = inner.view.clone();
-    drop(inner);
-    publish(&app, &view);
-    Ok(view)
+    Ok(runtime
+        .update_and_publish(&app, |inner| {
+            if inner
+                .view
+                .switching
+                .restore
+                .as_ref()
+                .is_some_and(|offer| offer.id == id)
+            {
+                inner.view.switching.restore = None;
+            }
+        })
+        .await)
 }
 
 #[cfg(test)]
