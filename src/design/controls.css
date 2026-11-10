@@ -11,7 +11,7 @@
   max-width: 153px;
   padding: 6px 8px 6px 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--ink);
   font-size: 13px;
@@ -67,7 +67,7 @@
   overflow: hidden;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--card);
   color: var(--ink);
   box-shadow: 0 12px 36px -12px #0005, 0 2px 8px #00000012;
@@ -89,7 +89,7 @@
 }
 
 .app-select-content .app-select-viewport::-webkit-scrollbar-thumb {
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--track);
 }
 
@@ -100,7 +100,7 @@
   gap: 12px;
   min-height: 34px;
   padding: 7px 27px 7px 9px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   outline: none;
   font-size: 13px;
   font-weight: 450;
@@ -154,7 +154,7 @@
   overflow: hidden;
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--ink);
   box-shadow: 0 5px 18px #0000001a;
@@ -187,7 +187,7 @@
   height: 17px;
   padding: 2px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   background: var(--track);
   transition: background-color .18s;
 }
@@ -233,7 +233,7 @@
   max-width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--ink);
   font: inherit;

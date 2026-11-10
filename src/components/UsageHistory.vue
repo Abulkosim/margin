@@ -116,7 +116,7 @@ function pointAt(event: PointerEvent): void {
 .history-plot { display: flex; gap: 6px; margin: 4px 0 6px; }
 .history-scale { display: flex; flex-direction: column; justify-content: space-between; color: var(--secondary); font-size: 13px; width: 26px; flex-shrink: 0; padding: 1px 0; font-variant-numeric: tabular-nums; }
 .history-chart { width: calc(100% - 32px); height: auto; overflow: visible; cursor: crosshair; touch-action: pan-y; }
-.history-chart:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+.history-chart:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--radius-xs); }
 .history-grid { stroke: var(--track); fill: none; stroke-width: 1; }
 .history-line { stroke: var(--accent-ink); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .history-marker { stroke: var(--secondary); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }

@@ -22,7 +22,7 @@ defineEmits<{ accept: []; dismiss: [] }>()
 </template>
 
 <style scoped>
-.start-prompt { flex-shrink: 0; margin: 0 22px; padding: 11px 12px 11px 14px; border-radius: 10px; background: var(--accent-soft); animation: start-prompt-in .2s ease-out; }
+.start-prompt { flex-shrink: 0; margin: 0 22px; padding: 11px 12px 11px 14px; border-radius: var(--radius-lg); background: var(--accent-soft); animation: start-prompt-in .2s ease-out; }
 .start-prompt-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .start-prompt-copy { flex: 1 1 170px; min-width: 0; }
 .start-prompt h2 { margin: 0; font-size: 14px; font-weight: 550; line-height: 1.35; color: var(--ink); }

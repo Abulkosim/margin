@@ -58,7 +58,7 @@ function activate(): void {
 .update-card { background: var(--card); padding: 14px; border-radius: 9px; }
 .update-heading { display: flex; align-items: center; gap: 9px; }
 .update-heading>div { display: flex; flex-direction: column; gap: 3px; }
-.update-mark { display: grid; place-items: center; width: 33px; height: 33px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; }
+.update-mark { display: grid; place-items: center; width: 33px; height: 33px; background: var(--accent-soft); color: var(--accent-ink); border-radius: var(--radius-md); }
 .update-version { font-size: 13px; color: var(--tertiary); font-variant-numeric: tabular-nums; }
 .update-current { margin-left: auto; color: var(--accent); }
 .update-message { font-size: 14px; line-height: 1.5; margin: 12px 0; color: var(--secondary); overflow-wrap: anywhere; }

@@ -128,7 +128,6 @@ export type Account = z.infer<typeof accountSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type UsageWindow = z.infer<typeof usageWindowSchema>
 export type ResetGrants = z.infer<typeof resetGrantsSchema>
-export type Balance = z.infer<typeof balanceSchema>
 export type AppState = z.infer<typeof appStateSchema>
 export type RestoreOffer = z.infer<typeof restoreOfferSchema>
 
@@ -139,7 +138,6 @@ export function liveRestoreOffer(offer: RestoreOffer | null, now: number): Resto
   return age >= 0 && age < 30 * 60_000 ? offer : null
 }
 export type MakeActivePreview = z.infer<typeof makeActivePreviewSchema>
-export type PopoverShown = z.infer<typeof popoverShownSchema>
 
 export const defaultSettings: Settings = {
   theme: 'system',
