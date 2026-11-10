@@ -4,7 +4,7 @@ import type { Account, Settings, UsageWindow } from '../lib/model'
 import { balanceLines, formatRemaining, groupWindows, idleAction, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, signedOutMessage, unreadSinceReset } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { useAccountStatus } from '../lib/accountStatus'
-import { forecastPace, paceAt } from '../lib/pace'
+import { coversForecast, forecastPace, paceAt } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -15,12 +15,13 @@ const props = defineProps<{ account: Account; demo: boolean; settings: Settings;
 defineEmits<{ pin: []; refresh: [] }>()
 const expanded = ref(false)
 const historyOpen = ref(false)
-const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo)
+const paceWindows = (): UsageWindow[] => props.account.snapshot?.windows.filter(window => window.scope === 'core') ?? []
+const readAt = (): number => Date.parse(props.account.snapshot?.fetchedAt ?? '')
+const { state: historyState, load: loadHistory } = useAccountHistory(() => props.account, () => props.demo, () => historyOpen.value,
+  history => paceWindows().every(window => coversForecast(history.points, window, readAt())))
 const forecasts = computed(() => {
   const points = historyState.value.kind === 'ready' ? historyState.value.history.points : []
-  const snapshot = props.account.snapshot
-  const at = snapshot ? Date.parse(snapshot.fetchedAt) : Number.NaN
-  return new Map((snapshot?.windows ?? []).filter(window => window.scope === 'core').map(window => [window.id, forecastPace(points, window, at)]))
+  return new Map(paceWindows().map(window => [window.id, forecastPace(points, window, readAt())]))
 })
 const pace = (window: UsageWindow): string | null => {
   const forecast = forecasts.value.get(window.id)

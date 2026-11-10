@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { forecastPace, paceAt, type Pace, type PaceWindow } from '../../src/lib/pace.ts'
+import { coversForecast, forecastPace, paceAt, type Pace, type PaceWindow } from '../../src/lib/pace.ts'
 import { paceText } from '../../src/lib/format.ts'
 import type { HistoryPoint } from '../../src/lib/history.ts'
 
@@ -84,6 +84,40 @@ test('the card hides a forecast once its reset or run-out time passes', () => {
   assert.equal(paceAt({ kind: 'on-pace' }, session(6), at(119)).kind, 'on-pace')
   assert.equal(paceAt({ kind: 'on-pace' }, session(6), at(120)).kind, 'hidden')
   assert.equal(paceAt({ kind: 'on-pace' }, { resetsAt: null }, at(0)).kind, 'hidden')
+})
+
+test('a history that covers the look-back forecasts like the full history', () => {
+  const previous = '2099-12-31T09:00:00Z'
+  const readings: HistoryPoint[] = []
+  let used = 0
+  for (let minutes = -330; minutes <= -185; minutes += 5) readings.push(point(minutes, 40 + (minutes + 330) / 5, { resetsAt: previous }))
+  for (let minutes = -178, step = 0; minutes < 118; step++) {
+    readings.push(point(minutes, used, { gapBefore: minutes > -40 && minutes < -30 }))
+    const wait = minutes > -100 && minutes < -70 ? 26 : 3 + (step * 5) % 6
+    used = Math.min(99, used + wait * [0.2, 0.5, 0.7, 0.3][step % 4]!)
+    minutes += wait
+  }
+  let covered = 0
+  let uncovered = 0
+  let shown = 0
+  for (const reading of readings.filter(entry => entry.resetsAt === resetsAt)) {
+    const now = Date.parse(reading.at)
+    const full = forecastPace(readings, session(reading.usedPercent), now)
+    for (const loadedAt of readings.map(entry => Date.parse(entry.at)).filter(time => time <= now)) {
+      const loaded = readings.filter(entry => Date.parse(entry.at) <= loadedAt)
+      if (!coversForecast(loaded, session(reading.usedPercent), now)) {
+        uncovered++
+        continue
+      }
+      covered++
+      if (full.kind === 'runs-out') shown++
+      assert.deepEqual(forecastPace(loaded, session(reading.usedPercent), now), full, `at ${reading.at}, loaded ${new Date(loadedAt).toISOString()}`)
+    }
+  }
+  assert.ok(covered > 400 && uncovered > 400 && shown > 200, `${covered} covered (${shown} shown), ${uncovered} not`)
+  assert.equal(coversForecast([], session(50), at(0)), false)
+  assert.equal(coversForecast([], session(100), at(0)), true)
+  assert.equal(coversForecast([], { ...session(50), resetsAt: null }, at(0)), true)
 })
 
 test('pace text', () => {
