@@ -2,14 +2,15 @@ use super::{
     burn,
     delivery::Message,
     digest, forecast,
-    model::{AccountSource, UsageError},
-    notifications::{self, AlertMemory, Clock12h},
+    model::{Account, AccountSource, Identity, Snapshot, UsageError},
+    notifications::{self, Alert, AlertMemory, Clock12h},
     outage::{self, Outage},
     providers,
     settings::NotificationPermission,
     tray,
 };
-use crate::runtime::{publish, AppState, Runtime};
+use crate::runtime::{publish, AppState, Runtime, RuntimeState};
+use chrono::{DateTime, Utc};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -291,6 +292,186 @@ fn not_updating(inner: &mut crate::runtime::RuntimeState, now: chrono::DateTime<
     }
 }
 
+/// What the fetch task does after `apply_result`, once the lock is released.
+#[derive(Debug)]
+enum Applied {
+    /// A newer fetch replaced this one, or the account was removed. Nothing changed.
+    Dropped,
+    /// The account's provider or source changed mid-fetch. Publish and wake the loop.
+    Released,
+    /// The reading or error was applied and `alerts` were queued for delivery. Save it (`urgent`
+    /// skips the reading save interval), publish, and wake the loop if anything was queued.
+    Reading { urgent: bool, alerts: Vec<Alert> },
+}
+
+fn jitter(account_id: &str) -> u64 {
+    account_id
+        .bytes()
+        .fold(0_u64, |sum, byte| sum + u64::from(byte))
+        % 7
+}
+
+/// Applies a finished fetch to the state: account, alert memory, history, queued alerts and the
+/// next schedule. Saving and publishing are left to the caller.
+fn apply_result(
+    inner: &mut RuntimeState,
+    account: &Account,
+    generation: u64,
+    result: Result<(Snapshot, Identity), UsageError>,
+    visible: bool,
+    now: Instant,
+    wall: DateTime<Utc>,
+) -> Applied {
+    if !inner
+        .schedules
+        .get(&account.id)
+        .is_some_and(|schedule| schedule.in_flight && schedule.generation == generation)
+    {
+        return Applied::Dropped;
+    }
+    let Some(index) = inner.view.accounts.iter().position(|item| {
+        item.id == account.id && item.provider == account.provider && item.source == account.source
+    }) else {
+        return if release(&mut inner.view, &mut inner.schedules, &account.id) {
+            Applied::Released
+        } else {
+            Applied::Dropped
+        };
+    };
+    let interval = if visible {
+        inner.view.settings.poll_interval_seconds
+    } else {
+        inner.view.settings.idle_poll_interval_seconds
+    };
+    let active_interval = inner.view.settings.poll_interval_seconds;
+    let mut alerts = Vec::new();
+    let mut before = AlertMemory::new();
+    let mut identity_changed = false;
+    let error = result.as_ref().err().cloned();
+    match result {
+        Ok((snapshot, identity)) => {
+            let prefix = format!("{}/", account.id);
+            if !inner.view.accounts[index].identity.same_person(&identity) {
+                inner.alerts.retain(|key, _| !key.starts_with(&prefix));
+                inner.delivery.forget(&account.id);
+            }
+            before = inner
+                .alerts
+                .iter()
+                .filter(|(key, _)| key.starts_with(&prefix))
+                .map(|(key, memory)| (key.clone(), memory.clone()))
+                .collect();
+            alerts = notifications::observe(
+                &mut inner.alerts,
+                &account.id,
+                &snapshot,
+                &inner.view.settings.thresholds,
+                wall,
+            );
+            let target = &mut inner.view.accounts[index];
+            target.snapshot = Some(snapshot);
+            target.error = None;
+            identity_changed = target.identity != identity;
+            target.identity = identity;
+        }
+        Err(error) => inner.view.accounts[index].error = Some(error),
+    }
+    let observed = inner.view.accounts[index].clone();
+    if error.is_some() {
+        inner.history.failed(&observed);
+    } else {
+        inner.history.record(&observed, interval + 7, wall);
+        let settings = &inner.view.settings;
+        if let Some(snapshot) = observed.snapshot.as_ref().filter(|_| settings.pace_alerts) {
+            forecast::observe(
+                &mut inner.alerts,
+                &account.id,
+                snapshot,
+                &mut alerts,
+                |window, since| inner.history.recent(&observed, window, since),
+                wall,
+            );
+        }
+        let settings = &inner.view.settings;
+        if let Some(snapshot) = observed.snapshot.as_ref().filter(|_| settings.burn_alerts) {
+            let suppressed: HashSet<String> =
+                alerts.iter().map(|alert| alert.window_id.clone()).collect();
+            alerts.extend(burn::observe(
+                &mut inner.alerts,
+                &account.id,
+                snapshot,
+                settings.burn_threshold,
+                &suppressed,
+                |window, since| inner.history.recent(&observed, window, since),
+                wall,
+            ));
+        }
+    }
+    inner.view.accounts[index].refreshing = false;
+    let jitter = jitter(&account.id);
+    let mut retry_at = None;
+    if let Some(schedule) = inner.schedules.get_mut(&account.id) {
+        schedule.in_flight = false;
+        schedule.fetched = Some(now);
+        if let Some(error) = error {
+            schedule.outage.failed(wall);
+            if error.kind == "network" && schedule.wake_retries > 0 {
+                schedule.wake_retries -= 1;
+                schedule.next = now + WAKE_RETRY_DELAY;
+                schedule.not_before = schedule.next;
+            } else {
+                schedule.wake_retries = 0;
+                schedule.failures = schedule.failures.saturating_add(1);
+                let wait = recheck_interval(&error, &account.source, active_interval, interval);
+                let delay = retry_delay(wait, schedule.failures, &error);
+                schedule.next = now + delay + Duration::from_secs(jitter);
+                schedule.not_before = if error.kind == "rateLimited" {
+                    schedule.next
+                } else {
+                    now + Duration::from_secs(5)
+                };
+            }
+            if error.kind == "rateLimited" {
+                let delay = schedule.next.saturating_duration_since(now);
+                retry_at = Some(
+                    wall.timestamp_millis()
+                        + i64::try_from(delay.as_millis()).unwrap_or(i64::MAX / 2),
+                );
+            }
+        } else {
+            schedule.wake_retries = 0;
+            schedule.failures = 0;
+            schedule.next = now + Duration::from_secs(interval + jitter);
+            schedule.not_before = now + Duration::from_secs(5);
+        }
+    }
+    if let Some(error) = inner.view.accounts[index].error.as_mut() {
+        error.retry_at = retry_at;
+    }
+    inner.view.refreshing = inner.view.accounts.iter().any(|item| item.refreshing);
+    let urgent = !alerts.is_empty() || identity_changed;
+    let mut queued = Vec::with_capacity(alerts.len());
+    for alert in alerts {
+        let before = before
+            .get(&format!("{}/{}", account.id, alert.window_id))
+            .cloned();
+        queued.push(alert.clone());
+        inner.delivery.enqueue(
+            Some(&account.id),
+            Message::Alert {
+                label: account.label.clone(),
+                alert,
+                before,
+            },
+            wall,
+        );
+    }
+    Applied::Reading {
+        urgent,
+        alerts: queued,
+    }
+}
+
 pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
     static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
     tauri::async_runtime::spawn(async move {
@@ -389,185 +570,35 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         .get_webview_window("main")
                         .is_some_and(|window| window.is_visible().unwrap_or(false));
                     let mut inner = runtime.inner.lock().await;
-                    if !inner.schedules.get(&account.id).is_some_and(|schedule| {
-                        schedule.in_flight && schedule.generation == generation
-                    }) {
-                        return;
-                    }
-                    let Some(index) = inner.view.accounts.iter().position(|item| {
-                        item.id == account.id
-                            && item.provider == account.provider
-                            && item.source == account.source
-                    }) else {
-                        let state = &mut *inner;
-                        if release(&mut state.view, &mut state.schedules, &account.id) {
-                            let view = inner.view.clone();
-                            drop(inner);
-                            publish(&app, &view);
-                            runtime.wake.notify_one();
+                    let applied = apply_result(
+                        &mut inner,
+                        &account,
+                        generation,
+                        result,
+                        visible,
+                        Instant::now(),
+                        chrono::Utc::now(),
+                    );
+                    let wake = match applied {
+                        Applied::Dropped => return,
+                        Applied::Released => true,
+                        Applied::Reading { urgent, alerts } => {
+                            if let Some(saved) = runtime.persist_reading(
+                                &inner.view,
+                                &inner.alerts,
+                                &inner.delivery,
+                                urgent,
+                            ) {
+                                inner.view.notice = saved.err();
+                            }
+                            inner.view.changed();
+                            !alerts.is_empty()
                         }
-                        return;
                     };
-                    let interval = if visible {
-                        inner.view.settings.poll_interval_seconds
-                    } else {
-                        inner.view.settings.idle_poll_interval_seconds
-                    };
-                    let active_interval = inner.view.settings.poll_interval_seconds;
-                    let mut alerts = Vec::new();
-                    let mut before = AlertMemory::new();
-                    let mut identity_changed = false;
-                    let error = result.as_ref().err().cloned();
-                    match result {
-                        Ok((snapshot, identity)) => {
-                            let thresholds = inner.view.settings.thresholds.clone();
-                            if !inner.view.accounts[index].identity.same_person(&identity) {
-                                inner
-                                    .alerts
-                                    .retain(|key, _| !key.starts_with(&format!("{}/", account.id)));
-                                inner.delivery.forget(&account.id);
-                            }
-                            let prefix = format!("{}/", account.id);
-                            before = inner
-                                .alerts
-                                .iter()
-                                .filter(|(key, _)| key.starts_with(&prefix))
-                                .map(|(key, memory)| (key.clone(), memory.clone()))
-                                .collect();
-                            alerts = notifications::observe(
-                                &mut inner.alerts,
-                                &account.id,
-                                &snapshot,
-                                &thresholds,
-                                chrono::Utc::now(),
-                            );
-                            let target = &mut inner.view.accounts[index];
-                            target.snapshot = Some(snapshot);
-                            target.error = None;
-                            identity_changed = target.identity != identity;
-                            target.identity = identity;
-                        }
-                        Err(error) => inner.view.accounts[index].error = Some(error),
-                    }
-                    let observed = inner.view.accounts[index].clone();
-                    if error.is_some() {
-                        inner.history.failed(&observed);
-                    } else {
-                        let now = chrono::Utc::now();
-                        inner.history.record(&observed, interval + 7, now);
-                        if let Some(snapshot) = observed
-                            .snapshot
-                            .as_ref()
-                            .filter(|_| inner.view.settings.pace_alerts)
-                        {
-                            let state = &mut *inner;
-                            forecast::observe(
-                                &mut state.alerts,
-                                &account.id,
-                                snapshot,
-                                &mut alerts,
-                                |window, since| state.history.recent(&observed, window, since),
-                                now,
-                            );
-                        }
-                        let settings = &inner.view.settings;
-                        if let Some(snapshot) =
-                            observed.snapshot.as_ref().filter(|_| settings.burn_alerts)
-                        {
-                            let threshold = settings.burn_threshold;
-                            let suppressed: HashSet<String> =
-                                alerts.iter().map(|alert| alert.window_id.clone()).collect();
-                            let state = &mut *inner;
-                            alerts.extend(burn::observe(
-                                &mut state.alerts,
-                                &account.id,
-                                snapshot,
-                                threshold,
-                                &suppressed,
-                                |window, since| state.history.recent(&observed, window, since),
-                                now,
-                            ));
-                        }
-                    }
-                    inner.view.accounts[index].refreshing = false;
-                    let jitter = account
-                        .id
-                        .bytes()
-                        .fold(0_u64, |sum, byte| sum + u64::from(byte))
-                        % 7;
-                    let mut retry_at = None;
-                    if let Some(schedule) = inner.schedules.get_mut(&account.id) {
-                        schedule.in_flight = false;
-                        let now = Instant::now();
-                        schedule.fetched = Some(now);
-                        if let Some(error) = error {
-                            schedule.outage.failed(chrono::Utc::now());
-                            if error.kind == "network" && schedule.wake_retries > 0 {
-                                schedule.wake_retries -= 1;
-                                schedule.next = now + WAKE_RETRY_DELAY;
-                                schedule.not_before = schedule.next;
-                            } else {
-                                schedule.wake_retries = 0;
-                                schedule.failures = schedule.failures.saturating_add(1);
-                                let wait = recheck_interval(
-                                    &error,
-                                    &account.source,
-                                    active_interval,
-                                    interval,
-                                );
-                                let delay = retry_delay(wait, schedule.failures, &error);
-                                schedule.next = now + delay + Duration::from_secs(jitter);
-                                schedule.not_before = if error.kind == "rateLimited" {
-                                    schedule.next
-                                } else {
-                                    now + Duration::from_secs(5)
-                                };
-                            }
-                            if error.kind == "rateLimited" {
-                                let delay = schedule.next.saturating_duration_since(now);
-                                retry_at = Some(
-                                    chrono::Utc::now().timestamp_millis()
-                                        + i64::try_from(delay.as_millis()).unwrap_or(i64::MAX / 2),
-                                );
-                            }
-                        } else {
-                            schedule.wake_retries = 0;
-                            schedule.failures = 0;
-                            schedule.next = now + Duration::from_secs(interval + jitter);
-                            schedule.not_before = now + Duration::from_secs(5);
-                        }
-                    }
-                    if let Some(error) = inner.view.accounts[index].error.as_mut() {
-                        error.retry_at = retry_at;
-                    }
-                    inner.view.refreshing = inner.view.accounts.iter().any(|item| item.refreshing);
-                    let raised = !alerts.is_empty();
-                    let now = chrono::Utc::now();
-                    for alert in alerts {
-                        let before = before
-                            .get(&format!("{}/{}", account.id, alert.window_id))
-                            .cloned();
-                        inner.delivery.enqueue(
-                            Some(&account.id),
-                            Message::Alert {
-                                label: account.label.clone(),
-                                alert,
-                                before,
-                            },
-                            now,
-                        );
-                    }
-                    let urgent = raised || identity_changed;
-                    if let Some(saved) =
-                        runtime.persist_reading(&inner.view, &inner.alerts, &inner.delivery, urgent)
-                    {
-                        inner.view.notice = saved.err();
-                    }
-                    inner.view.changed();
                     let view = inner.view.clone();
                     drop(inner);
                     publish(&app, &view);
-                    if raised {
+                    if wake {
                         runtime.wake.notify_one();
                     }
                 });
@@ -583,6 +614,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{
+        delivery::Delivery,
+        history::HistoryStore,
+        model::{Provider, UsageWindow},
+        notifications::AlertKind,
+        settings::Settings,
+    };
 
     #[test]
     fn permission_answer_is_kept_until_the_system_decides() {
@@ -681,24 +719,13 @@ mod tests {
             .all(|schedule| schedule.wake_retries == WAKE_RETRIES));
     }
 
-    #[test]
-    fn source_change_mid_fetch_releases_the_account() {
-        use crate::core::model::{Account, AccountSource, Identity, Provider};
-        let account = Account {
-            id: "claude-a".into(),
-            provider: Provider::Claude,
-            label: "Work".into(),
-            color: "#ffffff".into(),
-            source: AccountSource::Keychain,
-            identity: Identity::default(),
-            snapshot: None,
-            error: None,
-            refreshing: true,
-        };
-        let mut view = AppState {
+    const ID: &str = "claude-a";
+
+    fn view(account: Account, settings: Settings) -> AppState {
+        AppState {
             revision: 0,
             accounts: vec![account],
-            settings: Default::default(),
+            settings,
             refreshing: true,
             notice: None,
             recovery: false,
@@ -706,7 +733,113 @@ mod tests {
             ignored_sources: Vec::new(),
             switching: Default::default(),
             notification_failed_at: None,
+        }
+    }
+
+    fn identity(email: &str) -> Identity {
+        Identity {
+            email: Some(email.into()),
+            ..Identity::default()
+        }
+    }
+
+    fn account() -> Account {
+        Account {
+            id: ID.into(),
+            provider: Provider::Claude,
+            label: "Work".into(),
+            color: "#ffffff".into(),
+            source: AccountSource::ConfigDir {
+                path: "/example/.claude-work".into(),
+                keychain_suffix: None,
+            },
+            identity: identity("a@example.test"),
+            snapshot: None,
+            error: None,
+            refreshing: true,
+        }
+    }
+
+    fn wall(minutes: i64) -> DateTime<Utc> {
+        "2099-12-31T12:00:00Z".parse::<DateTime<Utc>>().unwrap()
+            + chrono::Duration::minutes(minutes)
+    }
+
+    fn reading(used: f64, minutes: i64) -> Snapshot {
+        Snapshot {
+            windows: vec![UsageWindow {
+                id: "five_hour".into(),
+                label: "Session".into(),
+                used_percent: used,
+                resets_at: Some(wall(300).to_rfc3339()),
+                window_seconds: Some(18_000),
+            }],
+            fetched_at: wall(minutes).to_rfc3339(),
+            extra_usage: None,
+            reset_grants: None,
+            balance: None,
+            incomplete: false,
+        }
+    }
+
+    fn runtime_state(settings: Settings) -> (RuntimeState, tempfile::TempDir) {
+        let directory = tempfile::tempdir().unwrap();
+        let state = RuntimeState {
+            view: view(account(), settings),
+            alerts: AlertMemory::new(),
+            delivery: Delivery::default(),
+            schedules: HashMap::new(),
+            history: HistoryStore::new(directory.path().into()),
         };
+        (state, directory)
+    }
+
+    /// Marks the account in flight as the poll loop does before a fetch.
+    fn dispatch(state: &mut RuntimeState, generation: u64) {
+        let schedule = state
+            .schedules
+            .entry(ID.into())
+            .or_insert_with(|| Schedule::new(Duration::ZERO));
+        schedule.in_flight = true;
+        schedule.generation = generation;
+        state.view.accounts[0].refreshing = true;
+    }
+
+    fn apply(
+        state: &mut RuntimeState,
+        generation: u64,
+        result: Result<(Snapshot, Identity), UsageError>,
+        now: Instant,
+        minutes: i64,
+    ) -> Applied {
+        apply_result(
+            state,
+            &account(),
+            generation,
+            result,
+            true,
+            now,
+            wall(minutes),
+        )
+    }
+
+    fn reading_of(applied: &Applied) -> (bool, Vec<AlertKind>) {
+        match applied {
+            Applied::Reading { urgent, alerts } => (
+                *urgent,
+                alerts.iter().map(|alert| alert.kind.clone()).collect(),
+            ),
+            other => panic!("expected a reading, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn source_change_mid_fetch_releases_the_account() {
+        let account = Account {
+            source: AccountSource::Keychain,
+            ..account()
+        };
+        let mut view = view(account, Settings::default());
         let mut schedules = HashMap::new();
         let mut schedule = Schedule::new(Duration::from_secs(600));
         schedule.in_flight = true;
@@ -717,6 +850,232 @@ mod tests {
         assert!(!view.refreshing);
         assert_eq!(view.revision, 1);
         assert!(schedules["claude-a"].ready(Instant::now()));
+    }
+
+    #[test]
+    fn a_superseded_fetch_changes_nothing() {
+        let (mut state, _history) = runtime_state(Settings::default());
+        dispatch(&mut state, 2);
+        let result = || Ok((reading(90.0, 0), identity("a@example.test")));
+        let now = Instant::now();
+        assert!(matches!(
+            apply(&mut state, 1, result(), now, 0),
+            Applied::Dropped
+        ));
+        assert!(state.view.accounts[0].snapshot.is_none());
+        assert!(state.view.accounts[0].refreshing);
+        assert!(state.schedules[ID].in_flight);
+        assert!(state.alerts.is_empty());
+        assert!(state.delivery.is_idle());
+        assert_eq!(state.view.revision, 0);
+        state.schedules.get_mut(ID).unwrap().in_flight = false;
+        assert!(matches!(
+            apply(&mut state, 2, result(), now, 0),
+            Applied::Dropped
+        ));
+        state.schedules.clear();
+        assert!(matches!(
+            apply(&mut state, 2, result(), now, 0),
+            Applied::Dropped
+        ));
+        assert!(state.view.accounts[0].snapshot.is_none());
+    }
+
+    #[test]
+    fn a_moved_account_is_released_instead_of_updated() {
+        let (mut state, _history) = runtime_state(Settings::default());
+        dispatch(&mut state, 1);
+        state.view.accounts[0].source = AccountSource::Keychain;
+        let result = Ok((reading(90.0, 0), identity("a@example.test")));
+        assert!(matches!(
+            apply(&mut state, 1, result, Instant::now(), 0),
+            Applied::Released
+        ));
+        assert!(state.view.accounts[0].snapshot.is_none());
+        assert!(!state.view.accounts[0].refreshing);
+        assert!(!state.schedules[ID].in_flight);
+        assert!(state.alerts.is_empty());
+    }
+
+    #[test]
+    fn a_new_person_behind_the_account_starts_alert_memory_over() {
+        let (mut state, _history) = runtime_state(Settings::default());
+        let now = Instant::now();
+        let fetch = |state: &mut RuntimeState, generation, used, who: Identity| {
+            dispatch(state, generation);
+            reading_of(&apply(
+                state,
+                generation,
+                Ok((reading(used, 0), who)),
+                now,
+                0,
+            ))
+        };
+        let a = identity("a@example.test");
+        assert_eq!(
+            fetch(&mut state, 1, 85.0, a.clone()),
+            (true, vec![AlertKind::Threshold(80)])
+        );
+        assert_eq!(fetch(&mut state, 2, 85.0, a.clone()), (false, vec![]));
+        let plan = Identity {
+            plan: Some("max".into()),
+            ..a
+        };
+        assert_eq!(fetch(&mut state, 3, 85.0, plan), (true, vec![]));
+        assert!(!state.delivery.is_idle());
+        state.delivery.enqueue(
+            Some(ID),
+            Message::NotUpdating {
+                label: "Work".into(),
+                error: UsageError::new("network", "Offline"),
+                last: wall(0),
+            },
+            wall(0),
+        );
+        let b = identity("b@example.test");
+        assert_eq!(fetch(&mut state, 4, 50.0, b.clone()), (true, vec![]));
+        assert!(state.delivery.is_idle());
+        assert_eq!(state.view.accounts[0].identity, b);
+        assert_eq!(
+            fetch(&mut state, 5, 85.0, b),
+            (true, vec![AlertKind::Threshold(80)])
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_holds_the_next_fetch_until_the_server_allows_it() {
+        let (mut state, _history) = runtime_state(Settings::default());
+        dispatch(&mut state, 1);
+        let now = Instant::now();
+        let limited = UsageError {
+            retry_after_seconds: Some(600),
+            ..UsageError::new("rateLimited", "Slow down")
+        };
+        assert_eq!(
+            reading_of(&apply(&mut state, 1, Err(limited), now, 0)),
+            (false, vec![])
+        );
+        let wait = Duration::from_secs(600 + jitter(ID));
+        let schedule = &state.schedules[ID];
+        assert!(!schedule.in_flight);
+        assert_eq!(schedule.fetched, Some(now));
+        assert_eq!(schedule.failures, 1);
+        assert_eq!(schedule.next, now + wait);
+        assert_eq!(schedule.not_before, schedule.next);
+        let error = state.view.accounts[0].error.as_ref().unwrap();
+        assert_eq!(
+            error.retry_at,
+            Some(wall(0).timestamp_millis() + i64::try_from(wait.as_millis()).unwrap())
+        );
+        assert!(!state.view.accounts[0].refreshing);
+        assert!(!state.view.refreshing);
+
+        dispatch(&mut state, 2);
+        let offline = UsageError::new("network", "Offline");
+        apply(&mut state, 2, Err(offline), now, 0);
+        let schedule = &state.schedules[ID];
+        assert_eq!(schedule.failures, 2);
+        assert_eq!(schedule.next, now + Duration::from_secs(120 + jitter(ID)));
+        assert_eq!(schedule.not_before, now + Duration::from_secs(5));
+        assert_eq!(
+            state.view.accounts[0].error.as_ref().unwrap().retry_at,
+            None
+        );
+    }
+
+    #[test]
+    fn wake_retries_retry_network_errors_quickly_without_backoff() {
+        let (mut state, _history) = runtime_state(Settings::default());
+        dispatch(&mut state, 1);
+        state.schedules.get_mut(ID).unwrap().wake_retries = 2;
+        let now = Instant::now();
+        apply(
+            &mut state,
+            1,
+            Err(UsageError::new("network", "Offline")),
+            now,
+            0,
+        );
+        let schedule = &state.schedules[ID];
+        assert_eq!(schedule.wake_retries, 1);
+        assert_eq!(schedule.failures, 0);
+        assert_eq!(schedule.next, now + WAKE_RETRY_DELAY);
+        assert_eq!(schedule.not_before, schedule.next);
+
+        dispatch(&mut state, 2);
+        apply(
+            &mut state,
+            2,
+            Err(UsageError::new("auth", "Rejected")),
+            now,
+            0,
+        );
+        let schedule = &state.schedules[ID];
+        assert_eq!(schedule.wake_retries, 0);
+        assert_eq!(schedule.failures, 1);
+        assert_eq!(schedule.next, now + Duration::from_secs(300 + jitter(ID)));
+
+        dispatch(&mut state, 3);
+        state.schedules.get_mut(ID).unwrap().wake_retries = 1;
+        let result = Ok((reading(10.0, 0), identity("a@example.test")));
+        apply(&mut state, 3, result, now, 0);
+        let schedule = &state.schedules[ID];
+        assert_eq!(schedule.wake_retries, 0);
+        assert_eq!(schedule.failures, 0);
+        assert_eq!(schedule.next, now + Duration::from_secs(60 + jitter(ID)));
+        assert_eq!(schedule.not_before, now + Duration::from_secs(5));
+        assert!(state.view.accounts[0].error.is_none());
+    }
+
+    /// Readings every 10 minutes climbing from 10% to 20%, then `last` at minute 60.
+    fn climb(last: f64) -> (RuntimeState, tempfile::TempDir, Vec<AlertKind>) {
+        let (mut state, history) = runtime_state(Settings {
+            poll_interval_seconds: 600,
+            pace_alerts: false,
+            burn_alerts: true,
+            ..Settings::default()
+        });
+        let now = Instant::now();
+        let fetch = |state: &mut RuntimeState, step: i64, used| {
+            dispatch(state, step as u64 + 1);
+            let result = Ok((reading(used, step * 10), identity("a@example.test")));
+            reading_of(&apply(state, step as u64 + 1, result, now, step * 10)).1
+        };
+        for step in 0..=5 {
+            assert_eq!(fetch(&mut state, step, 10.0 + 2.0 * step as f64), vec![]);
+        }
+        let alerts = fetch(&mut state, 6, last);
+        (state, history, alerts)
+    }
+
+    #[test]
+    fn a_burn_alert_is_held_back_when_another_alert_fired_for_the_window() {
+        assert_eq!(climb(60.0).2, vec![AlertKind::Burn { increase: 50 }]);
+        let (mut state, _history, alerts) = climb(85.0);
+        assert_eq!(alerts, vec![AlertKind::Threshold(80)]);
+        dispatch(&mut state, 8);
+        let result = Ok((reading(90.0, 70), identity("a@example.test")));
+        let next = reading_of(&apply(&mut state, 8, result, Instant::now(), 70));
+        assert_eq!(next, (false, vec![]));
+    }
+
+    #[test]
+    fn an_expired_token_is_rechecked_at_the_active_interval_while_hidden() {
+        let expired = UsageError {
+            signed_out_since: Some("2099-12-31T11:00:00Z".into()),
+            ..UsageError::new("signedOut", "Expired")
+        };
+        let offline = UsageError::new("network", "Offline");
+        for (error, wait) in [(expired, 60), (offline, 300)] {
+            let (mut state, _history) = runtime_state(Settings::default());
+            dispatch(&mut state, 1);
+            let now = Instant::now();
+            apply_result(&mut state, &account(), 1, Err(error), false, now, wall(0));
+            assert_eq!(
+                state.schedules[ID].next,
+                now + Duration::from_secs(wait + jitter(ID))
+            );
+        }
     }
 
     #[test]
