@@ -4,7 +4,7 @@ Public images use explicit sample accounts. Capture from `?demo=1`; never publis
 
 ## v0.8.2 captures (2026-11-02)
 
-Use Playwright WebKit at 420×660 CSS pixels and 2× scale, with Inter installed so the UI font matches macOS (Linux falls back to DejaVu otherwise). Pass `&theme=light` or `&theme=dark`. Preserve the sample-data label. Visually inspect each image before linking it in the README or release notes.
+Use Playwright WebKit at 420×660 CSS pixels and 2× scale. The app bundles Inter, so captures use the same font on every platform. Pass `&theme=light` or `&theme=dark`. Preserve the sample-data label. Visually inspect each image before linking it in the README or release notes.
 
 | Image | State |
 | --- | --- |
