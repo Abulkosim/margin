@@ -11,6 +11,8 @@ Technical-debt sweep, PRs #55–#66 (plus Dependabot #59–#61). Checked 2026-11
 - **CI and docs (#55–#57, #62).** Release scripts are tested (`pnpm test:scripts`). Native jobs build the frontend once; on tag builds `beforeBuildCommand` is skipped through `--config`, first exercised by this release's build. Public copy now says Make active writes CLI sign-ins.
 - Skipped on purpose: disk writes off the state lock (saves must succeed before a change commits or rolls back), an error-kind enum (persisted and frontend contract), and module splits (no user value).
 
+**[v0.11.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.11.0).** Published 2026-11-10 21:20 UTC from `7afc844`, after main CI and the [release build](https://github.com/Abulkosim/margin/actions/runs/42902246789) passed; the tag build skipped `beforeBuildCommand` as intended. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; `latest.json` lists 0.11.0 for all five platforms with signatures; release notes matched `changelogs/v0.11.0.md`; `Margin.app.tar.gz` unpacks to `Margin.app` with its binary. The public latest endpoint serves 0.11.0. The Homebrew cask seed and winget manifests now point at v0.11.0, with hashes from its `SHA256SUMS.txt`. As before, the macOS artifact check and updater install test were skipped.
+
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
 
 ## v0.10.2 (2026-11-10)

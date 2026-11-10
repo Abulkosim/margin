@@ -1,6 +1,6 @@
 cask "margin" do
-  version "0.4.0"
-  sha256 "d0a4a782c2491b6d8cd2790a7a9794c5e4f8295c7eab98e5842bb215b72b5d69"
+  version "0.11.0"
+  sha256 "2b812b33e0050f24dd097a1398506204928de2ec86cf837106deb63547c9e9fe"
 
   url "https://github.com/Abulkosim/margin/releases/download/v#{version}/Margin_#{version}_universal.dmg"
   name "Margin"
