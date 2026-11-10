@@ -548,6 +548,7 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
             points,
         })
         .collect();
+    let before = state.clone();
     let previous = state.and_then(|state| state.previous);
     let digest = digest(&inputs, previous.as_ref(), now, &chrono::Local);
     let next = DigestState {
@@ -555,7 +556,7 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
         previous: digest.as_ref().map(Digest::summary),
     };
     let persisted = mark_sent(runtime, next, || {
-        runtime.persist(&inner.view, &inner.alerts)
+        runtime.persist(&inner.view, &inner.alerts, &inner.delivery)
     });
     inner.view.notice = persisted.clone().err();
     if persisted.is_err() {
@@ -567,9 +568,13 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
             super::delivery::Message::Digest {
                 title: digest.title(),
                 body: digest.body(),
+                before,
             },
             now,
         );
+        inner.view.notice = runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .err();
     }
 }
 

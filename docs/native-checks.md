@@ -62,6 +62,8 @@ Use dedicated test accounts for checks 5 to 7, not sign-ins you depend on. Margi
 
 17. **Autostart after a reboot.** Turn on **Start at login** and reboot.
     Expected: Margin is in the tray after login, once, and refreshes without being opened. Turn it off and reboot: Margin does not start.
+    Mac: turn on **Start at login** in a copy opened from the DMG or Downloads, quit, move Margin to Applications, open it from there, and reboot. Windows: turn it on, quit, move `Margin.exe` to another folder, open it there, and reboot.
+    Expected: Margin starts once after login, from the new location.
 18. **Idle overnight, Claude.** Leave a Claude account unused overnight with Margin running, and don't run `claude`.
     Expected in the morning: the card shows a current reading or "Idle, last read …", not "Signed out", and never a fresh-looking old number. A limit whose reset passed overnight shows "Reset 14:00, not read since" with no percentage. After running `claude`, a reading returns within 60 seconds (Keychain accounts: at their next refresh), with no "Usage not updating" notification for the expired token.
 19. **Weekly digest.** Turn on **Weekly digest**.

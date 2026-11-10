@@ -80,6 +80,7 @@ src-tauri/src/
     store.rs           local state file
     history.rs         local usage history
     install.rs         Applications folder check
+    autostart.rs       Start at login path repair
     report.rs          problem report allowlist
     notifications.rs   threshold notifications
     delivery.rs        notification submission and retries

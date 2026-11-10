@@ -19,7 +19,7 @@ Observed cases covered by regression tests:
 
 `claude-core-unreadable.json` and `codex-window-unreadable.json` are constructed: a window sent with fields but no percentage key. It must not be shown, and the reading must be marked incomplete; a null percentage still means inactive. In a Codex named limit it drops the whole limit.
 
-`claude-partial-limits.json` and `codex-partial-limits.json` are constructed responses with valid core windows and malformed optional limits; the reading must keep the rest and be marked incomplete. `claude-core-malformed.json` and `codex-core-malformed.json` have a malformed core window; the reading must fail.
+`claude-partial-limits.json` and `codex-partial-limits.json` are constructed responses with valid core windows and malformed optional limits; the reading must keep the rest and be marked incomplete. `claude-scoped-fallback.json` and `claude-scoped-fallback-malformed.json` are constructed: the same Opus limit as a valid fixed window and a scoped entry that is valid in one and malformed in the other; the fixed fallback must keep the scoped limit's id so alternating readings alert once. `claude-core-malformed.json` and `codex-core-malformed.json` have a malformed core window; the reading must fail.
 
 The other fixtures are constructed examples covering additional documented shapes. All parser tests run without network or real credentials. Live verification did not refresh credentials, overwrite CLI files, or redeem reset credits.
 

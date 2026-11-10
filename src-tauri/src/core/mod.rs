@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod autostart;
 pub mod burn;
 pub mod delivery;
 pub mod digest;

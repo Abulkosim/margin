@@ -1,6 +1,7 @@
 use super::{
+    digest::DigestState,
     model::{Account, UsageError},
-    notifications::{Alert, AlertKind, Clock12h},
+    notifications::{self, Alert, AlertKind, AlertMemory, Clock12h, WindowAlerts},
     outage,
     settings::{NotificationPermission, Settings},
 };
@@ -14,6 +15,8 @@ pub enum Message {
     Alert {
         label: String,
         alert: Alert,
+        /// The window's alert memory from before this alert was raised.
+        before: Option<WindowAlerts>,
     },
     NotUpdating {
         label: String,
@@ -23,20 +26,22 @@ pub enum Message {
     Digest {
         title: String,
         body: String,
+        /// The digest state from before this digest was marked sent.
+        before: Option<DigestState>,
     },
 }
 
 impl Message {
     fn render(&self, now: DateTime<Utc>, clock: Clock12h) -> (String, Option<String>) {
         match self {
-            Self::Alert { label, alert } => {
+            Self::Alert { label, alert, .. } => {
                 (alert.title(label, now, clock), alert.body(now, clock))
             }
             Self::NotUpdating { label, error, last } => (
                 outage::title(label),
                 Some(outage::body(error, *last, now, clock)),
             ),
-            Self::Digest { title, body } => (title.clone(), Some(body.clone())),
+            Self::Digest { title, body, .. } => (title.clone(), Some(body.clone())),
         }
     }
 
@@ -52,6 +57,11 @@ impl Message {
             | (Self::Digest { .. }, Self::Digest { .. }) => true,
             _ => false,
         }
+    }
+
+    /// Alerts and digests stay out of the saved state until shown or dropped.
+    fn affects_saved_state(&self) -> bool {
+        !matches!(self, Self::NotUpdating { .. })
     }
 
     fn still_wanted(
@@ -93,12 +103,21 @@ struct Pending {
     due: DateTime<Utc>,
 }
 
-/// Notifications waiting to be submitted, in memory. Alert memory records that an alert was
-/// raised, so it is never raised twice; this queue is what gets it to the OS. A retry still
-/// waiting when Margin quits is lost, and alert memory will not raise it again.
+/// Notifications waiting to be submitted, in memory. Alert memory and the digest state record a
+/// notification when it is raised, so it is never raised twice; this queue is what gets it to the
+/// OS. Until a notification is shown or dropped, the saved copy of that state leaves it out, so
+/// the first reading after a restart raises it again from current usage and settings.
 #[derive(Debug, Default)]
 pub struct Delivery {
     pending: Vec<Pending>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Attempt {
+    /// `failed_at` changed.
+    pub failure_changed: bool,
+    /// An alert or digest was shown or dropped, so the saved state changed.
+    pub save: bool,
 }
 
 impl Delivery {
@@ -123,8 +142,44 @@ impl Delivery {
             .retain(|pending| pending.account_id.as_deref() != Some(account_id));
     }
 
-    /// Submits what is due. `failed_at` holds the latest failure until the next success. Returns
-    /// whether it changed.
+    /// Alerts not yet shown, with their account and the memory from before them.
+    fn waiting_alerts(&self) -> impl Iterator<Item = (&str, &Alert, Option<&WindowAlerts>)> {
+        self.pending
+            .iter()
+            .filter_map(|pending| match (&pending.account_id, &pending.message) {
+                (Some(account_id), Message::Alert { alert, before, .. }) => {
+                    Some((account_id.as_str(), alert, before.as_ref()))
+                }
+                _ => None,
+            })
+    }
+
+    /// Alert memory as it should be saved.
+    pub fn saved_alerts(&self, memory: &AlertMemory) -> AlertMemory {
+        let mut saved = memory.clone();
+        for (account_id, alert, before) in self.waiting_alerts() {
+            let threshold_waiting = self.waiting_alerts().any(|(id, other, _)| {
+                id == account_id
+                    && other.window_id == alert.window_id
+                    && matches!(other.kind, AlertKind::Threshold(_))
+            });
+            notifications::unrecord(&mut saved, account_id, alert, before, threshold_waiting);
+        }
+        saved
+    }
+
+    /// Digest state as it should be saved.
+    pub fn saved_digest(&self, current: Option<DigestState>) -> Option<DigestState> {
+        self.pending
+            .iter()
+            .find_map(|pending| match &pending.message {
+                Message::Digest { before, .. } => Some(before.clone()),
+                _ => None,
+            })
+            .unwrap_or(current)
+    }
+
+    /// Submits what is due. `failed_at` holds the latest failure until the next success.
     pub fn attempt(
         &mut self,
         failed_at: &mut Option<String>,
@@ -133,15 +188,18 @@ impl Delivery {
         now: DateTime<Utc>,
         clock: Clock12h,
         mut submit: impl FnMut(&str, Option<&str>) -> bool,
-    ) -> bool {
+    ) -> Attempt {
         let allowed = settings.notifications
             && settings.notification_permission == NotificationPermission::Granted;
+        let mut save = false;
         self.pending.retain(|pending| {
             let account = pending
                 .account_id
                 .as_deref()
                 .and_then(|id| accounts.iter().find(|account| account.id == id));
-            allowed && pending.message.still_wanted(settings, account, now)
+            let wanted = allowed && pending.message.still_wanted(settings, account, now);
+            save |= !wanted && pending.message.affects_saved_state();
+            wanted
         });
         let before = failed_at.clone();
         self.pending.retain_mut(|pending| {
@@ -151,17 +209,22 @@ impl Delivery {
             let (title, body) = pending.message.render(now, clock);
             if submit(&title, body.as_deref()) {
                 *failed_at = None;
+                save |= pending.message.affects_saved_state();
                 return false;
             }
             *failed_at = Some(now.to_rfc3339());
             let Some(delay) = RETRY_DELAYS_SECONDS.get(pending.retries) else {
+                save |= pending.message.affects_saved_state();
                 return false;
             };
             pending.retries += 1;
             pending.due = now + Duration::seconds(*delay);
             true
         });
-        before != *failed_at
+        Attempt {
+            failure_changed: before != *failed_at,
+            save,
+        }
     }
 }
 
@@ -197,6 +260,8 @@ mod tests {
         Settings {
             notifications: true,
             notification_permission: NotificationPermission::Granted,
+            notify_on_reset: true,
+            weekly_digest: true,
             ..Settings::default()
         }
     }
@@ -229,6 +294,7 @@ mod tests {
                 used_percent: f64::from(percent),
                 runs_out: None,
             },
+            before: None,
         }
     }
 
@@ -325,6 +391,7 @@ mod tests {
                     Message::Alert {
                         label: "Work".into(),
                         alert,
+                        before: None,
                     },
                     now,
                 );
@@ -357,16 +424,25 @@ mod tests {
             Clock12h(false),
             |_, _| true,
         );
-        assert!(changed);
+        assert_eq!(
+            changed,
+            Attempt {
+                failure_changed: true,
+                save: true
+            }
+        );
         assert_eq!(failed_at, None);
-        assert!(!delivery.attempt(
-            &mut failed_at,
-            &settings(),
-            &[account("a")],
-            at(1),
-            Clock12h(false),
-            |_, _| true,
-        ));
+        assert_eq!(
+            delivery.attempt(
+                &mut failed_at,
+                &settings(),
+                &[account("a")],
+                at(1),
+                Clock12h(false),
+                |_, _| true,
+            ),
+            Attempt::default()
+        );
     }
 
     #[test]
@@ -452,5 +528,239 @@ mod tests {
             |_, _| panic!("recovered accounts send nothing"),
         );
         assert!(delivery.pending.is_empty());
+    }
+
+    const NEXT: &str = "2100-01-01T05:00:00Z";
+
+    fn reading_until(used: f64, reset: &str) -> Snapshot {
+        let mut snapshot = reading(used);
+        snapshot.windows[0].resets_at = Some(reset.into());
+        snapshot
+    }
+
+    /// Observes and queues like the poller, with each window's memory from before the reading.
+    fn raise(
+        memory: &mut AlertMemory,
+        delivery: &mut Delivery,
+        snapshot: &Snapshot,
+        now: DateTime<Utc>,
+    ) -> Vec<AlertKind> {
+        let before = memory.clone();
+        let alerts = notifications::observe(memory, "a", snapshot, &[80, 95], now);
+        let kinds = alerts.iter().map(|alert| alert.kind.clone()).collect();
+        for alert in alerts {
+            let before = before.get(&format!("a/{}", alert.window_id)).cloned();
+            delivery.enqueue(
+                Some("a"),
+                Message::Alert {
+                    label: "Work".into(),
+                    alert,
+                    before,
+                },
+                now,
+            );
+        }
+        kinds
+    }
+
+    /// Alerts the first reading after a restart raises, from the alert memory that was saved.
+    fn after_restart(
+        memory: &AlertMemory,
+        delivery: &Delivery,
+        snapshot: &Snapshot,
+        thresholds: &[u8],
+    ) -> Vec<AlertKind> {
+        let mut saved = delivery.saved_alerts(memory);
+        notifications::observe(&mut saved, "a", snapshot, thresholds, at(600))
+            .into_iter()
+            .map(|alert| alert.kind)
+            .collect()
+    }
+
+    #[test]
+    fn an_alert_not_yet_submitted_at_quit_is_raised_once_after_restart() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        let mut saved = delivery.saved_alerts(&memory);
+        let mut restarted = Delivery::default();
+        assert_eq!(
+            raise(&mut saved, &mut restarted, &reading(81.0), at(600)),
+            vec![AlertKind::Threshold(80)]
+        );
+        assert!(raise(&mut saved, &mut restarted, &reading(81.0), at(660)).is_empty());
+    }
+
+    #[test]
+    fn an_alert_shown_on_the_first_attempt_is_saved_and_not_raised_again() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[account("a")],
+            at(0),
+            Clock12h(false),
+            |_, _| true,
+        );
+        assert!(attempt.save);
+        assert_eq!(
+            serde_json::to_value(delivery.saved_alerts(&memory)).unwrap(),
+            serde_json::to_value(&memory).unwrap()
+        );
+        assert!(after_restart(&memory, &delivery, &reading(81.0), &[80]).is_empty());
+    }
+
+    #[test]
+    fn a_retry_lost_on_quit_is_raised_again_by_the_next_reading() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[account("a")],
+            at(0),
+            Clock12h(false),
+            |_, _| false,
+        );
+        assert!(!attempt.save);
+        assert_eq!(
+            after_restart(&memory, &delivery, &reading(81.0), &[80, 95]),
+            vec![AlertKind::Threshold(80)]
+        );
+        assert_eq!(
+            after_restart(&memory, &delivery, &reading(96.0), &[80, 95]),
+            vec![AlertKind::Threshold(95)]
+        );
+    }
+
+    #[test]
+    fn a_retry_lost_on_quit_is_not_raised_once_it_no_longer_applies() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        assert!(after_restart(&memory, &delivery, &reading(81.0), &[95]).is_empty());
+        assert!(after_restart(&memory, &delivery, &reading(50.0), &[80]).is_empty());
+        let mut saved = delivery.saved_alerts(&memory);
+        let next =
+            notifications::observe(&mut saved, "a", &reading_until(81.0, NEXT), &[80], at(600));
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[0].kind, AlertKind::Threshold(80));
+        assert_eq!(next[0].resets_at.as_deref(), Some(NEXT));
+    }
+
+    #[test]
+    fn a_retry_shown_before_quit_is_not_raised_again() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[account("a")],
+            at(60),
+            Clock12h(false),
+            |_, _| true,
+        );
+        assert!(attempt.save);
+        assert!(after_restart(&memory, &delivery, &reading(81.0), &[80]).is_empty());
+    }
+
+    #[test]
+    fn a_retry_dropped_as_stale_stays_recorded() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(81.0), at(0));
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        let mut failed = account("a");
+        failed.error = Some(UsageError::new("network", "Offline"));
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[failed],
+            at(30),
+            Clock12h(false),
+            |_, _| panic!("stale alerts are not shown"),
+        );
+        assert!(attempt.save);
+        assert!(after_restart(&memory, &delivery, &reading(81.0), &[80]).is_empty());
+    }
+
+    #[test]
+    fn a_reset_lost_on_quit_is_raised_again_with_its_threshold() {
+        let settings = settings();
+        let mut failed_at = None;
+        for (used, expected) in [
+            (85.0, vec![AlertKind::Reset, AlertKind::Threshold(80)]),
+            (5.0, vec![AlertKind::Reset]),
+        ] {
+            let mut memory = AlertMemory::new();
+            let mut delivery = Delivery::default();
+            raise(&mut memory, &mut delivery, &reading(90.0), at(0));
+            run(&mut delivery, &mut failed_at, &settings, at(0), true);
+            let next = reading_until(used, NEXT);
+            assert_eq!(raise(&mut memory, &mut delivery, &next, at(60)), expected);
+            run(&mut delivery, &mut failed_at, &settings, at(60), false);
+            assert_eq!(
+                after_restart(&memory, &delivery, &next, &[80, 95]),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn a_reset_lost_on_quit_never_repeats_a_threshold_already_shown() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise(&mut memory, &mut delivery, &reading(90.0), at(0));
+        run(&mut delivery, &mut failed_at, &settings(), at(0), true);
+        let next = reading_until(85.0, NEXT);
+        raise(&mut memory, &mut delivery, &next, at(60));
+        delivery.attempt(
+            &mut failed_at,
+            &settings(),
+            &[account("a")],
+            at(60),
+            Clock12h(false),
+            |title, _| !title.ends_with("limit reset"),
+        );
+        assert_eq!(delivery.pending.len(), 1);
+        assert!(after_restart(&memory, &delivery, &next, &[80, 95]).is_empty());
+    }
+
+    #[test]
+    fn a_digest_lost_on_quit_leaves_its_slot_unsent() {
+        let state = |at: &str| DigestState {
+            last_sent_at: at.into(),
+            previous: None,
+        };
+        let old = state("2099-12-21T09:00:00Z");
+        let sent = state("2099-12-28T09:00:00Z");
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        delivery.enqueue(
+            None,
+            Message::Digest {
+                title: "Last week".into(),
+                body: "Usage".into(),
+                before: Some(old.clone()),
+            },
+            at(0),
+        );
+        assert_eq!(delivery.saved_digest(Some(sent.clone())), Some(old.clone()));
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        assert_eq!(delivery.saved_digest(Some(sent.clone())), Some(old));
+        run(&mut delivery, &mut failed_at, &settings(), at(60), true);
+        assert_eq!(delivery.saved_digest(Some(sent.clone())), Some(sent));
     }
 }

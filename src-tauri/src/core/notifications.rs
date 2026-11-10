@@ -411,6 +411,36 @@ pub fn observe(
     alerts
 }
 
+/// Takes back what `alert` recorded, so the first reading after a restart raises it again.
+/// `before` is the window's memory from before the alert. A reset is taken back only while
+/// nothing else in the new period was shown: with no thresholds recorded, or with a threshold
+/// alert for the window also waiting, which outranks any shown one.
+pub(super) fn unrecord(
+    memory: &mut AlertMemory,
+    account_id: &str,
+    alert: &Alert,
+    before: Option<&WindowAlerts>,
+    threshold_waiting: bool,
+) {
+    let Some(entry) = memory.get_mut(&format!("{account_id}/{}", alert.window_id)) else {
+        return;
+    };
+    if !same_period(entry.reset.as_ref(), alert.resets_at.as_ref()) {
+        return;
+    }
+    match alert.kind {
+        AlertKind::Threshold(threshold) => entry.sent.retain(|sent| *sent < threshold),
+        AlertKind::RunsOut => entry.forecast = false,
+        AlertKind::Burn { .. } => entry.burn = before.and_then(|before| before.burn.clone()),
+        AlertKind::Reset => {
+            if let Some(before) = before.filter(|_| threshold_waiting || entry.sent.is_empty()) {
+                entry.reset.clone_from(&before.reset);
+                entry.sent.clone_from(&before.sent);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -798,6 +828,57 @@ mod tests {
             .validate()
             .is_err());
         }
+    }
+
+    #[test]
+    fn unrecord_takes_back_only_what_the_alert_recorded() {
+        let burn: BurnState =
+            serde_json::from_value(serde_json::json!({"alertedAt": "2099-12-31T22:00:00Z"}))
+                .unwrap();
+        let mut memory = AlertMemory::new();
+        memory.insert(
+            "a/five_hour".into(),
+            WindowAlerts {
+                reset: Some(RESET.into()),
+                sent: BTreeSet::from([80, 95]),
+                burn: Some(burn),
+                forecast: true,
+            },
+        );
+        let alert = |kind| Alert {
+            window_id: "five_hour".into(),
+            window_label: "Session".into(),
+            kind,
+            resets_at: Some(RESET.into()),
+            used_percent: 96.0,
+            runs_out: None,
+        };
+        let entry = |memory: &AlertMemory| memory["a/five_hour"].clone();
+        unrecord(&mut memory, "a", &alert(AlertKind::RunsOut), None, false);
+        assert!(!entry(&memory).forecast);
+        assert!(entry(&memory).burn.is_some());
+        unrecord(
+            &mut memory,
+            "a",
+            &alert(AlertKind::Burn { increase: 20 }),
+            None,
+            false,
+        );
+        assert!(entry(&memory).burn.is_none());
+        unrecord(
+            &mut memory,
+            "a",
+            &alert(AlertKind::Threshold(95)),
+            None,
+            false,
+        );
+        assert_eq!(entry(&memory).sent, BTreeSet::from([80]));
+        let earlier_period = Alert {
+            resets_at: Some("2099-12-31T17:00:00Z".into()),
+            ..alert(AlertKind::Threshold(80))
+        };
+        unrecord(&mut memory, "a", &earlier_period, None, false);
+        assert_eq!(entry(&memory).sent, BTreeSet::from([80]));
     }
 
     #[test]

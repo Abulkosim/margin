@@ -484,7 +484,8 @@ fn fixed_window(
     }))
 }
 
-fn scoped_window(limit: &Value) -> Result<Option<UsageWindow>, UsageError> {
+/// The model a `weekly_scoped` limit names, and the window id it gets.
+fn scoped_model(limit: &Value) -> Result<Option<(String, String)>, UsageError> {
     if !limit.is_object() {
         return Err(malformed_response());
     }
@@ -500,18 +501,28 @@ fn scoped_window(limit: &Value) -> Result<Option<UsageWindow>, UsageError> {
     if model_name.eq_ignore_ascii_case("all models") {
         return Ok(None);
     }
+    let model_id =
+        nonempty_string(limit.pointer("/scope/model/id")).unwrap_or_else(|| model_name.clone());
+    let digest = Sha256::digest(model_id.as_bytes());
+    let fingerprint = crate::core::hex(&digest);
+    Ok(Some((
+        model_name,
+        format!("weekly_scoped_{}", &fingerprint[..16]),
+    )))
+}
+
+fn scoped_window(limit: &Value) -> Result<Option<UsageWindow>, UsageError> {
+    let Some((model_name, id)) = scoped_model(limit)? else {
+        return Ok(None);
+    };
     let Some(utilization) = limit.get("percent") else {
         return Err(malformed_response());
     };
     if utilization.is_null() {
         return Ok(None);
     }
-    let model_id =
-        nonempty_string(limit.pointer("/scope/model/id")).unwrap_or_else(|| model_name.clone());
-    let digest = Sha256::digest(model_id.as_bytes());
-    let fingerprint = crate::core::hex(&digest);
     Ok(Some(UsageWindow {
-        id: format!("weekly_scoped_{}", &fingerprint[..16]),
+        id,
         label: model_name,
         used_percent: percent(utilization)?,
         resets_at: timestamp(limit.get("resets_at"))?,
@@ -528,13 +539,16 @@ fn unreadable_window(value: &Value, id: &str) -> bool {
 }
 
 /// A malformed core window fails the reading. Anything else, including an unreadable core window,
-/// is dropped and the reading is marked incomplete.
+/// is dropped and the reading is marked incomplete. A fixed window standing in for a malformed
+/// scoped limit of the same model keeps that limit's id, so its alerts and history do not change
+/// identity between readings.
 pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if !value.is_object() {
         return Err(malformed_response());
     }
     let mut windows: Vec<UsageWindow> = Vec::new();
     let mut incomplete = false;
+    let mut unreadable_scoped = HashMap::new();
     for entry in CORE_WINDOWS {
         let window = fixed_window(value, entry)?;
         incomplete |= window.is_none() && unreadable_window(value, entry.0);
@@ -552,7 +566,12 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
                             }
                         }
                         Ok(None) => {}
-                        Err(_) => incomplete = true,
+                        Err(_) => {
+                            incomplete = true;
+                            if let Ok(Some((model, id))) = scoped_model(limit) {
+                                unreadable_scoped.insert(model.to_lowercase(), id);
+                            }
+                        }
                     }
                 }
             }
@@ -561,11 +580,17 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     }
     for entry in OPTIONAL_WINDOWS {
         match fixed_window(value, entry) {
-            Ok(Some(window)) => {
+            Ok(Some(mut window)) => {
                 if !windows
                     .iter()
                     .any(|known| known.label.eq_ignore_ascii_case(&window.label))
                 {
+                    if let Some(id) = unreadable_scoped
+                        .get(&window.label.to_lowercase())
+                        .filter(|id| !windows.iter().any(|known| &known.id == *id))
+                    {
+                        window.id.clone_from(id);
+                    }
                     windows.push(window);
                 }
             }
@@ -994,6 +1019,68 @@ mod tests {
         assert_eq!(snapshot.windows.len(), 1);
         assert_eq!(snapshot.windows[0].label, "Opus");
         assert_eq!(snapshot.windows[0].used_percent, 41.0);
+    }
+
+    fn scoped_fallback(malformed: bool) -> Snapshot {
+        let raw = if malformed {
+            include_str!("../../../fixtures/claude-scoped-fallback-malformed.json")
+        } else {
+            include_str!("../../../fixtures/claude-scoped-fallback.json")
+        };
+        parse_usage(&serde_json::from_str(raw).unwrap()).unwrap()
+    }
+
+    fn opus(snapshot: &Snapshot) -> &UsageWindow {
+        let mut opus = snapshot
+            .windows
+            .iter()
+            .filter(|window| window.label == "Opus");
+        let window = opus.next().unwrap();
+        assert!(opus.next().is_none());
+        window
+    }
+
+    #[test]
+    fn a_fixed_fallback_keeps_the_identity_of_its_malformed_scoped_limit() {
+        let valid = scoped_fallback(false);
+        let malformed = scoped_fallback(true);
+        assert!(!valid.incomplete);
+        assert!(malformed.incomplete);
+        assert_eq!(opus(&valid).used_percent, 86.0);
+        assert_eq!(opus(&malformed).used_percent, 85.0);
+        assert_eq!(
+            opus(&valid).id,
+            format!(
+                "weekly_scoped_{}",
+                &crate::core::hex(&Sha256::digest(b"example-opus"))[..16]
+            )
+        );
+        assert_eq!(opus(&malformed).id, opus(&valid).id);
+        assert_eq!(opus(&malformed).scope(), WindowScope::Model);
+    }
+
+    #[test]
+    fn alternating_malformed_and_valid_scoped_limits_alert_once() {
+        use crate::core::notifications::{observe, AlertKind, AlertMemory};
+        let now: DateTime<Utc> = "2099-10-16T12:00:00Z".parse().unwrap();
+        let mut memory = AlertMemory::new();
+        let mut raised = Vec::new();
+        for malformed in [false, true, false, true, true, false] {
+            for alert in observe(
+                &mut memory,
+                "a",
+                &scoped_fallback(malformed),
+                &[80, 95],
+                now,
+            ) {
+                raised.push((alert.window_label, alert.kind));
+            }
+        }
+        assert_eq!(raised, [("Opus".to_owned(), AlertKind::Threshold(80))]);
+        let mut memory = AlertMemory::new();
+        let first = observe(&mut memory, "a", &scoped_fallback(true), &[80], now);
+        assert_eq!(first.len(), 1);
+        assert!(observe(&mut memory, "a", &scoped_fallback(false), &[80], now).is_empty());
     }
 
     #[test]
