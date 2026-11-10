@@ -25,6 +25,7 @@
       "rate_limit": "full"
     },
     { "rate_limit": { "primary_window": { "used_percent": 1 } } },
+    { "metered_feature": "codex-", "rate_limit": { "primary_window": { "used_percent": 3 } } },
     "not an object"
   ],
   "credits": { "has_credits": true, "unlimited": false, "balance": "not a number" }

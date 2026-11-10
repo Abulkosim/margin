@@ -493,7 +493,11 @@ fn additional_windows(
         return Ok(Vec::new());
     };
     let name = nonempty_string(entry.get("limit_name"))
-        .or_else(|| nonempty_string(entry.get("metered_feature")).map(|feature| humanize(&feature)))
+        .or_else(|| {
+            nonempty_string(entry.get("metered_feature"))
+                .map(|feature| humanize(&feature))
+                .filter(|name| !name.is_empty())
+        })
         .ok_or_else(malformed_response)?;
     if name.len() > 512 {
         return Err(malformed_response());
@@ -1002,6 +1006,7 @@ mod tests {
             json!({"additional_rate_limits": "many"}),
             json!({"additional_rate_limits": ["many"]}),
             json!({"additional_rate_limits": [{"rate_limit": {}}]}),
+            json!({"additional_rate_limits": [{"metered_feature": "codex-", "rate_limit": {"primary_window": {"used_percent": 9}}}]}),
             json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": "full"}]}),
             json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": {"primary_window": {"used_percent": "9"}}}]}),
             json!({"credits": "many"}),
