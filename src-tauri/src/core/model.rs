@@ -115,11 +115,29 @@ pub enum WindowScope {
 impl WindowScope {
     pub fn infer(id: &str) -> Self {
         match id {
-            "five_hour" | "seven_day" | "primary_window" | "secondary_window" => Self::Core,
+            id if CoreWindow::of(id).is_some() => Self::Core,
             "seven_day_sonnet" | "seven_day_opus" => Self::Model,
             id if id.starts_with("weekly_scoped_") => Self::Model,
             id if id.starts_with("extra_") && id.ends_with("_secondary_window") => Self::Model,
             _ => Self::Other,
+        }
+    }
+}
+
+/// The two windows every account reports: Claude's `five_hour`/`seven_day`,
+/// Codex's `primary_window`/`secondary_window`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CoreWindow {
+    Session,
+    Weekly,
+}
+
+impl CoreWindow {
+    pub fn of(id: &str) -> Option<Self> {
+        match id {
+            "five_hour" | "primary_window" => Some(Self::Session),
+            "seven_day" | "secondary_window" => Some(Self::Weekly),
+            _ => None,
         }
     }
 }
@@ -137,6 +155,10 @@ pub struct UsageWindow {
 impl UsageWindow {
     pub fn scope(&self) -> WindowScope {
         WindowScope::infer(&self.id)
+    }
+
+    pub fn core(&self) -> Option<CoreWindow> {
+        CoreWindow::of(&self.id)
     }
 }
 
@@ -471,6 +493,30 @@ mod tests {
         let value = serde_json::to_value(&grants).unwrap();
         assert_eq!(value["expiresAt"], "2026-10-19T10:00:00Z");
         assert_eq!(value["available"], 2);
+    }
+
+    #[test]
+    fn core_windows_match_provider_ids() {
+        for (id, kind) in [
+            ("five_hour", Some(CoreWindow::Session)),
+            ("primary_window", Some(CoreWindow::Session)),
+            ("seven_day", Some(CoreWindow::Weekly)),
+            ("secondary_window", Some(CoreWindow::Weekly)),
+            ("seven_day_opus", None),
+            ("seven_day_sonnet", None),
+            ("seven_day_routines", None),
+            ("seven_day_cowork", None),
+            ("weekly_scoped_0123456789abcdef", None),
+            ("extra_0123456789abcdef_primary_window", None),
+            ("extra_0123456789abcdef_secondary_window", None),
+        ] {
+            assert_eq!(CoreWindow::of(id), kind, "{id}");
+            assert_eq!(
+                WindowScope::infer(id) == WindowScope::Core,
+                kind.is_some(),
+                "{id}"
+            );
+        }
     }
 
     #[test]
