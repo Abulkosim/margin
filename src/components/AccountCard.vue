@@ -4,7 +4,7 @@ import type { Account, Settings, UsageWindow } from '../lib/model'
 import { balanceLines, formatRemaining, groupWindows, idleAction, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, signedOutMessage, unreadSinceReset } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { useAccountStatus } from '../lib/accountStatus'
-import { forecastPace, paceAt, paceWindowIds } from '../lib/pace'
+import { forecastPace, paceAt } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
 import UsageHistory from './UsageHistory.vue'
@@ -20,7 +20,7 @@ const forecasts = computed(() => {
   const points = historyState.value.kind === 'ready' ? historyState.value.history.points : []
   const snapshot = props.account.snapshot
   const at = snapshot ? Date.parse(snapshot.fetchedAt) : Number.NaN
-  return new Map((snapshot?.windows ?? []).filter(window => paceWindowIds.has(window.id)).map(window => [window.id, forecastPace(points, window, at)]))
+  return new Map((snapshot?.windows ?? []).filter(window => window.scope === 'core').map(window => [window.id, forecastPace(points, window, at)]))
 })
 const pace = (window: UsageWindow): string | null => {
   const forecast = forecasts.value.get(window.id)

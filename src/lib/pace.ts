@@ -4,7 +4,6 @@ import type { UsageWindow } from './model.ts'
 export type Pace = { kind: 'hidden' } | { kind: 'on-pace' } | { kind: 'runs-out'; at: Date; resetsAt: Date }
 export type PaceWindow = Pick<UsageWindow, 'id' | 'usedPercent' | 'resetsAt' | 'windowSeconds'>
 
-export const paceWindowIds = new Set(['five_hour', 'seven_day', 'primary_window', 'secondary_window'])
 const resetJitter = 5 * 60_000
 const hidden: Pace = { kind: 'hidden' }
 
