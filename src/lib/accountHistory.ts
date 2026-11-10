@@ -1,6 +1,7 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
 import { accountHistorySchema, createDemoHistory, type AccountHistory } from './history'
 import type { Account } from './model'
+import { invoke } from './tauri'
 
 export type HistoryState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; history: AccountHistory }
 
@@ -16,7 +17,7 @@ export function useAccountHistory(account: () => Account, demo: () => boolean): 
     const source = account()
     const id = source.id
     try {
-      const payload: unknown = demo() ? createDemoHistory(source) : await window.__TAURI__?.core.invoke('get_account_history', { id })
+      const payload: unknown = demo() ? createDemoHistory(source) : await invoke('get_account_history', { id })
       const history = accountHistorySchema.parse(payload)
       if (history.accountId !== id) throw new Error('Account mismatch')
       if (destroyed || current !== request) return

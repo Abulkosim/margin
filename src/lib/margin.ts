@@ -2,23 +2,15 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { createDemoState, demoActivate, demoPreview } from './demo.ts'
 import { demoProblemReport, problemReportSchema, type ProblemReport } from './report.ts'
 import { accountSchema, activatedSchema, appStateSchema, defaultSettings, makeActivePreviewSchema, type AccountId, type AppState, type MakeActivePreview, type Provider, type Settings } from './model.ts'
+import { hasDesktop, invoke, useTauriEvent, type Command } from './tauri.ts'
 
-declare global {
-  interface Window {
-    __TAURI__?: {
-      core: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
-      event: { listen: (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void> }
-    }
-  }
-}
-
-type Command = 'refresh_accounts' | 'send_test_notification' | 'discover_accounts' | 'restore_ignored_accounts' | 'add_account' | 'remove_account' | 'rename_account' | 'save_settings' | 'reset_store' | 'preview_make_active' | 'make_active' | 'restore_switch_backup' | 'dismiss_switch_restore' | 'get_problem_report' | 'open_problem_report'
 export type ToastAction = { label: string; run: () => void }
+const desktopOnly = 'Open the desktop app to manage your accounts.'
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
   const demo = query.get('demo') === '1'
-  const desktop = typeof window.__TAURI__?.core.invoke === 'function'
+  const desktop = hasDesktop()
   const state = ref<AppState>(demo ? createDemoState(query.get('state')) : { revision: 0, accounts: [], settings: { ...defaultSettings }, refreshing: false, notice: null, recovery: false, recovered: [], ignoredSources: [], switching: { activeAccountIds: [], restore: null }, notificationFailedAt: null })
   const demoRunning = query.get('running') === '1'
   const installWarning = ref(demo && query.get('location') === 'outside')
@@ -27,9 +19,6 @@ export function useMargin() {
   const pending = ref<Command | null>(null)
   const message = ref<{ kind: 'error' | 'success'; text: string; action?: ToastAction } | null>(null)
   const now = ref(Date.now())
-  let stopListening: (() => void) | undefined
-  let connectingListener: Promise<void> | null = null
-  let destroyed = false
   let toastTimer: ReturnType<typeof setTimeout> | undefined
   let toastRemaining = 0
   let toastStartedAt = 0
@@ -88,30 +77,16 @@ export function useMargin() {
     }
   }
 
-  async function listenToState(): Promise<void> {
-    if (stopListening || destroyed) return
-    if (connectingListener) return connectingListener
-    connectingListener = (async () => {
-      const tauri = window.__TAURI__
-      if (!tauri) throw new Error('Desktop connection unavailable')
-      const unlisten = await tauri.event.listen('state_changed', event => {
-        try { acceptState(event.payload) }
-        catch { notify(connectionError.value ?? 'Couldn’t read the latest account state.', 'error') }
-      })
-      if (destroyed) unlisten()
-      else stopListening = unlisten
-    })()
-    try { await connectingListener }
-    finally { connectingListener = null }
-  }
+  const listenToState = useTauriEvent('state_changed', payload => {
+    try { acceptState(payload) }
+    catch { notify(connectionError.value ?? 'Couldn’t read the latest account state.', 'error') }
+  })
 
   async function reload(): Promise<void> {
     let payload: unknown
     try {
       await listenToState()
-      const tauri = window.__TAURI__
-      if (!tauri) throw new Error('Desktop connection unavailable')
-      payload = await tauri.core.invoke('get_state')
+      payload = await invoke('get_state')
     } catch {
       connectionError.value = 'Couldn’t read your accounts. Refresh to reconnect.'
       throw new Error(connectionError.value)
@@ -129,9 +104,7 @@ export function useMargin() {
         state.value.revision++
       }
       else {
-        const tauri = window.__TAURI__
-        if (!tauri) throw new Error('Open the desktop app to manage your accounts.')
-        await tauri.core.invoke(command, args)
+        await invoke(command, args, desktopOnly)
         await reload()
       }
       return true
@@ -176,9 +149,7 @@ export function useMargin() {
   async function chooseFolder(provider: Provider): Promise<string | null> {
     if (demo) return provider === 'claude' ? '~/.claude-work' : '~/.codex-work'
     try {
-      const tauri = window.__TAURI__
-      if (!tauri) throw new Error('Desktop connection unavailable')
-      const selected = await tauri.core.invoke('plugin:dialog|open', {
+      const selected = await invoke('plugin:dialog|open', {
         options: { directory: true, multiple: false, title: `Choose the ${provider === 'claude' ? 'Claude' : 'Codex'} config folder` },
       })
       return typeof selected === 'string' && selected ? selected : null
@@ -243,9 +214,7 @@ export function useMargin() {
         if (typeof result === 'string') throw new Error(result)
         return result
       }
-      const tauri = window.__TAURI__
-      if (!tauri) throw new Error('Open the desktop app to manage your accounts.')
-      return await tauri.core.invoke(command, args)
+      return await invoke(command, args, desktopOnly)
     } catch (error: unknown) {
       notify(error instanceof Error ? error.message : typeof error === 'string' ? error : 'That did not work. Please try again.', 'error')
       return undefined
@@ -312,16 +281,14 @@ export function useMargin() {
 
   async function loadInstallWarning(): Promise<void> {
     try {
-      installWarning.value = await window.__TAURI__?.core.invoke('get_install_warning') === true
+      installWarning.value = await invoke('get_install_warning') === true
     } catch { }
   }
 
   async function hideWindow(): Promise<void> {
     if (!desktop || demo) return
     try {
-      const tauri = window.__TAURI__
-      if (!tauri) throw new Error('Desktop connection unavailable')
-      await tauri.core.invoke('hide_window')
+      await invoke('hide_window')
     } catch {
       notify('Couldn’t hide the window. Try again.', 'error')
     }
@@ -341,8 +308,6 @@ export function useMargin() {
   })
 
   onUnmounted(() => {
-    destroyed = true
-    stopListening?.()
     clearInterval(clock)
     globalThis.document?.removeEventListener('visibilitychange', syncClock)
     clearTimeout(toastTimer)
