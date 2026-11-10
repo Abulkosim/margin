@@ -6,7 +6,7 @@ Margin shows Claude Code and Codex usage in the menu bar or system tray. Questio
 
 - Two providers only: Claude and Codex.
 - Usage comes from the providers' OAuth usage APIs only. No browser cookies, no CLI scraping, no running the CLIs.
-- Read-only. Never write, move, or refresh CLI credential files or Keychain items. Never redeem or spend reset credits.
+- Read-only by default. Write CLI credential files or Keychain items only in the confirmed **Make active** flow (`core/switch.rs`). Never refresh tokens. Never redeem or spend reset credits.
 - If a request fails, show the last reading with its age. Never estimate a missing value.
 - Tokens stay in Rust. The interface receives account details and snapshots only.
 - No telemetry, analytics, or crash reporting. Network hosts are listed in [PRIVACY.md](PRIVACY.md#network-requests); adding one needs a strong reason and a PRIVACY.md update.

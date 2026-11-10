@@ -4,7 +4,7 @@ labels: [enhancement]
 body:
   - type: markdown
     attributes:
-      value: Margin supports Claude and Codex only, reads OAuth usage APIs only, and never writes CLI credential files. Requests outside that scope will be closed.
+      value: Margin supports Claude and Codex only, reads OAuth usage APIs only, and writes CLI sign-ins only when you confirm Make active. Requests outside that scope will be closed.
   - type: textarea
     id: problem
     attributes:

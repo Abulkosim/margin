@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Margin — Claude Code and Codex usage in your menu bar</title>
-<meta name="description" content="Free, open-source menu bar and system tray app for macOS and Windows. See remaining Claude Code and Codex usage and reset times across multiple accounts.">
+<meta name="description" content="Free, open-source menu bar and system tray app for macOS and Windows. See Claude Code and Codex usage remaining and reset times across multiple accounts.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f5f6f1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1b201d" media="(prefers-color-scheme: dark)">
@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Margin">
 <meta property="og:title" content="Margin — Claude Code and Codex usage in your menu bar">
-<meta property="og:description" content="See remaining Claude Code and Codex usage and reset times across multiple accounts. macOS and Windows. Free and open source.">
+<meta property="og:description" content="See Claude Code and Codex usage remaining and reset times across multiple accounts. macOS and Windows. Free and open source.">
 <meta property="og:url" content="https://abulkosim.github.io/margin/">
 <meta property="og:image" content="https://abulkosim.github.io/margin/og.png">
 <meta property="og:image:width" content="1280">
@@ -144,7 +144,7 @@ footer a:hover { color: var(--ink); }
   <div class="wrap hero">
     <div>
       <h1>Claude Code and Codex usage in your menu bar</h1>
-      <p class="lede">See remaining quota and reset times across multiple accounts, from the macOS menu bar or the Windows system tray.</p>
+      <p class="lede">See usage remaining and reset times across multiple accounts, from the macOS menu bar or the Windows system tray.</p>
       <div class="actions">
         <a class="btn btn-primary" href="https://github.com/Abulkosim/margin/releases/latest">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>
@@ -194,7 +194,7 @@ footer a:hover { color: var(--ink); }
       <div class="prose">
         <h2 id="how">How it works</h2>
         <p>Sign in with Claude Code or Codex as usual. Margin reads those existing OAuth sign-ins and asks each provider for your usage. No Margin account or hosted backend.</p>
-        <p><strong>Read-only.</strong> Margin never writes to CLI credential files, rotates tokens, or spends reset credits. Tokens stay in the Rust process; the interface never sees them.</p>
+        <p><strong>Read-only by default.</strong> Margin writes CLI sign-ins only when you confirm <strong>Make active</strong>. It never rotates tokens or spends reset credits. Tokens stay in the Rust process; the interface never sees them.</p>
       </div>
       <div class="prose">
         <h2>Privacy</h2>
