@@ -182,6 +182,10 @@ export function spendLimitLabel(unit: string | null): string {
   return word ? `Monthly ${word} limit` : 'Monthly limit'
 }
 
+export function planName(plan: string | null): string | null {
+  return plan ? plan.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()) : null
+}
+
 export function providerName(provider: Account['provider']): string {
   return provider === 'claude' ? 'Claude' : 'Codex'
 }

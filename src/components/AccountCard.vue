@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, balanceLines, formatRemaining, groupWindows, idleAction, idleStatus, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, retryingMessage, signedOutMessage, unreadSinceReset } from '../lib/format'
+import { balanceLines, formatRemaining, groupWindows, idleAction, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, signedOutMessage, unreadSinceReset } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
+import { useAccountStatus } from '../lib/accountStatus'
 import { forecastPace, paceAt, paceWindowIds } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
 import QuotaWindow from './QuotaWindow.vue'
@@ -25,10 +26,7 @@ const pace = (window: UsageWindow): string | null => {
   const forecast = forecasts.value.get(window.id)
   return stale.value || !forecast ? null : paceText(paceAt(forecast, window, props.now), props.now)
 }
-const stale = computed(() => accountIsStale(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const retrying = computed(() => retryingMessage(props.account, props.settings, props.now, Boolean(props.connectionError)))
-const refreshing = computed(() => props.account.refreshing && !props.connectionError)
-const idle = computed(() => props.connectionError ? null : idleStatus(props.account, props.now))
+const { stale, retrying, refreshing, idle, plan } = useAccountStatus(props)
 const idleHint = computed(() => props.connectionError ? null : idleAction(props.account))
 const signedOut = computed(() => props.connectionError ? null : signedOutMessage(props.account))
 const errorMessage = computed(() => props.connectionError ?? signedOut.value ?? props.account.error?.message)
@@ -45,7 +43,6 @@ const detailsLabel = computed(() => {
   if (count) return `${count} more ${count === 1 ? 'window' : 'windows'}`
   return props.account.snapshot?.balance ? 'Balance' : 'Extra usage'
 })
-const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()))
 </script>
 
 <template>
