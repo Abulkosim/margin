@@ -321,15 +321,9 @@ pub async fn reset_store(
     publish(&app, &reset);
     match discover(&app, &runtime, false).await {
         Ok(next) => Ok(next),
-        Err(error) => {
-            let mut inner = runtime.inner.lock().await;
-            inner.view.notice = Some(error);
-            inner.view.changed();
-            let next = inner.view.clone();
-            drop(inner);
-            publish(&app, &next);
-            Ok(next)
-        }
+        Err(error) => Ok(runtime
+            .update_and_publish(&app, |inner| inner.view.notice = Some(error))
+            .await),
     }
 }
 

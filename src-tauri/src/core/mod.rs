@@ -4,6 +4,7 @@ pub mod burn;
 pub mod delivery;
 pub mod digest;
 pub mod forecast;
+pub mod fsutil;
 pub mod history;
 pub mod install;
 pub mod model;
@@ -13,6 +14,8 @@ pub mod poller;
 pub mod providers;
 pub mod report;
 pub mod ring;
+#[cfg(any(target_os = "macos", test))]
+pub mod security;
 pub mod settings;
 pub mod store;
 pub mod switch;

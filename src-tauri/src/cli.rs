@@ -1,5 +1,5 @@
 use crate::core::{
-    model::{Account, AccountSource, Provider, UsageError, UsageWindow, WindowScope},
+    model::{Account, AccountSource, CoreWindow, Provider, UsageError, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
     providers::claude::nfc,
     settings::{AccountOrder, Settings, TrayMode},
@@ -458,7 +458,7 @@ fn ordered<'a>(
             .collect();
         let session = core
             .iter()
-            .position(|window| matches!(window.id.as_str(), "five_hour" | "primary_window"));
+            .position(|window| window.core() == Some(CoreWindow::Session));
         let weekly = (0..core.len()).find(|index| Some(*index) != session);
         let lowest = [session, weekly]
             .into_iter()
@@ -652,11 +652,11 @@ fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segmen
         (None, Some(_)) => Body::Status("no data"),
         (None, None) => Body::Status("…"),
         (Some(snapshot), _) => {
-            let cell = |ids: [&str; 2]| {
+            let cell = |kind: CoreWindow| {
                 snapshot
                     .windows
                     .iter()
-                    .find(|window| ids.contains(&window.id.as_str()))
+                    .find(|window| window.core() == Some(kind))
                     .map_or(Cell::Missing, |window| {
                         if snapshot.unread_since_reset(window, now) {
                             return Cell::ResetPassed;
@@ -671,8 +671,8 @@ fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segmen
                     })
             };
             Body::Windows {
-                session: cell(["five_hour", "primary_window"]),
-                weekly: cell(["seven_day", "secondary_window"]),
+                session: cell(CoreWindow::Session),
+                weekly: cell(CoreWindow::Weekly),
             }
         }
     };

@@ -282,6 +282,21 @@ impl Runtime {
         self.persist(&inner.view, &inner.alerts, &inner.delivery)
     }
 
+    /// Applies `change` under the lock, then publishes the new view without holding it.
+    pub async fn update_and_publish(
+        &self,
+        app: &AppHandle,
+        change: impl FnOnce(&mut RuntimeState),
+    ) -> AppState {
+        let mut inner = self.inner.lock().await;
+        change(&mut inner);
+        inner.view.changed();
+        let view = inner.view.clone();
+        drop(inner);
+        publish(app, &view);
+        view
+    }
+
     pub async fn change<F>(&self, app: &AppHandle, change: F) -> Result<AppState, String>
     where
         F: FnOnce(&mut AppState) -> Result<(), String>,

@@ -1,5 +1,6 @@
 use super::{
     digest::DigestState,
+    fsutil,
     model::{Account, Snapshot, MAX_LABEL_CHARS, MAX_WINDOWS},
     notifications::AlertMemory,
     settings::Settings,
@@ -10,7 +11,6 @@ use serde_json::Value;
 use std::{
     collections::HashSet,
     fs,
-    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -53,33 +53,22 @@ pub fn load(path: &Path) -> Result<StoredState, String> {
 }
 
 pub fn read(path: &Path) -> Result<StoredState, String> {
-    let metadata = match fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(StoredState {
-                version: STATE_VERSION,
-                ..StoredState::default()
-            });
+    let bytes = match fsutil::read_capped(path, MAX_STORE_BYTES) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return match fsutil::step(&error) {
+                Some(fsutil::Step::Limit) => Err(invalid_store()),
+                Some(fsutil::Step::Inspect) => {
+                    Err("Margin could not inspect its settings file.".into())
+                }
+                None if error.kind() == std::io::ErrorKind::NotFound => Ok(StoredState {
+                    version: STATE_VERSION,
+                    ..StoredState::default()
+                }),
+                _ => Err("Margin could not read its settings file.".into()),
+            }
         }
-        Err(_) => return Err("Margin could not read its settings file.".into()),
     };
-    if !metadata.is_file() || metadata.len() > MAX_STORE_BYTES {
-        return Err(invalid_store());
-    }
-    let file = fs::File::open(path).map_err(|_| "Margin could not read its settings file.")?;
-    let metadata = file
-        .metadata()
-        .map_err(|_| "Margin could not inspect its settings file.")?;
-    if !metadata.is_file() || metadata.len() > MAX_STORE_BYTES {
-        return Err(invalid_store());
-    }
-    let mut bytes = Vec::new();
-    file.take(MAX_STORE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "Margin could not read its settings file.")?;
-    if bytes.len() as u64 > MAX_STORE_BYTES {
-        return Err(invalid_store());
-    }
     let value: Value = serde_json::from_slice(&bytes).map_err(|_| invalid_store())?;
     decode(value)
 }
@@ -88,28 +77,21 @@ pub fn save(path: &Path, state: &StoredState) -> Result<(), String> {
     validate(state)?;
     let parent = path.parent().ok_or("Invalid settings location.")?;
     fs::create_dir_all(parent).map_err(|_| "Margin could not create its settings folder.")?;
-    let mut file =
-        tempfile::NamedTempFile::new_in(parent).map_err(|_| "Margin could not save settings.")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.as_file()
-            .set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|_| "Margin could not protect its settings file.")?;
-    }
     let mut bytes = serde_json::to_vec_pretty(state).map_err(|_| "Could not encode settings.")?;
     bytes.push(b'\n');
     if bytes.len() as u64 > MAX_STORE_BYTES {
         return Err("Margin's settings exceed the supported file size.".into());
     }
-    file.write_all(&bytes)
-        .map_err(|_| "Could not write settings.")?;
-    file.as_file()
-        .sync_all()
-        .map_err(|_| "Could not flush settings.")?;
-    file.persist(path)
-        .map_err(|_| "Could not replace settings atomically.")?;
-    Ok(())
+    fsutil::write_private_atomic(path, &bytes).map_err(|error| {
+        match fsutil::step(&error) {
+            Some(fsutil::Step::Protect) => "Margin could not protect its settings file.",
+            Some(fsutil::Step::Write) => "Could not write settings.",
+            Some(fsutil::Step::Sync) => "Could not flush settings.",
+            Some(fsutil::Step::Persist) => "Could not replace settings atomically.",
+            _ => "Margin could not save settings.",
+        }
+        .to_owned()
+    })
 }
 
 pub fn backup(path: &Path) -> Result<PathBuf, String> {

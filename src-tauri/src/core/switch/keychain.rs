@@ -1,7 +1,4 @@
-//! macOS Keychain access through `/usr/bin/security`, the same binary Claude Code
-//! uses, so item access lists keep trusting it and no prompt appears.
-
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+//! Keychain items Make active reads and writes through `/usr/bin/security`.
 
 /// `security -i` reads stdin lines into a 4096-byte buffer; longer lines are cut.
 pub const STDIN_LINE_LIMIT: usize = 4096 - 64;
@@ -36,6 +33,7 @@ pub fn add_command(account: &str, service: &str, secret: &[u8]) -> Option<String
 }
 
 /// Reads the `acct` attribute from `find-generic-password` output (no secret).
+#[cfg(any(target_os = "macos", test))]
 pub fn parse_account(attributes: &str) -> Option<String> {
     attributes.lines().find_map(|line| {
         let value = line
@@ -60,129 +58,51 @@ pub fn default_account() -> String {
         .unwrap_or_else(|| "claude-code-user".into())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct KeychainError;
-
 #[cfg(target_os = "macos")]
 mod system {
-    use super::{add_command, parse_account, KeychainError};
-    use std::io::{Read, Write};
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
+    use super::{add_command, parse_account};
+    use crate::core::security::{run, SecurityError};
 
-    const SECURITY: &str = "/usr/bin/security";
-    const NOT_FOUND: i32 = 44;
     const LIMIT: u64 = 1_048_576;
 
-    pub fn read(service: &str) -> Result<Option<Vec<u8>>, KeychainError> {
-        password(&["find-generic-password", "-s", service, "-w"])
+    pub fn read(service: &str) -> Result<Option<Vec<u8>>, SecurityError> {
+        run(&["find-generic-password", "-s", service, "-w"], None, LIMIT)?.password()
     }
 
-    pub fn read_account(service: &str, account: &str) -> Result<Option<Vec<u8>>, KeychainError> {
-        password(&["find-generic-password", "-a", account, "-s", service, "-w"])
+    pub fn read_account(service: &str, account: &str) -> Result<Option<Vec<u8>>, SecurityError> {
+        run(
+            &["find-generic-password", "-a", account, "-s", service, "-w"],
+            None,
+            LIMIT,
+        )?
+        .password()
     }
 
-    fn password(args: &[&str]) -> Result<Option<Vec<u8>>, KeychainError> {
-        let (status, mut bytes) = run(args, None)?;
-        match status {
-            0 => {
-                if bytes.last() == Some(&b'\n') {
-                    bytes.pop();
-                }
-                Ok(Some(bytes))
-            }
-            NOT_FOUND => Ok(None),
-            _ => Err(KeychainError),
-        }
+    pub fn account(service: &str) -> Result<Option<String>, SecurityError> {
+        let found = run(&["find-generic-password", "-s", service], None, LIMIT)?.found()?;
+        Ok(found.and_then(|bytes| parse_account(&String::from_utf8_lossy(&bytes))))
     }
 
-    pub fn account(service: &str) -> Result<Option<String>, KeychainError> {
-        let (status, bytes) = run(&["find-generic-password", "-s", service], None)?;
-        match status {
-            0 => Ok(parse_account(&String::from_utf8_lossy(&bytes))),
-            NOT_FOUND => Ok(None),
-            _ => Err(KeychainError),
-        }
+    pub fn write(service: &str, account: &str, secret: &[u8]) -> Result<(), SecurityError> {
+        let line = add_command(account, service, secret).ok_or(SecurityError)?;
+        run(&["-i"], Some(line.as_bytes()), LIMIT)?
+            .succeeded()
+            .map(|_| ())
     }
 
-    pub fn write(service: &str, account: &str, secret: &[u8]) -> Result<(), KeychainError> {
-        let line = add_command(account, service, secret).ok_or(KeychainError)?;
-        let (status, _) = run(&["-i"], Some(line.into_bytes()))?;
-        if status == 0 {
-            Ok(())
-        } else {
-            Err(KeychainError)
-        }
-    }
-
-    pub fn remove(service: &str, account: &str) -> Result<(), KeychainError> {
+    pub fn remove(service: &str, account: &str) -> Result<(), SecurityError> {
         delete(service, account).map(|_| ())
     }
 
     /// Deletes the item without reading its secret; `false` when there was none.
-    pub fn delete(service: &str, account: &str) -> Result<bool, KeychainError> {
-        let (status, _) = run(
+    pub fn delete(service: &str, account: &str) -> Result<bool, SecurityError> {
+        run(
             &["delete-generic-password", "-a", account, "-s", service],
             None,
-        )?;
-        match status {
-            0 => Ok(true),
-            NOT_FOUND => Ok(false),
-            _ => Err(KeychainError),
-        }
-    }
-
-    fn run(args: &[&str], input: Option<Vec<u8>>) -> Result<(i32, Vec<u8>), KeychainError> {
-        let mut child = Command::new(SECURITY)
-            .args(args)
-            .stdin(if input.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| KeychainError)?;
-        if let (Some(mut stdin), Some(input)) = (child.stdin.take(), input) {
-            let written = stdin.write_all(&input);
-            drop(stdin);
-            if written.is_err() {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(KeychainError);
-            }
-        }
-        let stdout = child.stdout.take().ok_or(KeychainError)?;
-        let reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            stdout
-                .take(LIMIT + 1)
-                .read_to_end(&mut bytes)
-                .map(|_| bytes)
-        });
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status.code(),
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(20))
-                }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break None;
-                }
-            }
-        };
-        let bytes = reader
-            .join()
-            .map_err(|_| KeychainError)?
-            .map_err(|_| KeychainError)?;
-        match status {
-            Some(code) if bytes.len() as u64 <= LIMIT => Ok((code, bytes)),
-            _ => Err(KeychainError),
-        }
+            LIMIT,
+        )?
+        .found()
+        .map(|found| found.is_some())
     }
 }
 

@@ -1,5 +1,5 @@
 use super::{
-    model::{Account, UsageWindow, WindowScope},
+    model::{Account, CoreWindow, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
     poller,
     ring::{ring_rgba, IconStyle},
@@ -235,21 +235,6 @@ fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow, height: f6
     placed.arrow_x
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WindowKind {
-    Session,
-    Weekly,
-    Other,
-}
-
-fn window_kind(window: &UsageWindow) -> WindowKind {
-    match window.id.as_str() {
-        "five_hour" | "primary_window" => WindowKind::Session,
-        "seven_day" | "secondary_window" => WindowKind::Weekly,
-        _ => WindowKind::Other,
-    }
-}
-
 fn expired(window: &UsageWindow, now: chrono::DateTime<Utc>) -> bool {
     window.resets_at.as_ref().is_some_and(|reset| {
         chrono::DateTime::parse_from_rfc3339(reset).is_ok_and(|reset| reset <= now)
@@ -257,12 +242,12 @@ fn expired(window: &UsageWindow, now: chrono::DateTime<Utc>) -> bool {
 }
 
 fn counts(window: &UsageWindow, metric: TrayMetric, now: chrono::DateTime<Utc>) -> bool {
-    let kind = window_kind(window);
+    let kind = window.core();
     match metric {
         TrayMetric::All => true,
-        TrayMetric::Core => kind != WindowKind::Other && !expired(window, now),
-        TrayMetric::Session => kind == WindowKind::Session && !expired(window, now),
-        TrayMetric::Weekly => kind == WindowKind::Weekly && !expired(window, now),
+        TrayMetric::Core => kind.is_some() && !expired(window, now),
+        TrayMetric::Session => kind == Some(CoreWindow::Session) && !expired(window, now),
+        TrayMetric::Weekly => kind == Some(CoreWindow::Weekly) && !expired(window, now),
     }
 }
 
@@ -955,27 +940,6 @@ mod tests {
 
     fn limiting_id(account: &Account, metric: TrayMetric) -> Option<&str> {
         limiting_window(account, metric, Utc::now()).map(|window| window.id.as_str())
-    }
-
-    #[test]
-    fn window_kinds_match_provider_ids() {
-        for (id, kind) in [
-            ("five_hour", WindowKind::Session),
-            ("primary_window", WindowKind::Session),
-            ("seven_day", WindowKind::Weekly),
-            ("secondary_window", WindowKind::Weekly),
-            ("seven_day_opus", WindowKind::Other),
-            ("seven_day_sonnet", WindowKind::Other),
-            ("seven_day_routines", WindowKind::Other),
-            ("seven_day_cowork", WindowKind::Other),
-            ("weekly_scoped_0123456789abcdef", WindowKind::Other),
-            ("extra_0123456789abcdef_primary_window", WindowKind::Other),
-            ("extra_0123456789abcdef_secondary_window", WindowKind::Other),
-        ] {
-            let account = windowed("a", &[(id, 1.0, None)]);
-            let window = &account.snapshot.as_ref().unwrap().windows[0];
-            assert_eq!(window_kind(window), kind, "{id}");
-        }
     }
 
     #[test]

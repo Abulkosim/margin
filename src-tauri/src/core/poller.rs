@@ -207,15 +207,14 @@ async fn sync_permission(app: &AppHandle, runtime: &Runtime) {
     if next == previous {
         return;
     }
-    let mut inner = runtime.inner.lock().await;
-    inner.view.settings.notification_permission = next;
-    inner.view.notice = runtime
-        .persist(&inner.view, &inner.alerts, &inner.delivery)
-        .err();
-    inner.view.changed();
-    let view = inner.view.clone();
-    drop(inner);
-    publish(app, &view);
+    runtime
+        .update_and_publish(app, |inner| {
+            inner.view.settings.notification_permission = next;
+            inner.view.notice = runtime
+                .persist(&inner.view, &inner.alerts, &inner.delivery)
+                .err();
+        })
+        .await;
 }
 
 /// Whether the notification reached the plugin's background thread. The plugin drops errors from

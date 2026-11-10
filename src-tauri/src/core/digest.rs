@@ -1,4 +1,7 @@
-use super::{history::HistoryPoint, model::Provider};
+use super::{
+    history::HistoryPoint,
+    model::{CoreWindow, Provider},
+};
 use chrono::{DateTime, Datelike, Duration, LocalResult, NaiveDate, TimeZone, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,9 +15,6 @@ const MAX_SUMMARY_ACCOUNTS: usize = 100;
 const MAX_PERIODS: u32 = 10_000;
 const MIN_SEND_GAP_DAYS: i64 = 6;
 const COMPARISON_MAX_AGE_DAYS: i64 = 8;
-
-pub const SESSION_IDS: [&str; 2] = ["five_hour", "primary_window"];
-pub const WEEKLY_IDS: [&str; 2] = ["seven_day", "secondary_window"];
 
 pub struct AccountInput<'a> {
     pub id: &'a str,
@@ -158,7 +158,7 @@ fn new_period(previous: &HistoryPoint, point: &HistoryPoint) -> bool {
 
 fn analyze<Tz: TimeZone>(
     points: &[HistoryPoint],
-    ids: &[&str],
+    kind: CoreWindow,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     zone: &Tz,
@@ -168,7 +168,7 @@ fn analyze<Tz: TimeZone>(
     let mut period_hit = false;
     for point in points
         .iter()
-        .filter(|point| ids.contains(&point.window_id.as_str()))
+        .filter(|point| CoreWindow::of(&point.window_id) == Some(kind))
     {
         let Some(at) = timestamp(&point.at).filter(|at| (from..=to).contains(at)) else {
             continue;
@@ -239,8 +239,8 @@ pub fn digest<Tz: TimeZone>(
     let from = now - Duration::days(7);
     let mut accounts = Vec::new();
     for input in history {
-        let session = analyze(input.points, &SESSION_IDS, from, now, zone);
-        let weekly = analyze(input.points, &WEEKLY_IDS, from, now, zone);
+        let session = analyze(input.points, CoreWindow::Session, from, now, zone);
+        let weekly = analyze(input.points, CoreWindow::Weekly, from, now, zone);
         let coverage_hours = [&session, &weekly]
             .into_iter()
             .flatten()

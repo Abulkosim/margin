@@ -1,10 +1,10 @@
+use super::fsutil;
 use super::model::{same_email, Account, AccountSource, Identity, Provider};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -583,22 +583,15 @@ fn validate(saved: &SavedHistory) -> Result<(), String> {
 }
 
 fn load(path: &Path) -> Result<Option<SavedHistory>, String> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+    let bytes = match fsutil::read_capped(path, MAX_BYTES) {
+        Ok(bytes) => bytes,
+        Err(error)
+            if fsutil::step(&error).is_none() && error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            return Ok(None)
+        }
         Err(_) => return Err(READ_ERROR.into()),
     };
-    let metadata = file.metadata().map_err(|_| READ_ERROR)?;
-    if !metadata.is_file() || metadata.len() > MAX_BYTES {
-        return Err(READ_ERROR.into());
-    }
-    let mut bytes = Vec::new();
-    file.take(MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| READ_ERROR)?;
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err(READ_ERROR.into());
-    }
     let saved = serde_json::from_slice(&bytes).map_err(|_| READ_ERROR)?;
     validate(&saved)?;
     Ok(Some(saved))
@@ -608,23 +601,11 @@ fn save(path: &Path, saved: &SavedHistory) -> Result<(), String> {
     validate(saved)?;
     let parent = path.parent().ok_or(SAVE_ERROR)?;
     fs::create_dir_all(parent).map_err(|_| SAVE_ERROR)?;
-    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| SAVE_ERROR)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.as_file()
-            .set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|_| SAVE_ERROR)?;
-    }
     let bytes = serde_json::to_vec(saved).map_err(|_| SAVE_ERROR)?;
     if bytes.len() as u64 > MAX_BYTES {
         return Err(SAVE_ERROR.into());
     }
-    file.write_all(&bytes).map_err(|_| SAVE_ERROR)?;
-    file.flush().map_err(|_| SAVE_ERROR)?;
-    file.as_file().sync_all().map_err(|_| SAVE_ERROR)?;
-    file.persist(path).map_err(|_| SAVE_ERROR)?;
-    Ok(())
+    fsutil::write_private_atomic(path, &bytes).map_err(|_| SAVE_ERROR.into())
 }
 
 #[cfg(test)]
