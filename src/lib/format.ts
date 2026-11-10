@@ -81,6 +81,11 @@ export function timeOfDay(time: Date): string {
   return time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+export function fullDateTime(timestamp: string | null): string {
+  const time = timestamp ? Date.parse(timestamp) : Number.NaN
+  return Number.isFinite(time) ? new Date(time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''
+}
+
 export function clockTime(time: Date, now: number): string {
   const today = new Date(now)
   const sameDay = time.getFullYear() === today.getFullYear() && time.getMonth() === today.getMonth() && time.getDate() === today.getDate()

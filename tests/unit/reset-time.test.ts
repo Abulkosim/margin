@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { clockTime, resetClock } from '../../src/lib/format.ts'
+import { clockTime, fullDateTime, resetClock, timeOfDay } from '../../src/lib/format.ts'
 
 const now = new Date(2026, 9, 22, 9, 0).getTime()
 const at = (days: number, hours: number, minutes = 0): Date => new Date(2026, 9, 22 + days, hours, minutes)
@@ -34,4 +34,20 @@ test('missing, invalid, or past resets show nothing', () => {
   assert.equal(resetClock('not a date', now), null)
   assert.equal(resetClock(new Date(now).toISOString(), now), null)
   assert.equal(resetClock(at(-1, 9).toISOString(), now), null)
+})
+
+test('reset tooltips show the full date and time without seconds', () => {
+  const reset = new Date(2026, 9, 31, 16, 30, 45)
+  const value = fullDateTime(reset.toISOString())
+  assert.equal(value, reset.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))
+  assert.ok(value.includes('2026'))
+  assert.doesNotMatch(value, /45/)
+  assert.equal(fullDateTime(null), '')
+  assert.equal(fullDateTime('not a date'), '')
+})
+
+test('a fixed time of day uses the locale clock format', () => {
+  const nine = new Date(2026, 10, 2, 9, 0)
+  assert.equal(timeOfDay(nine), nine.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))
+  assert.equal(clockTime(nine, nine.getTime()), timeOfDay(nine))
 })
