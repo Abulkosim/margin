@@ -1,5 +1,7 @@
 pub mod claude;
 pub mod codex;
+#[cfg(test)]
+mod properties;
 
 use super::model::{Account, Identity, Provider, Snapshot, UsageError};
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};

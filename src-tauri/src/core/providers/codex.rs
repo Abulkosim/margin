@@ -70,10 +70,10 @@ fn reset_credits_key(url: &Url, credentials: &Credentials, inline: u32) -> [u8; 
     digest.finalize().into()
 }
 
-struct Credentials {
-    access_token: String,
-    account_id: Option<String>,
-    identity: Identity,
+pub(super) struct Credentials {
+    pub(super) access_token: String,
+    pub(super) account_id: Option<String>,
+    pub(super) identity: Identity,
 }
 
 pub(super) async fn fetch(
@@ -162,7 +162,7 @@ fn authorized_get(
     Ok(request)
 }
 
-fn reset_credits_url(usage: &Url) -> Option<Url> {
+pub(super) fn reset_credits_url(usage: &Url) -> Option<Url> {
     let base = usage.path().strip_suffix("/wham/usage")?;
     let mut url = usage.clone();
     url.set_path(&format!("{base}/wham/rate-limit-reset-credits"));
@@ -188,7 +188,7 @@ async fn fetch_reset_credits(
 
 const MAX_RESETS: u64 = 50;
 
-fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
     let available = value
         .get("available_count")?
         .as_u64()
@@ -268,7 +268,7 @@ fn ensure_same_credentials(
     Ok(())
 }
 
-fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
+pub(super) fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| malformed_credentials())?;
     if value
         .get("auth_mode")
@@ -341,7 +341,7 @@ fn parse_account_id(value: Option<&Value>) -> Result<Option<String>, UsageError>
     Ok(Some(id.to_owned()))
 }
 
-fn jwt_claims(token: &str) -> Option<Value> {
+pub(super) fn jwt_claims(token: &str) -> Option<Value> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 || parts[1].len() > 32_768 {
         return None;
@@ -399,7 +399,7 @@ fn config_error() -> UsageError {
     )
 }
 
-fn usage_url(base: &str) -> Result<Url, UsageError> {
+pub(super) fn usage_url(base: &str) -> Result<Url, UsageError> {
     let invalid = || {
         UsageError::new("configuration", "Codex chatgpt_base_url must be an HTTPS URL without credentials, a query, or a fragment.")
     };

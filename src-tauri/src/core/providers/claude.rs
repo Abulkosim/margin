@@ -23,10 +23,10 @@ const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const PROFILE_TTL: Duration = Duration::from_secs(3600);
 const EXPIRY_SKEW_MS: i64 = 60_000;
 
-struct Credentials {
-    access_token: String,
-    plan: Option<String>,
-    expires_at: Option<i64>,
+pub(super) struct Credentials {
+    pub(super) access_token: String,
+    pub(super) plan: Option<String>,
+    pub(super) expires_at: Option<i64>,
 }
 
 #[derive(Default)]
@@ -306,7 +306,7 @@ fn keychain_or_file(
     }
 }
 
-fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
+pub(super) fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| malformed_credentials())?;
     let oauth = value
         .get("claudeAiOauth")
@@ -599,7 +599,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
 
 const MAX_RESETS: u64 = 50;
 
-fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
     let block = value?.as_object()?;
     if !block.get("eligible")?.as_bool()? {
         return None;
@@ -702,7 +702,7 @@ fn nonnegative_amount(value: &Value) -> Result<f64, UsageError> {
         .ok_or_else(malformed_response)
 }
 
-fn parse_profile(value: &Value) -> Identity {
+pub(super) fn parse_profile(value: &Value) -> Identity {
     let email = [
         "/account/email",
         "/account/email_address",
