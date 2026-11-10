@@ -604,7 +604,7 @@ fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetG
     if !block.get("eligible")?.as_bool()? {
         return None;
     }
-    let mut available = 0;
+    let mut available: u64 = 0;
     let mut soonest: Option<DateTime<Utc>> = None;
     for grant in block.get("grants")?.as_array()? {
         let left = grant.get("resets_left")?.as_u64()?;
@@ -631,7 +631,7 @@ fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetG
         {
             continue;
         }
-        available += left;
+        available = available.saturating_add(left);
         if available > MAX_RESETS {
             return None;
         }
@@ -815,6 +815,11 @@ mod tests {
             json!({"eligible": true, "grants": [{"resets_left": 1}]}),
             json!({"eligible": true, "grants": [{"resets_left": 2, "resets_total": 1, "paused": false}]}),
             json!({"eligible": true, "grants": [{"resets_left": 51, "paused": false}]}),
+            serde_json::from_str::<Value>(include_str!(
+                "../../../fixtures/claude-reset-grants-overflow.json"
+            ))
+            .unwrap()["cedar_ember"]
+                .clone(),
         ] {
             assert!(parse_reset_grants(Some(&block), Utc::now()).is_none());
         }
