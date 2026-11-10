@@ -341,7 +341,7 @@ fn parse_account_id(value: Option<&Value>) -> Result<Option<String>, UsageError>
     Ok(Some(id.to_owned()))
 }
 
-pub(super) fn jwt_claims(token: &str) -> Option<Value> {
+pub(crate) fn jwt_claims(token: &str) -> Option<Value> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 || parts[1].len() > 32_768 {
         return None;
