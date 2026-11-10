@@ -213,6 +213,12 @@ async function pickFolder(): Promise<void> {
   }
 }
 
+async function closeAdd(): Promise<void> {
+  adding.value = false
+  await nextTick()
+  addAccountButton.value?.focus()
+}
+
 async function submitAccount(): Promise<void> {
   const cleanPath = path.value.trim()
   if (!cleanPath) { formError.value = 'Enter the account’s config folder.'; return }
@@ -314,7 +320,7 @@ async function confirmRemove(): Promise<void> {
           <div class="managed-account-footer"><AppTooltip :text="accountSource(account)"><div class="account-path" tabindex="0"><AppIcon name="folder" :size="12"/><span>{{ accountSource(account) }}</span></div></AppTooltip><button v-if="canMakeActive(account)" class="text-button make-active-button" :aria-label="`Make ${account.label} active`" :disabled="busy" @click="openMakeActive(account, $event)"><AppIcon name="swap" :size="12"/>Make active<span class="beta-tag">Beta</span></button></div>
         </article>
         <button v-if="!adding" ref="addAccountButton" class="add-account-button" :disabled="busy" @click="openAdd"><AppIcon name="plus" :size="16"/>Add account</button>
-        <form v-else class="add-account-form" @submit.prevent="submitAccount"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="adding = false"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><div class="path-field"><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="pathPlaceholder" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><button v-if="canChooseFolder" class="button button-small" type="button" :disabled="busy || choosing" @click="pickFolder"><AppIcon name="folder" :size="13"/>Choose folder…</button></div><p id="path-help">{{ pathHint }}</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
+        <form v-else class="add-account-form" @submit.prevent="submitAccount" @keydown.esc.stop="closeAdd"><div class="form-heading"><h3>Add account</h3><button class="icon-button" type="button" aria-label="Cancel adding account" @click="closeAdd"><AppIcon name="close" :size="15"/></button></div><div class="provider-options"><button v-for="choice in providerSchema.options" :key="choice" type="button" :class="{ selected: provider === choice }" :aria-pressed="provider === choice" @click="provider = choice"><AppIcon :name="choice" :size="16"/>{{ providerName(choice) }}</button></div><label for="account-path">Config folder</label><div class="path-field"><input id="account-path" ref="pathInput" v-model="path" class="text-input" :placeholder="pathPlaceholder" autocomplete="off" spellcheck="false" :disabled="busy" :aria-invalid="Boolean(formError)" :aria-describedby="formError ? 'path-help path-error' : 'path-help'"><button v-if="canChooseFolder" class="button button-small" type="button" :disabled="busy || choosing" @click="pickFolder"><AppIcon name="folder" :size="13"/>Choose folder…</button></div><p id="path-help">{{ pathHint }}</p><p v-if="formError" id="path-error" class="field-error" role="alert">{{ formError }}</p><button class="button button-primary" type="submit" :disabled="busy">Connect account<AppIcon name="plus" :size="14"/></button></form>
         <div class="privacy-note"><AppIcon name="check" :size="14"/><p>Margin reads your CLI sign-ins. It changes them only when you choose Make active.</p></div>
       </TabsContent>
     </TabsRoot>
