@@ -1,0 +1,22 @@
+{
+  "five_hour": { "utilization": 22, "resets_at": "2099-10-16T15:00:00Z" },
+  "seven_day": { "utilization": 48, "resets_at": "2099-10-20T10:00:00Z" },
+  "seven_day_sonnet": null,
+  "seven_day_opus": { "utilization": 85, "resets_at": "2099-10-20T10:00:00Z" },
+  "seven_day_routines": null,
+  "seven_day_cowork": null,
+  "limits": [
+    { "kind": "session", "group": "session", "percent": 22, "resets_at": "2099-10-16T15:00:00Z", "scope": null, "is_active": true },
+    { "kind": "weekly_all", "group": "weekly", "percent": 48, "resets_at": "2099-10-20T10:00:00Z", "scope": null, "is_active": false },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": "high",
+      "severity": "warning",
+      "resets_at": "2099-10-20T10:00:00Z",
+      "scope": { "model": { "id": "example-opus", "display_name": "Opus" }, "surface": null },
+      "is_active": true
+    }
+  ],
+  "extra_usage": null
+}
