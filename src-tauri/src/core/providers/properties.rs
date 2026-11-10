@@ -307,22 +307,40 @@ fn same_reading(window: &UsageWindow, percent: Option<&Value>, reset: Option<&Va
         && timestamp(reset).ok() == Some(window.resets_at.clone())
 }
 
-/// Every Claude window is the reading at its own key, or a scoped limit with its name.
+/// Every Claude window is the reading at its own key, or a scoped limit with its name. A fixed
+/// window standing in for a malformed scoped limit of the same model carries that limit's id.
 fn claude_provenance(input: &Value, snapshot: &Snapshot) -> Result<(), TestCaseError> {
     for window in &snapshot.windows {
         let found = if window.id.starts_with("weekly_scoped_") {
-            input["limits"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|limit| {
-                    limit["kind"] == "weekly_scoped"
-                        && limit
-                            .pointer("/scope/model/display_name")
-                            .and_then(Value::as_str)
-                            .map(str::trim)
-                            == Some(window.label.as_str())
-                        && same_reading(window, limit.get("percent"), limit.get("resets_at"))
+            let scoped = |limit: &Value, exact: bool| {
+                limit["kind"] == "weekly_scoped"
+                    && limit
+                        .pointer("/scope/model/display_name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .is_some_and(|name| {
+                            if exact {
+                                name == window.label
+                            } else {
+                                name.eq_ignore_ascii_case(&window.label)
+                            }
+                        })
+            };
+            let limits = || input["limits"].as_array().into_iter().flatten();
+            limits().any(|limit| {
+                scoped(limit, true)
+                    && same_reading(window, limit.get("percent"), limit.get("resets_at"))
+            }) || limits().any(|limit| scoped(limit, false))
+                && [
+                    "seven_day_sonnet",
+                    "seven_day_opus",
+                    "seven_day_routines",
+                    "seven_day_cowork",
+                ]
+                .iter()
+                .any(|key| {
+                    let source = &input[*key];
+                    same_reading(window, source.get("utilization"), source.get("resets_at"))
                 })
         } else {
             let source = &input[window.id.as_str()];
