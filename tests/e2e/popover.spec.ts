@@ -278,3 +278,12 @@ test('provider filters only appear when both providers have accounts', async ({ 
   await expect(page.getByRole('article')).toHaveCount(2)
   await expect(page.getByRole('group', { name: 'Filter by provider' })).toHaveCount(0)
 })
+
+test('first refresh shows loading cards, a disabled refresh, and the checking status', async ({ page }) => {
+  await page.goto('/?demo=1&state=loading')
+  await expect(page.getByRole('article')).toHaveCount(3)
+  for (const card of await page.getByRole('article').all()) await expect(card.getByRole('status', { name: 'Loading account usage' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refresh usage' })).toBeDisabled()
+  await expect(page.locator('.app-footer').getByRole('status')).toHaveText('Checking usage')
+  await expect(page.getByRole('progressbar')).toHaveCount(0)
+})
