@@ -190,7 +190,12 @@ impl Runtime {
         Ok(next)
     }
 
-    pub fn persist(&self, view: &AppState, alerts: &AlertMemory) -> Result<(), String> {
+    pub fn persist(
+        &self,
+        view: &AppState,
+        alerts: &AlertMemory,
+        delivery: &Delivery,
+    ) -> Result<(), String> {
         self.ensure_store_available()?;
         if self.backup_pending.swap(false, Ordering::SeqCst) {
             if let Err(error) = store::backup(&self.store_path) {
@@ -204,10 +209,10 @@ impl Runtime {
                 version: 1,
                 accounts: view.accounts.clone(),
                 settings: view.settings.clone(),
-                alerts: alerts.clone(),
+                alerts: delivery.saved_alerts(alerts),
                 ignored_sources: view.ignored_sources.clone(),
                 last_update_check_at: self.last_update_check_at(),
-                digest: self.digest_state(),
+                digest: delivery.saved_digest(self.digest_state()),
                 ..StoredState::default()
             },
         )?;
@@ -224,10 +229,11 @@ impl Runtime {
         &self,
         view: &AppState,
         alerts: &AlertMemory,
+        delivery: &Delivery,
         urgent: bool,
     ) -> Option<Result<(), String>> {
         if urgent || self.reading_save_due() {
-            return Some(self.persist(view, alerts));
+            return Some(self.persist(view, alerts, delivery));
         }
         self.save_pending.store(true, Ordering::SeqCst);
         None
@@ -270,7 +276,7 @@ impl Runtime {
             .lock()
             .map_err(|_| "Update check time unavailable.")? = Some(at);
         let inner = self.inner.lock().await;
-        self.persist(&inner.view, &inner.alerts)
+        self.persist(&inner.view, &inner.alerts, &inner.delivery)
     }
 
     pub async fn change<F>(&self, app: &AppHandle, change: F) -> Result<AppState, String>
@@ -304,7 +310,7 @@ impl Runtime {
             .map(|account| account.id.clone())
             .collect();
         // Save first: if that fails, the account and its history both stay.
-        self.persist(&next, &alerts)?;
+        self.persist(&next, &alerts, &inner.delivery)?;
         for id in changed_ids {
             if let Err(error) = inner.history.remove(&id) {
                 next.notice = Some(error);
@@ -390,7 +396,9 @@ mod tests {
             .get(&account, chrono::Utc::now())
             .error
             .is_some());
-        assert!(runtime.persist(&inner.view, &inner.alerts).is_ok());
+        assert!(runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .is_ok());
         assert_eq!(std::fs::read_to_string(history_path).unwrap(), "{damaged");
     }
 
@@ -405,7 +413,9 @@ mod tests {
         assert!(inner.view.accounts.is_empty());
         assert!(inner.view.notice.as_ref().unwrap().contains("state.json"));
         assert!(inner.view.recovery);
-        assert!(runtime.persist(&inner.view, &inner.alerts).is_err());
+        assert!(runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{damaged");
         drop(inner);
         let view = runtime.reset_store().await.unwrap();
@@ -431,8 +441,12 @@ mod tests {
         assert!(!inner.view.recovery);
         assert_eq!(inner.view.recovered.len(), 1);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
-        runtime.persist(&inner.view, &inner.alerts).unwrap();
-        runtime.persist(&inner.view, &inner.alerts).unwrap();
+        runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .unwrap();
+        runtime
+            .persist(&inner.view, &inner.alerts, &inner.delivery)
+            .unwrap();
         assert_eq!(backups(directory.path()), vec![original]);
         assert!(store::load(&path).unwrap().recovered.is_empty());
     }

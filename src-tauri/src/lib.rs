@@ -139,5 +139,5 @@ fn flush_on_exit(app: &tauri::AppHandle) {
         return;
     }
     let inner = tauri::async_runtime::block_on(runtime.inner.lock());
-    let _ = runtime.persist(&inner.view, &inner.alerts);
+    let _ = runtime.persist(&inner.view, &inner.alerts, &inner.delivery);
 }

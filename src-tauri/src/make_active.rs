@@ -246,7 +246,9 @@ async fn finish(
     change(&mut inner);
     resume(&mut inner, ids);
     inner.view.switching.active_account_ids = switch::active_ids(&inner.view.accounts);
-    inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+    inner.view.notice = runtime
+        .persist(&inner.view, &inner.alerts, &inner.delivery)
+        .err();
     let persisted = inner.view.notice.is_none();
     inner.view.changed();
     let view = inner.view.clone();
