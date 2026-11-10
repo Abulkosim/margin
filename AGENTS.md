@@ -1,6 +1,6 @@
 # Brief: AI usage tray app (Claude + Codex, macOS + Windows)
 
-You are building this from zero. This file is the whole context. Read it once, then own the project.
+This is the brief for Margin. Read it once, then own the project. Setup and layout are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What and why
 
@@ -12,7 +12,7 @@ Inspiration: https://github.com/steipete/CodexBar (Swift, macOS, ~100 providers,
 - First-class multi-account (user may run 5 Claude accounts).
 - Our own look. CodexBar is utilitarian. Ours should feel designed. You have taste; use it.
 
-Owner: Abulkosim, frontend lead (Vue/Nuxt/TS). On a Mac. Prefers extremely concise replies. No Windows machine in the loop at first; Windows is built via CI and tested by the owner in a VM later. Rust is **not installed** on this machine yet; first step is `rustup`.
+Owner: Abulkosim, frontend lead (Vue/Nuxt/TS). On a Mac. Prefers extremely concise replies. No Windows machine in the loop at first; Windows is built via CI and tested by the owner in a VM later.
 
 ## Decisions already made (don't relitigate)
 
@@ -20,7 +20,7 @@ Owner: Abulkosim, frontend lead (Vue/Nuxt/TS). On a Mac. Prefers extremely conci
 - **Data path: OAuth usage APIs only.** No browser-cookie import, no Keychain cookie decryption, no PTY scraping of the CLI. If OAuth fails, show last-known values with their age and a clear "stale" state. Fail closed, never guess.
 - **Never write to the CLI's credential files**, except the explicit "make this account active" action (see Multi-account). Never redeem/consume anything (e.g. Claude reset credits). Read-only by default.
 - **Distribution:** GitHub Releases, unsigned at first. Mac: document right-click → Open. Win: SmartScreen "run anyway". Signing later.
-- **Commits:** one-line, imperative, no attribution trailers, no Co-Authored-By. No comments added to code unless non-obvious.
+- **Commits:** Conventional Commits `type(scope): summary`, imperative, lowercase; the body says what and why. No attribution trailers, no Co-Authored-By. No comments added to code unless non-obvious.
 - **Tone:** never market this as "bypass limits". It displays limits.
 
 ## Open to you (be creative, propose before building)
@@ -102,24 +102,13 @@ src/
 - Fixtures for every provider response shape; unit test parsing without network.
 - Windows: no native popover; frameless window anchored to tray via positioner, hide on blur.
 
-## Workstreams (independent; run in parallel if you can)
+## Status
 
-1. Toolchain + Tauri scaffold + tray + frameless popover on mac.
-2. Claude provider: discovery, parse, fetch, fixtures, tests.
-3. Codex provider: same.
-4. Design: name, 2–3 mockup directions, tokens, components.
-5. CI: GitHub Actions matrix (macos-latest, windows-latest), artifacts, release on tag.
-
-## Milestones
-
-- **M1 Alive:** tray icon, popover opens, one Claude account read from `~/.claude`, bars + reset countdown. Screenshot it.
-- **M2 Real:** both providers, N accounts, discovery, stale state, settings, autostart, notifications at thresholds.
-- **M3 Ship:** chosen design applied, Windows build green in CI, README with install notes for unsigned builds, v0.1.0 tag.
-- **M4 Nice:** updater, "make active", sparkline burndown, cost history.
+Shipped and released; see [CHANGELOG.md](CHANGELOG.md) for versions. The work queue, open owner steps and decisions since this brief are in [docs/plan.md](docs/plan.md).
 
 ## How to work
 
-- Install rustup first, then `pnpm create tauri-app`. Verify `pnpm tauri dev` boots before anything else.
+- Check that `pnpm tauri dev` boots before changing native code.
 - Inspect real files on this machine (`~/.claude`, `~/.codex`) before writing parsers. Redact when logging.
 - Hit the real endpoints early with the owner's own token to confirm shapes; save sanitized responses as fixtures.
 - Keep the owner posted in short lines. Show screenshots. Decide small things yourself.

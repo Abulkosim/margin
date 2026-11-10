@@ -4,11 +4,11 @@ Releases are unsigned by a verified publisher. macOS uses ad-hoc signing for App
 
 ## Before tagging
 
-1. Run frontend checks and the macOS native smoke checks in [verification.md](verification.md).
+1. Run `pnpm verify` and `pnpm test:e2e`, then the macOS checks in [native-checks.md](native-checks.md).
 2. Commit both `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Frontend installs use `--frozen-lockfile`; Rust checks and builds use `--locked`.
 3. Set the same version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
 4. Write `changelogs/vX.Y.Z.md` and add it to `CHANGELOG.md`. Use the release date and a few short bullets describing user-visible changes. Link to installation instructions instead of repeating them. The release workflow uses this file for GitHub release notes and the update manifest.
-5. Run `pnpm test:scripts` and `node scripts/check-release.mjs v0.3.0`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement.
+5. Run `pnpm test:scripts` and `node scripts/check-release.mjs vX.Y.Z`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement.
 6. Push the release commit and confirm all checks on `main` pass. Create and push the matching annotated tag.
 
 Never put real credential files, token values, account IDs, or unredacted provider responses into commits, artifacts, screenshots, or release notes.
@@ -25,7 +25,7 @@ Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rus
 
 ## Publish
 
-Download and exercise the macOS artifact from the draft release. The owner confirmed Windows v0.1.1 works in their VM. New release changes still need appropriate Windows checks; build success alone does not verify installation, tray placement, rendering, or DPI behavior.
+Download and exercise the macOS artifact from the draft release. Windows needs real checks in a VM too: a green build does not verify installation, tray placement, rendering, or DPI behavior.
 
 Record the tested OS versions and remaining limitations in `docs/verification.md` and the release notes, then publish through GitHub Releases. The workflow refuses to overwrite assets on a published release; use a new patch version for fixes.
 
@@ -36,7 +36,9 @@ for f in Margin_X.Y.Z_universal.dmg Margin.app.tar.gz Margin_X.Y.Z_x64-setup.exe
   gh attestation verify "$f" --repo Abulkosim/margin
 done
 gh attestation verify Margin_X.Y.Z_universal.dmg --repo Abulkosim/margin --predicate-type https://spdx.dev/Document/v2.3
-``` The pipeline refuses missing, duplicate, unexpected, incorrectly signed, or mismatched-version updater assets.
+```
+
+The pipeline refuses missing, duplicate, unexpected, incorrectly signed, or mismatched-version updater assets.
 
 ## Updates
 
@@ -52,7 +54,7 @@ Before the first updater release:
 On macOS, download the draft's `Margin.app.tar.gz` and `.sig` into an artifact directory, then run:
 
 ```sh
-MARGIN_UPDATE_ARTIFACT_DIR="$PWD/.cache/release-v0.3.0" MARGIN_REQUIRE_UNIVERSAL=1 cargo test --manifest-path src-tauri/Cargo.toml --test updater_install --locked -- --ignored --nocapture
+MARGIN_UPDATE_ARTIFACT_DIR="$PWD/.cache/release-vX.Y.Z" MARGIN_REQUIRE_UNIVERSAL=1 cargo test --manifest-path src-tauri/Cargo.toml --test updater_install --locked -- --ignored --nocapture
 ```
 
 This ignored integration test uses the pinned updater plugin and real public key with a loopback-only fixture server. It rejects altered bytes and mismatched signed versions before replacing a disposable old app, checks the installed version, verifies ad-hoc signing and both Mac architectures, and retains the installed copy under `.cache/upgrade-smoke/` for a launch check. It never opens the installed Margin app or CLI credentials. The fixture allows HTTP only inside the test; production still requires HTTPS. Run it against the exact CI release artifact before publishing. For an early local architecture-only build, omit `MARGIN_REQUIRE_UNIVERSAL`; the test still requires the current Mac architecture. It does not exercise the app's user interface, privileged installation, or Windows installation.
@@ -75,9 +77,22 @@ Limits:
 - **EXE and MSI counts mix installs and updates**, because the updater downloads the same files. DMG counts are first installs or manual upgrades; `Margin.app.tar.gz` is Mac updates. Package managers also download these files.
 - **History is limited.** GitHub keeps artifacts for at most 90 days on a public repository, and download counts have no history of their own. Save a copy to keep a longer record.
 
-## Roll back v0.10.2
+## Roll back
 
-Quit Margin and reinstall [v0.10.1](https://github.com/Abulkosim/margin/releases/tag/v0.10.1) or [v0.10.0](https://github.com/Abulkosim/margin/releases/tag/v0.10.0); the settings format is identical. To go back further, reinstall [v0.9.0](https://github.com/Abulkosim/margin/releases/tag/v0.9.0). It ignores `autostartPromptDismissed` and `incomplete` on saved readings, and keeps everything else. Start at login stays as you set it. To go back further, reinstall [v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2). It ignores `paceAlerts`, `staleAlerts` and the run-out alert memory, keeps everything else, and its card pace line goes back to the older estimate. To go back further, reinstall [v0.8.1](https://github.com/Abulkosim/margin/releases/tag/v0.8.1) or [v0.8.0](https://github.com/Abulkosim/margin/releases/tag/v0.8.0); the settings format is identical. To go back further, reinstall [v0.7.0](https://github.com/Abulkosim/margin/releases/tag/v0.7.0). It ignores `weeklyDigest`, the stored digest summary and `balance` on snapshots, and keeps everything else. A weekly-only Codex window moved to the weekly slot by v0.8.0 shows as Session again in v0.7.0 until its next refresh. To go back further, reinstall [v0.6.0](https://github.com/Abulkosim/margin/releases/tag/v0.6.0). It ignores `burnAlerts`, `burnThreshold` and the fast-alert memory, and keeps everything else. Switches already made stay made: the CLI folders keep their swapped sign-ins, and v0.6.0 shows each account under its new folder. Margin backups in the Keychain (`Margin backup`) or `backups/` stay until you delete them. To go back to v0.5.1 from there: it ignores `accountOrder`; history keeps the same format. To go back further, reinstall [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0): it drops the v0.5 fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes and keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. CLI credentials remain untouched. Report the failed interaction and platform, then ship the fix as a new patch release.
+Quit Margin and reinstall an older release. Each row says what that version does with settings from the release above it; going further back adds the rows up. CLI credentials remain untouched. When a release adds or changes settings fields, add a row at the top.
+
+| Reinstall | What it ignores or changes |
+| --- | --- |
+| [v0.10.1](https://github.com/Abulkosim/margin/releases/tag/v0.10.1) or [v0.10.0](https://github.com/Abulkosim/margin/releases/tag/v0.10.0) | Nothing; the settings format is identical to v0.10.2. |
+| [v0.9.0](https://github.com/Abulkosim/margin/releases/tag/v0.9.0) | Ignores `autostartPromptDismissed` and `incomplete` on saved readings; keeps everything else. Start at login stays as you set it. |
+| [v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2) | Ignores `paceAlerts`, `staleAlerts` and the run-out alert memory; keeps everything else. The card pace line goes back to the older estimate. |
+| [v0.8.1](https://github.com/Abulkosim/margin/releases/tag/v0.8.1) or [v0.8.0](https://github.com/Abulkosim/margin/releases/tag/v0.8.0) | Nothing; the settings format is identical to v0.8.2. |
+| [v0.7.0](https://github.com/Abulkosim/margin/releases/tag/v0.7.0) | Ignores `weeklyDigest`, the stored digest summary and `balance` on snapshots; keeps everything else. A weekly-only Codex window moved to the weekly slot by v0.8.0 shows as Session again until its next refresh. |
+| [v0.6.0](https://github.com/Abulkosim/margin/releases/tag/v0.6.0) | Ignores `burnAlerts`, `burnThreshold` and the fast-alert memory; keeps everything else. Switches already made stay made: the CLI folders keep their swapped sign-ins, and v0.6.0 shows each account under its new folder. Margin backups in the Keychain (`Margin backup`) or `backups/` stay until you delete them. |
+| [v0.5.1](https://github.com/Abulkosim/margin/releases/tag/v0.5.1) | Ignores `accountOrder`; history keeps the same format. |
+| [v0.4.0](https://github.com/Abulkosim/margin/releases/tag/v0.4.0) | Drops the v0.5 fields (`trayMetric`, `trayShowPercent`, `overviewLayout`, `notifyOnReset`, `autoCheckUpdates`, `ignoredSources`, `lastUpdateCheckAt`) with recovery notes; keeps accounts, intervals, theme, and history. Removed accounts may reappear on Find accounts. |
+
+Report the failed interaction and platform, then ship the fix as a new patch release.
 
 ## Package managers
 

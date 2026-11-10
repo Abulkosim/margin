@@ -1,5 +1,7 @@
 # Listings (plan 3.12)
 
+> Drafts. Lists 1 to 3 are submitted (see [README.md](README.md)); the optional lists are not. Check every claim against the [README](../../README.md) before reusing them.
+
 Drafts. Submit 👤 by hand, one PR or form per list. Rules fetched 2026-10-22; re-read before submitting.
 
 Repo link everywhere: `https://github.com/Abulkosim/margin`. Swap in `https://abulkosim.github.io/margin/` as the homepage link only once Pages is live (plan 3.10).

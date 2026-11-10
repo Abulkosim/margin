@@ -1,5 +1,7 @@
 # Launch posts (plan 3.13)
 
+> Drafts written for older releases. Check every claim against the [README](../../README.md) before use.
+
 **Drafts. Post in your own words. One community per day. Reply to every comment.**
 
 Bodies were written for v0.5.0; check each claim against the README before posting. Say you're the developer in every post. Never "bypass limits"; Margin displays them.
