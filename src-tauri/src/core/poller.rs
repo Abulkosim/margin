@@ -3,7 +3,7 @@ use super::{
     delivery::Message,
     digest, forecast,
     model::{AccountSource, UsageError},
-    notifications::{self, Clock12h},
+    notifications::{self, AlertMemory, Clock12h},
     outage::{self, Outage},
     providers,
     settings::NotificationPermission,
@@ -209,7 +209,9 @@ async fn sync_permission(app: &AppHandle, runtime: &Runtime) {
     }
     let mut inner = runtime.inner.lock().await;
     inner.view.settings.notification_permission = next;
-    inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+    inner.view.notice = runtime
+        .persist(&inner.view, &inner.alerts, &inner.delivery)
+        .err();
     inner.view.changed();
     let view = inner.view.clone();
     drop(inner);
@@ -226,19 +228,32 @@ pub fn submit(app: &AppHandle, title: &str, body: Option<&str>) -> bool {
     builder.show().is_ok()
 }
 
-fn submit_pending(app: &AppHandle, inner: &mut crate::runtime::RuntimeState) -> bool {
-    let crate::runtime::RuntimeState { view, delivery, .. } = inner;
+fn submit_pending(
+    app: &AppHandle,
+    runtime: &Runtime,
+    inner: &mut crate::runtime::RuntimeState,
+) -> bool {
+    let crate::runtime::RuntimeState {
+        view,
+        alerts,
+        delivery,
+        ..
+    } = inner;
     if delivery.is_idle() {
         return false;
     }
-    delivery.attempt(
+    let attempt = delivery.attempt(
         &mut view.notification_failed_at,
         &view.settings,
         &view.accounts,
         chrono::Utc::now(),
         Clock12h::system(),
         |title, body| submit(app, title, body),
-    )
+    );
+    if attempt.save {
+        view.notice = runtime.persist(view, alerts, delivery).err();
+    }
+    attempt.failure_changed || attempt.save
 }
 
 /// Queues an alert for accounts that just crossed 30 minutes without a reading.
@@ -286,7 +301,9 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
         loop {
             let mut inner = runtime.inner.lock().await;
             if runtime.flush_due() {
-                inner.view.notice = runtime.persist(&inner.view, &inner.alerts).err();
+                inner.view.notice = runtime
+                    .persist(&inner.view, &inner.alerts, &inner.delivery)
+                    .err();
             }
             let tick = SystemTime::now();
             let interval = Duration::from_secs(inner.view.settings.poll_interval_seconds);
@@ -312,7 +329,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     .or_insert_with(|| Schedule::new(Duration::from_millis(index as u64 * 800)));
             }
             not_updating(&mut inner, chrono::Utc::now());
-            let failure_changed = submit_pending(&app, &mut inner);
+            let failure_changed = submit_pending(&app, &runtime, &mut inner);
             let now = Instant::now();
             let mut due = Vec::new();
             let running = inner
@@ -406,6 +423,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     };
                     let active_interval = inner.view.settings.poll_interval_seconds;
                     let mut alerts = Vec::new();
+                    let mut before = AlertMemory::new();
                     let mut identity_changed = false;
                     let error = result.as_ref().err().cloned();
                     match result {
@@ -417,6 +435,13 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                                     .retain(|key, _| !key.starts_with(&format!("{}/", account.id)));
                                 inner.delivery.forget(&account.id);
                             }
+                            let prefix = format!("{}/", account.id);
+                            before = inner
+                                .alerts
+                                .iter()
+                                .filter(|(key, _)| key.starts_with(&prefix))
+                                .map(|(key, memory)| (key.clone(), memory.clone()))
+                                .collect();
                             alerts = notifications::observe(
                                 &mut inner.alerts,
                                 &account.id,
@@ -524,22 +549,27 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         error.retry_at = retry_at;
                     }
                     inner.view.refreshing = inner.view.accounts.iter().any(|item| item.refreshing);
-                    let urgent = !alerts.is_empty() || identity_changed;
-                    if let Some(saved) = runtime.persist_reading(&inner.view, &inner.alerts, urgent)
-                    {
-                        inner.view.notice = saved.err();
-                    }
                     let raised = !alerts.is_empty();
                     let now = chrono::Utc::now();
                     for alert in alerts {
+                        let before = before
+                            .get(&format!("{}/{}", account.id, alert.window_id))
+                            .cloned();
                         inner.delivery.enqueue(
                             Some(&account.id),
                             Message::Alert {
                                 label: account.label.clone(),
                                 alert,
+                                before,
                             },
                             now,
                         );
+                    }
+                    let urgent = raised || identity_changed;
+                    if let Some(saved) =
+                        runtime.persist_reading(&inner.view, &inner.alerts, &inner.delivery, urgent)
+                    {
+                        inner.view.notice = saved.err();
                     }
                     inner.view.changed();
                     let view = inner.view.clone();

@@ -284,7 +284,7 @@ pub async fn save_settings(
             chrono::Utc::now(),
         )));
     }
-    if let Err(error) = runtime.persist(&next, &inner.alerts) {
+    if let Err(error) = runtime.persist(&next, &inner.alerts, &inner.delivery) {
         if enabling_digest {
             runtime.set_digest_state(previous_digest);
         }
