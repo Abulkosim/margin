@@ -1,6 +1,6 @@
 use super::{
     digest::DigestState,
-    model::{Account, Snapshot},
+    model::{Account, Snapshot, MAX_LABEL_CHARS, MAX_WINDOWS},
     notifications::AlertMemory,
     settings::Settings,
 };
@@ -15,8 +15,8 @@ use std::{
 };
 
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_ACCOUNTS: usize = 100;
-const MAX_WINDOWS: usize = 64;
+pub const MAX_ACCOUNTS: usize = 100;
+pub const STATE_VERSION: u32 = 1;
 use super::accounts::MAX_IGNORED_SOURCES;
 
 #[derive(Default, Deserialize, Serialize)]
@@ -56,7 +56,7 @@ pub fn read(path: &Path) -> Result<StoredState, String> {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(StoredState {
-                version: 1,
+                version: STATE_VERSION,
                 ..StoredState::default()
             });
         }
@@ -151,8 +151,8 @@ fn decode(value: Value) -> Result<StoredState, String> {
         return Err(invalid_store());
     };
     match root.get("version").and_then(Value::as_u64) {
-        Some(1) => {}
-        Some(version) if version > 1 => return Err(newer_store()),
+        Some(version) if version == u64::from(STATE_VERSION) => {}
+        Some(version) if version > u64::from(STATE_VERSION) => return Err(newer_store()),
         _ => return Err(invalid_store()),
     }
     let mut recovered = Vec::new();
@@ -164,7 +164,9 @@ fn decode(value: Value) -> Result<StoredState, String> {
                 let name = item
                     .get("label")
                     .and_then(Value::as_str)
-                    .filter(|label| valid_text(label, 192) && label.chars().count() <= 48)
+                    .filter(|label| {
+                        valid_text(label, 192) && label.chars().count() <= MAX_LABEL_CHARS
+                    })
                     .map(|label| format!("“{label}”"))
                     .unwrap_or_else(|| (index + 1).to_string());
                 if accounts.len() >= MAX_ACCOUNTS {
@@ -267,7 +269,7 @@ fn decode(value: Value) -> Result<StoredState, String> {
         },
     };
     Ok(StoredState {
-        version: 1,
+        version: STATE_VERSION,
         accounts,
         settings,
         alerts,
@@ -324,7 +326,7 @@ fn invalid_store() -> String {
 }
 
 fn validate(state: &StoredState) -> Result<(), String> {
-    if state.version != 1 {
+    if state.version != STATE_VERSION {
         return Err(newer_store());
     }
     state.settings.validate()?;
@@ -378,7 +380,7 @@ fn validate(state: &StoredState) -> Result<(), String> {
 fn validate_account(account: &Account) -> Result<(), String> {
     if !valid_id(&account.id)
         || !valid_text(&account.label, 192)
-        || account.label.chars().count() > 48
+        || account.label.chars().count() > MAX_LABEL_CHARS
         || account.color.len() != 7
         || !account.color.starts_with('#')
         || !account.color[1..]

@@ -2,9 +2,10 @@ use crate::{
     core::{
         accounts,
         digest::DigestState,
-        model::{Account, Provider},
+        model::{Account, Provider, MAX_LABEL_CHARS},
         poller,
         settings::{OverviewLayout, Settings, TrayMode},
+        store::MAX_ACCOUNTS,
     },
     runtime::{publish, AppState, Runtime},
 };
@@ -125,7 +126,7 @@ fn merge_discovered(
             existing.source = account.source;
             continue;
         }
-        if state.accounts.len() >= 100 {
+        if state.accounts.len() >= MAX_ACCOUNTS {
             break;
         }
         if !starting_ids.contains(&account.id)
@@ -180,8 +181,10 @@ pub async fn add_account(
             if state.accounts.iter().any(|item| item.id == account.id) {
                 return Err("That account folder is already connected.".into());
             }
-            if state.accounts.len() >= 100 {
-                return Err("Margin supports up to 100 account folders.".into());
+            if state.accounts.len() >= MAX_ACCOUNTS {
+                return Err(format!(
+                    "Margin supports up to {MAX_ACCOUNTS} account folders."
+                ));
             }
             state.accounts.push(account);
             Ok(())
@@ -220,8 +223,13 @@ pub async fn rename_account(
     label: String,
 ) -> Result<AppState, String> {
     let label = label.trim().to_string();
-    if label.is_empty() || label.chars().count() > 48 || label.chars().any(char::is_control) {
-        return Err("Use an account name between 1 and 48 characters.".into());
+    if label.is_empty()
+        || label.chars().count() > MAX_LABEL_CHARS
+        || label.chars().any(char::is_control)
+    {
+        return Err(format!(
+            "Use an account name between 1 and {MAX_LABEL_CHARS} characters."
+        ));
     }
     runtime
         .change(&app, move |state| {

@@ -89,7 +89,7 @@ impl Runtime {
             Ok(saved) => (saved, None),
             Err(error) => (
                 StoredState {
-                    version: 1,
+                    version: store::STATE_VERSION,
                     ..StoredState::default()
                 },
                 Some(format!("{error} Settings file: {}.", store_path.display())),
@@ -172,7 +172,7 @@ impl Runtime {
         store::reset(
             &self.store_path,
             &StoredState {
-                version: 1,
+                version: store::STATE_VERSION,
                 settings: next.settings.clone(),
                 ..StoredState::default()
             },
@@ -209,7 +209,7 @@ impl Runtime {
         store::save(
             &self.store_path,
             &StoredState {
-                version: 1,
+                version: store::STATE_VERSION,
                 accounts: view.accounts.clone(),
                 settings: view.settings.clone(),
                 alerts: delivery.saved_alerts(alerts),
@@ -387,7 +387,7 @@ mod tests {
             refreshing: false,
         };
         let saved = StoredState {
-            version: 1,
+            version: store::STATE_VERSION,
             accounts: vec![account.clone()],
             ..StoredState::default()
         };

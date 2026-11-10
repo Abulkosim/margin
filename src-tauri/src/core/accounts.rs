@@ -1,4 +1,4 @@
-use super::model::{Account, AccountSource, Identity, Provider};
+use super::model::{Account, AccountSource, Identity, Provider, MAX_LABEL_CHARS};
 use super::providers::claude::keychain_suffix;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -284,7 +284,7 @@ pub(crate) fn default_label(provider: Provider, path: &Path) -> String {
     if label.is_empty() {
         provider.name().into()
     } else {
-        label.chars().take(48).collect()
+        label.chars().take(MAX_LABEL_CHARS).collect()
     }
 }
 

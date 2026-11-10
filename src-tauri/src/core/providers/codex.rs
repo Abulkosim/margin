@@ -5,7 +5,7 @@ use super::{
 };
 use crate::core::model::{
     Account, AccountSource, Balance, Credits, Identity, Provider, ResetGrants, Snapshot,
-    SpendLimit, UsageError, UsageWindow,
+    SpendLimit, UsageError, UsageWindow, MAX_WINDOWS,
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -435,7 +435,6 @@ pub(super) fn usage_url(base: &str) -> Result<Url, UsageError> {
     Ok(url)
 }
 
-const MAX_WINDOWS: usize = 64;
 /// The largest integer the interface reads exactly.
 const MAX_WINDOW_SECONDS: u64 = (1 << 53) - 1;
 

@@ -7,7 +7,7 @@ use super::{
 use crate::core::model::WindowScope;
 use crate::core::model::{
     valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, ResetGrants,
-    Snapshot, UsageError, UsageWindow,
+    Snapshot, UsageError, UsageWindow, MAX_WINDOWS,
 };
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
@@ -467,7 +467,6 @@ const OPTIONAL_WINDOWS: [(&str, &str, u64); 4] = [
     ("seven_day_routines", "Routines", 604_800),
     ("seven_day_cowork", "Cowork", 604_800),
 ];
-const MAX_WINDOWS: usize = 64;
 
 fn fixed_window(
     value: &Value,
