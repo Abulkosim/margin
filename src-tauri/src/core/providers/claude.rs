@@ -23,10 +23,10 @@ const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const PROFILE_TTL: Duration = Duration::from_secs(3600);
 const EXPIRY_SKEW_MS: i64 = 60_000;
 
-struct Credentials {
-    access_token: String,
-    plan: Option<String>,
-    expires_at: Option<i64>,
+pub(super) struct Credentials {
+    pub(super) access_token: String,
+    pub(super) plan: Option<String>,
+    pub(super) expires_at: Option<i64>,
 }
 
 #[derive(Default)]
@@ -97,14 +97,12 @@ async fn fetch_from(
         .filter(|expires_at| *expires_at <= chrono::Utc::now().timestamp_millis() + EXPIRY_SKEW_MS)
     {
         let directory = sign_in_directory(&account.source);
-        return Err(match chrono::DateTime::from_timestamp_millis(expires_at) {
-            Some(since) => token_expired(
-                Provider::Claude,
-                directory,
-                since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            ),
-            None => signed_out(Provider::Claude, directory, None),
-        });
+        return Err(
+            match chrono::DateTime::from_timestamp_millis(expires_at).and_then(super::rfc3339) {
+                Some(since) => token_expired(Provider::Claude, directory, since),
+                None => signed_out(Provider::Claude, directory, None),
+            },
+        );
     }
     let mut response = usage_request(client, base_url, &credentials.access_token, true).await?;
     if needs_query_fallback(response.status()) {
@@ -308,7 +306,7 @@ fn keychain_or_file(
     }
 }
 
-fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
+pub(super) fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| malformed_credentials())?;
     let oauth = value
         .get("claudeAiOauth")
@@ -540,9 +538,10 @@ fn unreadable_window(value: &Value, id: &str) -> bool {
         .is_some_and(|window| !window.is_empty() && !window.contains_key("utilization"))
 }
 
-/// A malformed core window fails the reading. Anything else is dropped and the reading is marked
-/// incomplete. A fixed window standing in for a malformed scoped limit of the same model keeps that
-/// limit's id, so its alerts and history do not change identity between readings.
+/// A malformed core window fails the reading. Anything else, including an unreadable core window,
+/// is dropped and the reading is marked incomplete. A fixed window standing in for a malformed
+/// scoped limit of the same model keeps that limit's id, so its alerts and history do not change
+/// identity between readings.
 pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     if !value.is_object() {
         return Err(malformed_response());
@@ -551,7 +550,9 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
     let mut incomplete = false;
     let mut unreadable_scoped = HashMap::new();
     for entry in CORE_WINDOWS {
-        windows.extend(fixed_window(value, entry)?);
+        let window = fixed_window(value, entry)?;
+        incomplete |= window.is_none() && unreadable_window(value, entry.0);
+        windows.extend(window);
     }
     if let Some(limits) = value.get("limits").filter(|value| !value.is_null()) {
         let mut scoped_ids = HashSet::new();
@@ -623,12 +624,12 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
 
 const MAX_RESETS: u64 = 50;
 
-fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
     let block = value?.as_object()?;
     if !block.get("eligible")?.as_bool()? {
         return None;
     }
-    let mut available = 0;
+    let mut available: u64 = 0;
     let mut soonest: Option<DateTime<Utc>> = None;
     for grant in block.get("grants")?.as_array()? {
         let left = grant.get("resets_left")?.as_u64()?;
@@ -655,7 +656,7 @@ fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetG
         {
             continue;
         }
-        available += left;
+        available = available.saturating_add(left);
         if available > MAX_RESETS {
             return None;
         }
@@ -663,10 +664,14 @@ fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetG
             soonest = Some(soonest.map_or(ends, |soonest| soonest.min(ends)));
         }
     }
-    (available > 0).then(|| ResetGrants {
+    let expires_at = match soonest {
+        Some(date) => Some(super::rfc3339(date)?),
+        None => None,
+    };
+    (available > 0).then_some(ResetGrants {
         available: available as u32,
         kind: None,
-        expires_at: soonest.map(|date| date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        expires_at,
     })
 }
 
@@ -722,7 +727,7 @@ fn nonnegative_amount(value: &Value) -> Result<f64, UsageError> {
         .ok_or_else(malformed_response)
 }
 
-fn parse_profile(value: &Value) -> Identity {
+pub(super) fn parse_profile(value: &Value) -> Identity {
     let email = [
         "/account/email",
         "/account/email_address",
@@ -839,6 +844,12 @@ mod tests {
             json!({"eligible": true, "grants": [{"resets_left": 1}]}),
             json!({"eligible": true, "grants": [{"resets_left": 2, "resets_total": 1, "paused": false}]}),
             json!({"eligible": true, "grants": [{"resets_left": 51, "paused": false}]}),
+            serde_json::from_str::<Value>(include_str!(
+                "../../../fixtures/claude-reset-grants-overflow.json"
+            ))
+            .unwrap()["cedar_ember"]
+                .clone(),
+            json!({"eligible": true, "grants": [{"resets_left": 1, "paused": false, "ends_at": "9999-12-31T23:30:00-05:00"}]}),
         ] {
             assert!(parse_reset_grants(Some(&block), Utc::now()).is_none());
         }
@@ -937,6 +948,24 @@ mod tests {
             "seven_day_sonnet": {"utilization": null, "resets_at": null},
             "seven_day_opus": {},
             "limits": [{"kind": "weekly_scoped", "percent": null, "scope": {"model": {"display_name": "Opus"}}}],
+        }))
+        .unwrap();
+        assert!(!snapshot.incomplete);
+    }
+
+    #[test]
+    fn an_unreadable_core_window_is_dropped_and_marks_the_reading_incomplete() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/claude-core-unreadable.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Weekly");
+        let snapshot = parse_usage(&json!({
+            "five_hour": {"utilization": null, "resets_at": null},
+            "seven_day": {"utilization": 48},
         }))
         .unwrap();
         assert!(!snapshot.incomplete);
@@ -1144,6 +1173,11 @@ mod tests {
         let value: Value =
             serde_json::from_str(include_str!("../../../fixtures/claude-core-malformed.json"))
                 .unwrap();
+        assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/claude-reset-out-of-range.json"
+        ))
+        .unwrap();
         assert_eq!(parse_usage(&value).unwrap_err().kind, "invalidResponse");
         for core in [
             json!({"five_hour": "full", "seven_day": {"utilization": 1}}),
@@ -1432,6 +1466,26 @@ attributes:
             command,
             super::super::sign_in_command(Provider::Claude, Some(directory.path()))
         );
+    }
+
+    #[tokio::test]
+    async fn an_expiry_before_year_zero_has_no_since_time() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"synthetic","expiresAt":-62167219201000}}"#,
+        )
+        .unwrap();
+        let error = fetch_from(
+            &reqwest::Client::new(),
+            &config_account(directory.path()),
+            &ProfileCache::default(),
+            "https://127.0.0.1:9",
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, "signedOut");
+        assert_eq!(error.signed_out_since, None);
     }
 
     #[tokio::test]

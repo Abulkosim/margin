@@ -1,0 +1,11 @@
+{
+  "five_hour": { "utilization": 100, "resets_at": "2026-10-16T12:00:00Z" },
+  "cedar_ember": {
+    "eligible": true,
+    "grants": [
+      { "resets_left": 1, "starts_at": null, "ends_at": null, "paused": false },
+      { "resets_left": 18446744073709551615, "starts_at": null, "ends_at": null, "paused": false },
+      { "resets_left": 3, "starts_at": null, "ends_at": null, "paused": false }
+    ]
+  }
+}

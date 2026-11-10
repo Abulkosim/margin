@@ -9,7 +9,7 @@ use crate::core::model::{
 };
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use reqwest::Url;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -70,10 +70,10 @@ fn reset_credits_key(url: &Url, credentials: &Credentials, inline: u32) -> [u8; 
     digest.finalize().into()
 }
 
-struct Credentials {
-    access_token: String,
-    account_id: Option<String>,
-    identity: Identity,
+pub(super) struct Credentials {
+    pub(super) access_token: String,
+    pub(super) account_id: Option<String>,
+    pub(super) identity: Identity,
 }
 
 pub(super) async fn fetch(
@@ -162,7 +162,7 @@ fn authorized_get(
     Ok(request)
 }
 
-fn reset_credits_url(usage: &Url) -> Option<Url> {
+pub(super) fn reset_credits_url(usage: &Url) -> Option<Url> {
     let base = usage.path().strip_suffix("/wham/usage")?;
     let mut url = usage.clone();
     url.set_path(&format!("{base}/wham/rate-limit-reset-credits"));
@@ -188,7 +188,7 @@ async fn fetch_reset_credits(
 
 const MAX_RESETS: u64 = 50;
 
-fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
     let available = value
         .get("available_count")?
         .as_u64()
@@ -224,10 +224,14 @@ fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> 
         .then(|| kinds.into_iter().next())
         .flatten()
         .filter(|kind| kind.len() <= 64);
+    let expires_at = match soonest {
+        Some(date) => Some(super::rfc3339(date)?),
+        None => None,
+    };
     Some(ResetGrants {
         available: available as u32,
         kind,
-        expires_at: soonest.map(|date| date.to_rfc3339_opts(SecondsFormat::Secs, true)),
+        expires_at,
     })
 }
 
@@ -264,7 +268,7 @@ fn ensure_same_credentials(
     Ok(())
 }
 
-fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
+pub(super) fn parse_credentials(bytes: &[u8]) -> Result<Credentials, UsageError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| malformed_credentials())?;
     if value
         .get("auth_mode")
@@ -337,7 +341,7 @@ fn parse_account_id(value: Option<&Value>) -> Result<Option<String>, UsageError>
     Ok(Some(id.to_owned()))
 }
 
-fn jwt_claims(token: &str) -> Option<Value> {
+pub(super) fn jwt_claims(token: &str) -> Option<Value> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 || parts[1].len() > 32_768 {
         return None;
@@ -395,7 +399,7 @@ fn config_error() -> UsageError {
     )
 }
 
-fn usage_url(base: &str) -> Result<Url, UsageError> {
+pub(super) fn usage_url(base: &str) -> Result<Url, UsageError> {
     let invalid = || {
         UsageError::new("configuration", "Codex chatgpt_base_url must be an HTTPS URL without credentials, a query, or a fragment.")
     };
@@ -425,6 +429,8 @@ fn usage_url(base: &str) -> Result<Url, UsageError> {
 }
 
 const MAX_WINDOWS: usize = 64;
+/// The largest integer the interface reads exactly.
+const MAX_WINDOW_SECONDS: u64 = (1 << 53) - 1;
 
 /// A malformed core window fails the reading. Anything else is dropped and the reading is marked
 /// incomplete.
@@ -433,10 +439,10 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         return Err(malformed_response());
     }
     let mut windows = Vec::new();
-    if let Some(rate_limit) = value.get("rate_limit").filter(|value| !value.is_null()) {
-        append_windows(rate_limit, "", None, &mut windows)?;
-    }
     let mut incomplete = false;
+    if let Some(rate_limit) = value.get("rate_limit").filter(|value| !value.is_null()) {
+        incomplete |= append_windows(rate_limit, "", None, &mut windows)?;
+    }
     if let Some(additional) = value
         .get("additional_rate_limits")
         .filter(|value| !value.is_null())
@@ -487,7 +493,11 @@ fn additional_windows(
         return Ok(Vec::new());
     };
     let name = nonempty_string(entry.get("limit_name"))
-        .or_else(|| nonempty_string(entry.get("metered_feature")).map(|feature| humanize(&feature)))
+        .or_else(|| {
+            nonempty_string(entry.get("metered_feature"))
+                .map(|feature| humanize(&feature))
+                .filter(|name| !name.is_empty())
+        })
         .ok_or_else(malformed_response)?;
     if name.len() > 512 {
         return Err(malformed_response());
@@ -499,12 +509,14 @@ fn additional_windows(
     let digest = Sha256::digest(key.as_bytes());
     let fingerprint = crate::core::hex(&digest);
     let mut windows = Vec::new();
-    append_windows(
+    if append_windows(
         rate_limit,
         &format!("extra_{}_", &fingerprint[..16]),
         Some(&name),
         &mut windows,
-    )?;
+    )? {
+        return Err(malformed_response());
+    }
     Ok(windows)
 }
 
@@ -617,15 +629,18 @@ fn parse_spend_limit(value: Option<&Value>) -> Result<Option<SpendLimit>, UsageE
     }))
 }
 
+/// Appends the readable windows. `true` means a window was sent with fields but no
+/// `used_percent`; a null `used_percent` means inactive.
 fn append_windows(
     rate_limit: &Value,
     prefix: &str,
     name: Option<&str>,
     windows: &mut Vec<UsageWindow>,
-) -> Result<(), UsageError> {
+) -> Result<bool, UsageError> {
     if !rate_limit.is_object() {
         return Err(malformed_response());
     }
+    let mut unreadable = false;
     let mut taken: Vec<&str> = Vec::new();
     for (key, default_label) in [
         ("primary_window", "Session"),
@@ -638,6 +653,9 @@ fn append_windows(
             return Err(malformed_response());
         }
         let Some(utilization) = window.get("used_percent").filter(|value| !value.is_null()) else {
+            unreadable |= window
+                .as_object()
+                .is_some_and(|window| !window.is_empty() && !window.contains_key("used_percent"));
             continue;
         };
         let duration = match window
@@ -647,7 +665,7 @@ fn append_windows(
             Some(value) => Some(
                 value
                     .as_u64()
-                    .filter(|seconds| *seconds > 0)
+                    .filter(|seconds| (1..=MAX_WINDOW_SECONDS).contains(seconds))
                     .ok_or_else(malformed_response)?,
             ),
             None => None,
@@ -684,7 +702,7 @@ fn append_windows(
             window_seconds: duration,
         });
     }
-    Ok(())
+    Ok(unreadable)
 }
 
 #[cfg(test)]
@@ -988,6 +1006,7 @@ mod tests {
             json!({"additional_rate_limits": "many"}),
             json!({"additional_rate_limits": ["many"]}),
             json!({"additional_rate_limits": [{"rate_limit": {}}]}),
+            json!({"additional_rate_limits": [{"metered_feature": "codex-", "rate_limit": {"primary_window": {"used_percent": 9}}}]}),
             json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": "full"}]}),
             json!({"additional_rate_limits": [{"limit_name": "Spark", "rate_limit": {"primary_window": {"used_percent": "9"}}}]}),
             json!({"credits": "many"}),
@@ -1001,6 +1020,28 @@ mod tests {
             assert!(snapshot.incomplete, "{optional}");
             assert_eq!(snapshot.windows.len(), 1, "{optional}");
         }
+    }
+
+    #[test]
+    fn an_unreadable_window_is_dropped_and_marks_the_reading_incomplete() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-window-unreadable.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        let ids: Vec<_> = snapshot
+            .windows
+            .iter()
+            .map(|window| window.id.as_str())
+            .collect();
+        assert_eq!(ids, ["secondary_window"]);
+        let snapshot = parse_usage(&json!({"rate_limit": {
+            "primary_window": {"used_percent": null, "reset_at": null},
+            "secondary_window": {"used_percent": 40},
+        }}))
+        .unwrap();
+        assert!(!snapshot.incomplete);
     }
 
     #[test]
@@ -1030,6 +1071,7 @@ mod tests {
             json!("full"),
             json!({"primary_window": "full"}),
             json!({"primary_window": {"used_percent": 1, "reset_at": "soon"}}),
+            json!({"primary_window": {"used_percent": 1, "limit_window_seconds": MAX_WINDOW_SECONDS + 1}}),
         ] {
             assert!(parse_usage(&json!({"rate_limit": rate_limit})).is_err());
         }
@@ -1075,6 +1117,20 @@ mod tests {
         let snapshot = parse_usage(&json!({"rate_limit": {"secondary_window": {"used_percent": 50, "limit_window_seconds": 18_000}}})).unwrap();
         assert_eq!(snapshot.windows[0].label, "Session");
         assert_eq!(snapshot.windows[0].id, "primary_window");
+    }
+
+    #[test]
+    fn durations_the_interface_cannot_read_drop_the_limit() {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/codex-duration-out-of-range.json"
+        ))
+        .unwrap();
+        let snapshot = parse_usage(&value).unwrap();
+        assert!(snapshot.incomplete);
+        assert_eq!(snapshot.windows.len(), 1);
+        assert_eq!(snapshot.windows[0].label, "Session");
+        let snapshot = parse_usage(&json!({"rate_limit": {"primary_window": {"used_percent": 1, "limit_window_seconds": MAX_WINDOW_SECONDS}}})).unwrap();
+        assert_eq!(snapshot.windows[0].window_seconds, Some(MAX_WINDOW_SECONDS));
     }
 
     #[test]
@@ -1338,6 +1394,7 @@ mod tests {
             json!({"available_count": 1, "credits": {}}),
             json!({"available_count": 1, "credits": [{"status": "available", "expires_at": "soon"}]}),
             json!({"available_count": 0, "credits": []}),
+            json!({"available_count": 1, "credits": [{"status": "available", "expires_at": "9999-12-31T23:30:00-05:00"}]}),
         ] {
             assert!(parse_reset_credits(&malformed, at).is_none());
         }

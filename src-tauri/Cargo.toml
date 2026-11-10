@@ -40,6 +40,7 @@ tauri-plugin-updater = { version = "=2.14.1", default-features = false, features
 tauri = { version = "2.12.5", features = ["test"] }
 wiremock = "0.6.5"
 png = "0.18"
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 
 [[test]]
 name = "native_geometry"

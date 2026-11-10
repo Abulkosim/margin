@@ -1,8 +1,10 @@
 pub mod claude;
 pub mod codex;
+#[cfg(test)]
+mod properties;
 
 use super::model::{Account, Identity, Provider, Snapshot, UsageError};
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Datelike, SecondsFormat, Utc};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -283,7 +285,14 @@ fn timestamp(value: Option<&Value>) -> Result<Option<String>, UsageError> {
     } else {
         return Err(malformed_response());
     };
-    Ok(Some(parsed.to_rfc3339_opts(SecondsFormat::Secs, true)))
+    rfc3339(parsed).map(Some).ok_or_else(malformed_response)
+}
+
+/// The interface reads four-digit years only; chrono writes others as `+10000` or `-0001`.
+fn rfc3339(date: DateTime<Utc>) -> Option<String> {
+    (0..=9999)
+        .contains(&date.year())
+        .then(|| date.to_rfc3339_opts(SecondsFormat::Secs, true))
 }
 
 fn nonempty_string(value: Option<&Value>) -> Option<String> {
@@ -338,6 +347,18 @@ mod tests {
         assert_eq!(timestamp(None).unwrap(), None);
         assert_eq!(timestamp(Some(&Value::Null)).unwrap(), None);
         assert!(timestamp(Some(&json!("soon"))).is_err());
+        assert_eq!(
+            timestamp(Some(&json!(253_402_300_799i64))).unwrap(),
+            Some("9999-12-31T23:59:59Z".into())
+        );
+        for unreadable in [
+            json!(253_402_300_800i64),
+            json!(-62_167_219_201i64),
+            json!("9999-12-31T23:59:59-05:00"),
+            json!("0000-01-01T00:00:00+01:00"),
+        ] {
+            assert!(timestamp(Some(&unreadable)).is_err(), "{unreadable}");
+        }
     }
 
     #[test]
