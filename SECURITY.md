@@ -26,14 +26,14 @@ Confirmed issues are fixed in a new release. The advisory is published after the
 
 ## Automated checks
 
-Every push to `main`, every pull request, and a weekly schedule run `cargo audit`, `cargo deny` (advisories, licenses, bans, sources; see `src-tauri/deny.toml`), and `pnpm audit --prod --audit-level high`. OpenSSF Scorecard runs on `main` and weekly, with results in code scanning and on the README badge. Release builds carry signed build provenance and SBOM attestations; verify them with `gh attestation verify <file> --repo Abulkosim/margin`.
+Every push to `main`, every pull request, and a weekly schedule run `cargo audit`, `cargo deny` (advisories, licenses, bans, sources; see `src-tauri/deny.toml`), and `pnpm audit --prod --audit-level high`. CodeQL scans the workflows, TypeScript and Rust on the same schedule. OpenSSF Scorecard runs on `main` and weekly, with results in code scanning and on the README badge. Release builds carry signed build provenance and SBOM attestations; verify them with `gh attestation verify <file> --repo Abulkosim/margin`.
 
 ## Scope
 
 In scope:
 
 - Exposure of CLI tokens or credential contents outside Margin's Rust process, including to the interface, logs, or Margin's own files.
-- Any write to CLI credential files or Keychain items.
+- Any write to CLI credential files or Keychain items outside a confirmed **Make active**, or one that loses or mixes up a sign-in.
 - Requests to hosts other than those listed in [PRIVACY.md](PRIVACY.md#network-requests), or tokens sent to the wrong host.
 - Update checks or installs that accept an unsigned, altered, or mismatched-version release, or a download from an unexpected address.
 - Reading files or Keychain items beyond those listed in [PRIVACY.md](PRIVACY.md#what-margin-reads).

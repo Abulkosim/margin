@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: Margin version
-      placeholder: 0.1.1
+      placeholder: 0.10.2
     validations:
       required: true
   - type: input
@@ -23,7 +23,7 @@ body:
     id: provider
     attributes:
       label: Area
-      options: [Claude, Codex, Both providers, Interface or tray, Installation]
+      options: [Claude, Codex, Both providers, Interface or tray, Alerts, Make active, Command line, Installation or updates]
     validations:
       required: true
   - type: textarea

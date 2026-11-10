@@ -2,11 +2,11 @@
 
 **Drafts. Post in your own words. One community per day. Reply to every comment.**
 
-Post only after v0.5.0 is published (bodies describe v0.5.0 features). Say you're the developer in every post. Never "bypass limits"; Margin displays them.
+Bodies were written for v0.5.0; check each claim against the README before posting. Say you're the developer in every post. Never "bypass limits"; Margin displays them.
 
 Shared facts (keep them true):
 - Free, MIT. macOS 12+ (universal), Windows x64. No Homebrew/winget yet.
-- Reads existing Claude Code / Codex OAuth sign-ins, calls the providers' OAuth usage endpoints. No cookies, no CLI scraping, no telemetry. Never writes CLI credential files.
+- Reads existing Claude Code / Codex OAuth sign-ins, calls the providers' OAuth usage endpoints. No cookies, no CLI scraping, no telemetry. Writes CLI sign-ins only when you confirm Make active.
 - Unsigned. macOS 15+: System Settings → Privacy & Security → Open Anyway. Windows: More info → Run anyway. Checksums + `gh attestation verify`.
 - Endpoints are undocumented and may change. API-key-only accounts are unsupported.
 
@@ -29,7 +29,7 @@ Rules (sidebar via a Reddit mirror, 2026-10-22): the rules text itself was not f
 > I run Claude Code with a few accounts in separate `CLAUDE_CONFIG_DIR` folders and kept running `/usage` in each one. So I built Margin (I'm the developer). It's a menu bar app (macOS) and tray app (Windows) that shows session, weekly, and per-model usage left plus reset times for every account at once. It also does Codex.
 >
 > - Reads the sign-ins Claude Code already stored and asks the OAuth usage endpoint. No cookies, no scraping, no telemetry.
-> - Read-only: never writes your credential files.
+> - Read-only by default: writes your sign-ins only when you confirm Make active.
 > - Alerts at thresholds, a pace line ("runs out ~Thu 14:00"), 7-day history.
 >
 > Built with Claude Code (Tauri + Rust + Vue).
@@ -81,7 +81,7 @@ Flair: **Showcase**.
 > I built Margin (developer here) to see Codex usage without opening a session. It reads `auth.json` from each `CODEX_HOME` you use and shows the 5h and weekly windows, extra limits, and reset times in the menu bar (macOS) or tray (Windows). It also shows available limit resets read-only; it never uses them. Claude Code accounts work too.
 >
 > - Uses the usage endpoint with your existing token; honors `chatgpt_base_url`.
-> - No cookies, no telemetry, never writes `auth.json`, never refreshes tokens.
+> - No cookies, no telemetry, writes `auth.json` only when you confirm Make active, never refreshes tokens.
 > - Signed out? Run `codex login` with that `CODEX_HOME`.
 >
 > Free, MIT. Unsigned builds: Windows "More info → Run anyway".
