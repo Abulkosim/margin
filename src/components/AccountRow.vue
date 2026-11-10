@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, coreSummary, formatRemaining, idleStatus, idleStatusShort, providerName, resetClock, resetIn, resetPassedText, retryingMessage, unreadSinceReset } from '../lib/format'
+import { accountIsStale, coreSummary, formatRemaining, idleStatus, idleStatusShort, providerName, quotaTone, resetClock, resetIn, resetPassedText, retryingMessage, unreadSinceReset } from '../lib/format'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{ account: Account; settings: Settings; now: number; pinned: boolean; expanded: boolean; connectionError: string | null; controls: string }>()
@@ -33,7 +33,7 @@ const status = computed(() => {
   return props.account.snapshot.incomplete ? 'Incomplete' : null
 })
 const shownStatus = computed(() => status.value === idle.value ? idleStatusShort(props.account, props.now) : status.value)
-const tone = (window: UsageWindow | null) => unread(window) ? {} : { 'quota-low': (window?.usedPercent ?? 0) >= 80, 'quota-empty': (window?.usedPercent ?? 0) >= 100, limiting: window !== null && window === summary.value.limiting }
+const tone = (window: UsageWindow | null) => unread(window) ? {} : { ...quotaTone(window?.usedPercent ?? 0), limiting: window !== null && window === summary.value.limiting }
 const value = (window: UsageWindow | null): string => window && !unread(window) ? `${formatRemaining(window.usedPercent)}%` : '–'
 const passed = (window: UsageWindow | null): string | undefined => window && unread(window) ? resetPassedText(window, props.now) : undefined
 const spoken = (name: string, window: UsageWindow): string => unread(window) ? `${name} ${resetPassedText(window, props.now).toLowerCase()}` : `${name} ${formatRemaining(window.usedPercent)} percent left`

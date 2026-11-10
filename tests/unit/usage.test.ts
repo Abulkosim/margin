@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { accountIsStale, accountSource, coreSummary, formatRemaining, groupWindows, modelWindowSummary, remainingPercent, relativeAge, resetCountdown, resetIn, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
+import { accountIsStale, accountSource, coreSummary, formatRemaining, groupWindows, modelWindowSummary, quotaTone, remainingPercent, relativeAge, resetCountdown, resetIn, retryingMessage, signedOutMessage, windowScope } from '../../src/lib/format.ts'
 import { accountSchema, appStateSchema, defaultSettings, settingsSchema, usageWindowSchema } from '../../src/lib/model.ts'
 
 const now = Date.parse('2026-10-16T10:00:00Z')
@@ -20,6 +20,13 @@ test('remaining quota never implies available quota below 1%', () => {
   assert.equal(formatRemaining(100), '0')
   assert.equal(formatRemaining(0), '100')
   assert.equal(formatRemaining(93.2), '7')
+})
+
+test('windows turn low at 20% remaining and empty at none', () => {
+  assert.deepEqual(quotaTone(79.9), { 'quota-low': false, 'quota-empty': false })
+  assert.deepEqual(quotaTone(80), { 'quota-low': true, 'quota-empty': false })
+  assert.deepEqual(quotaTone(99.9), { 'quota-low': true, 'quota-empty': false })
+  assert.deepEqual(quotaTone(100), { 'quota-low': true, 'quota-empty': true })
 })
 
 test('countdown preserves unknown and pending reset states', () => {

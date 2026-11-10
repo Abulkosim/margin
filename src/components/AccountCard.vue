@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Account, Settings, UsageWindow } from '../lib/model'
-import { accountIsStale, balanceLines, formatRemaining, groupWindows, idleAction, idleStatus, modelWindowSummary, paceText, providerName, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, retryingMessage, signedOutMessage, unreadSinceReset } from '../lib/format'
+import { accountIsStale, balanceLines, formatRemaining, groupWindows, idleAction, idleStatus, modelWindowSummary, paceText, providerName, quotaTone, relativeAge, remainingPercent, resetCountdown, resetGrantsText, resetPassedText, retryingMessage, signedOutMessage, unreadSinceReset } from '../lib/format'
 import { useAccountHistory } from '../lib/accountHistory'
 import { forecastPace, paceAt, paceWindowIds } from '../lib/pace'
 import AppIcon from './AppIcon.vue'
@@ -70,7 +70,7 @@ const plan = computed(() => props.account.identity.plan?.replaceAll('_', ' ').re
                 <span class="model-chip-name">{{ window.label }}</span>
                 <span class="model-chip-value">–</span>
               </span>
-              <span v-else class="model-chip" :class="{ 'quota-low': window.usedPercent >= 80, 'quota-empty': window.usedPercent >= 100 }" tabindex="0" role="progressbar" :aria-label="`${window.label} weekly remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining, ${spokenReset(window)}${stale ? ', last known' : ''}`">
+              <span v-else class="model-chip" :class="quotaTone(window.usedPercent)" tabindex="0" role="progressbar" :aria-label="`${window.label} weekly remaining${stale ? ', last known' : ''}`" :aria-valuenow="remainingPercent(window.usedPercent)" :aria-valuemin="0" :aria-valuemax="100" :aria-valuetext="`${formatRemaining(window.usedPercent)} percent remaining, ${spokenReset(window)}${stale ? ', last known' : ''}`">
                 <span class="model-chip-name">{{ window.label }}</span>
                 <span class="model-chip-value">{{ formatRemaining(window.usedPercent) }}%</span>
                 <span class="model-chip-meter"><span :style="{ width: `${remainingPercent(window.usedPercent)}%` }" /></span>

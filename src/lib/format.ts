@@ -5,6 +5,11 @@ export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, 100 - used))
 }
 
+/** Class names for a window with 20% or less remaining, and for one with none. */
+export function quotaTone(usedPercent: number): { 'quota-low': boolean; 'quota-empty': boolean } {
+  return { 'quota-low': usedPercent >= 80, 'quota-empty': usedPercent >= 100 }
+}
+
 export function formatRemaining(used: number): string {
   const remaining = remainingPercent(used)
   return remaining > 0 && remaining < 1 ? '<1' : Math.round(remaining).toString()
