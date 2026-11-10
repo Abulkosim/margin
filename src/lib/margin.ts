@@ -31,6 +31,9 @@ export function useMargin() {
   let connectingListener: Promise<void> | null = null
   let destroyed = false
   let toastTimer: ReturnType<typeof setTimeout> | undefined
+  let toastRemaining = 0
+  let toastStartedAt = 0
+  let toastHeld = false
   let clock: number | undefined
   const tick = (): void => { now.value = Date.now() }
   function syncClock(): void {
@@ -51,10 +54,25 @@ export function useMargin() {
   if (demo && (order === 'urgency' || order === 'added')) state.value.settings.accountOrder = order
   if (demo && query.get('prompt') === '1') state.value.settings.autostartPromptDismissed = false
 
-  function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
+  function scheduleDismiss(): void {
     clearTimeout(toastTimer)
+    toastTimer = undefined
+    if (!message.value || toastHeld) return
+    toastStartedAt = Date.now()
+    toastTimer = setTimeout(() => { message.value = null }, toastRemaining)
+  }
+
+  function notify(text: string, kind: 'error' | 'success' = 'success', action?: ToastAction): void {
     message.value = { kind, text, action }
-    toastTimer = setTimeout(() => { message.value = null }, kind === 'error' || action ? 9000 : 3500)
+    toastRemaining = kind === 'error' || action ? 9000 : 3500
+    scheduleDismiss()
+  }
+
+  function holdToast(held: boolean): void {
+    if (held === toastHeld) return
+    if (held && toastTimer !== undefined) toastRemaining = Math.max(toastRemaining - (Date.now() - toastStartedAt), 2000)
+    toastHeld = held
+    scheduleDismiss()
   }
 
   function acceptState(payload: unknown): boolean {
@@ -78,7 +96,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       const unlisten = await tauri.event.listen('state_changed', event => {
         try { acceptState(event.payload) }
-        catch { notify(connectionError.value ?? 'Could not read the latest account state.', 'error') }
+        catch { notify(connectionError.value ?? 'Couldn’t read the latest account state.', 'error') }
       })
       if (destroyed) unlisten()
       else stopListening = unlisten
@@ -95,7 +113,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       payload = await tauri.core.invoke('get_state')
     } catch {
-      connectionError.value = 'Could not read your accounts. Refresh to reconnect.'
+      connectionError.value = 'Couldn’t read your accounts. Refresh to reconnect.'
       throw new Error(connectionError.value)
     }
     const accepted = acceptState(payload)
@@ -165,7 +183,7 @@ export function useMargin() {
       })
       return typeof selected === 'string' && selected ? selected : null
     } catch {
-      notify('Could not open the folder picker. Type the folder path instead.', 'error')
+      notify('Couldn’t open the folder picker. Type the folder path instead.', 'error')
       return null
     }
   }
@@ -305,7 +323,7 @@ export function useMargin() {
       if (!tauri) throw new Error('Desktop connection unavailable')
       await tauri.core.invoke('hide_window')
     } catch {
-      notify('Could not hide the window. Try again.', 'error')
+      notify('Couldn’t hide the window. Try again.', 'error')
     }
   }
 
@@ -315,7 +333,7 @@ export function useMargin() {
     try {
       await reload()
     } catch {
-      connectionError.value ??= 'Could not connect to Margin. Close and reopen the app to try again.'
+      connectionError.value ??= 'Couldn’t connect to Margin. Close and reopen the app to try again.'
       notify(connectionError.value, 'error')
     } finally {
       loading.value = false
@@ -330,5 +348,5 @@ export function useMargin() {
     clearTimeout(toastTimer)
   })
 
-  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport }
+  return { state, loading, connectionError, pending, message, now, demo, desktop, refresh, sendTestNotification, discover, restoreIgnored, chooseFolder, addAccount, removeAccount, renameAccount, saveSettings, resetStore, hideWindow, previewMakeActive, makeActive, restoreSwitchBackup, dismissSwitchRestore, installWarning, previewProblemReport, openProblemReport, holdToast }
 }

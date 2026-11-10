@@ -135,4 +135,4 @@ The project stays focused on Claude and Codex. Inspired by [CodexBar](https://gi
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Bundles the [Inter](https://github.com/rsms/inter) typeface, © The Inter Project Authors, under the [SIL Open Font License 1.1](https://openfontlicense.org).

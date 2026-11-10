@@ -14,7 +14,7 @@ Use dedicated test accounts for checks 5 to 7, not sign-ins you depend on. Margi
    Expected: nothing appears. Margin still says "Sent at …", since desktop systems don't report this to it. Turn notifications back on.
 3. **Real threshold or run-out alert.** Set **Notify at** to just below an account's current usage remaining, or use the account until it crosses a threshold.
    Expected: one notification such as "Work · Session 19% left" within one refresh, and no second one on later refreshes. For a run-out warning, use an account quickly with **Run-out warnings** on: "Work · Session runs out around 16:30". Also record a fast usage alert if one fires.
-4. **Not-updating alert.** Needs a Claude account and a Codex account that both read fine, **Notify when usage stops updating** on, and Margin not sleeping. This blocks Claude Code on the machine during the test.
+4. **Not-updating alert.** Needs a Claude account and a Codex account that both read fine, **Not updating alerts** on, and Margin not sleeping. This blocks Claude Code on the machine during the test.
    - Block on Mac: `printf '0.0.0.0 api.anthropic.com\n:: api.anthropic.com\n' | sudo tee -a /etc/hosts`, then `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
    - Block on Windows: open Notepad as administrator, add `0.0.0.0 api.anthropic.com` and `:: api.anthropic.com` to `C:\Windows\System32\drivers\etc\hosts`, then run `ipconfig /flushdns`.
    - Quit and reopen Margin so it drops its open connection. Wait 30 minutes.

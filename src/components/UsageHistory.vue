@@ -71,7 +71,7 @@ function pointAt(event: PointerEvent): void {
       </div>
       <template v-else>
         <div class="history-reading">
-          <strong>{{ selected ? percentage(selected.remaining) : '—' }}<span>% remaining</span></strong>
+          <strong>{{ selected ? percentage(selected.remaining) : '–' }}<span>% remaining</span></strong>
           <span>{{ selected ? timestamp(selected.timestamp) : '' }}</span>
           <span class="history-boundary">{{ selected?.boundary ? boundaryLabel[selected.boundary] : last ? `Latest reading ${relativeAge(last.at, now)}` : '' }}</span>
         </div>

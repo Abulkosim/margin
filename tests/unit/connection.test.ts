@@ -158,7 +158,7 @@ test('hiding the window handles native failures without an unhandled rejection',
   t.after(() => harness.close())
   await assert.doesNotReject(harness.controller.hideWindow())
   assert.equal(harness.controller.message.value?.kind, 'error')
-  assert.equal(harness.controller.message.value?.text, 'Could not hide the window. Try again.')
+  assert.equal(harness.controller.message.value?.text, 'Couldn’t hide the window. Try again.')
 })
 
 test('preview removal advances the pinned account and preserves pinned mode', async t => {
@@ -247,4 +247,38 @@ test('reset invokes the native command and leaves recovery', async t => {
   assert.equal(harness.controller.state.value.recovery, false)
   assert.equal(harness.controller.state.value.accounts.length, 3)
   assert.match(harness.controller.message.value?.text ?? '', /backup/)
+})
+
+test('a held toast stays until released, then gets at least two seconds', async t => {
+  const harness = await mountMargin({ demo: true })
+  t.after(() => harness.close())
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const { controller } = harness
+  await controller.refresh()
+  assert.ok(controller.message.value)
+  t.mock.timers.tick(3000)
+  controller.holdToast(true)
+  t.mock.timers.tick(60_000)
+  assert.ok(controller.message.value)
+  controller.holdToast(false)
+  t.mock.timers.tick(1999)
+  assert.ok(controller.message.value)
+  t.mock.timers.tick(1)
+  assert.equal(controller.message.value, null)
+})
+
+test('a toast that arrives while held waits for release', async t => {
+  const harness = await mountMargin({ demo: true })
+  t.after(() => harness.close())
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const { controller } = harness
+  controller.holdToast(true)
+  await controller.refresh()
+  t.mock.timers.tick(60_000)
+  assert.ok(controller.message.value)
+  controller.holdToast(false)
+  t.mock.timers.tick(3499)
+  assert.ok(controller.message.value)
+  t.mock.timers.tick(1)
+  assert.equal(controller.message.value, null)
 })

@@ -22,7 +22,7 @@ export function useAccountHistory(account: () => Account, demo: () => boolean): 
       if (destroyed || current !== request) return
       state.value = { kind: 'ready', history }
     } catch {
-      if (!destroyed && current === request) state.value = { kind: 'error', message: 'Could not load history.' }
+      if (!destroyed && current === request) state.value = { kind: 'error', message: 'Couldn’t load history.' }
     }
   }
 
