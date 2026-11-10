@@ -6,7 +6,7 @@ mod runtime;
 mod support;
 mod updates;
 
-use crate::core::{poller, tray};
+use crate::core::{autostart, poller, tray};
 use runtime::Runtime;
 use std::{sync::Arc, time::Instant};
 use tauri::{Manager, WindowEvent};
@@ -20,7 +20,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            Some(vec!["--background"]),
+            Some(autostart::ARGS.to_vec()),
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_positioner::init())
@@ -72,6 +72,7 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Ok(enabled) = handle.autolaunch().is_enabled() {
+                    support::repair_autostart(&handle, enabled);
                     let mut inner = runtime.inner.lock().await;
                     inner.view.settings.sync_autostart(enabled);
                     inner.view.changed();
