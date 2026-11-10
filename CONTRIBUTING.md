@@ -62,7 +62,7 @@ pnpm test:e2e
 
 `pnpm verify` builds first because the native checks need the frontend assets. `pnpm lint:rust` and `pnpm test:rust` run the Rust steps alone.
 
-CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks) and the [native checks](docs/native-checks.md). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test.
+CI runs the same commands ([`ci.yml`](.github/workflows/ci.yml)). Browser tests cover the preview only; native behavior needs the [smoke checks](docs/verification.md#native-smoke-checks) and the [native checks](docs/native-checks.md). Provider tests use [synthetic and sanitized fixtures](src-tauri/fixtures/README.md) without network. A provider parsing change needs a fixture and a regression test. Property tests in `src-tauri/src/core/providers/properties.rs` run with `cargo test`. For longer fuzzing of the usage parsers, run `cargo +nightly fuzz run usage` in `src-tauri` after `pnpm build`; it needs [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) and is not run in CI.
 
 Never commit real tokens, credential files, account IDs, unredacted emails, or raw provider responses.
 
