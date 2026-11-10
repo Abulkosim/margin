@@ -11,6 +11,8 @@ Checked 2026-11-10 on Linux on the combined code, whose tree matches `main` afte
 - **#51 Parser properties.** 16 `proptest` properties, 256 cases each, add about 2 s. They found five bugs, each now fixed with a fixture and a regression test: reset-grant count overflow, reset times outside years 0000–9999, Codex window lengths above 2^53−1, unreadable core windows not marking the reading incomplete, and blank Codex limit names. Out-of-range values used to fail the interface's schema for the whole app state. `src-tauri/fuzz/` holds a cargo-fuzz target (`cargo +nightly fuzz run usage`). It has been checked to build but not run, and CI doesn't build it.
 - **#48 CodeQL** scans workflows, TypeScript and Rust. Its first run found nothing.
 
+**[v0.10.2 is published](https://github.com/Abulkosim/margin/releases/tag/v0.10.2).** Published 2026-11-10 17:20 UTC from `4811a08`, after main CI and the [release build](https://github.com/Abulkosim/margin/actions/runs/42862053835) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; release notes matched `changelogs/v0.10.2.md`. The public latest endpoint serves 0.10.2. As with v0.10.1, the macOS artifact check and updater install test were skipped.
+
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
 
 ## Previous release: v0.10.1 (dependency updates)
