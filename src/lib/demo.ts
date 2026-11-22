@@ -216,5 +216,5 @@ export function demoActivate(state: AppState, id: AccountId): { state: AppState;
 }
 
 export function createDemoUpdateState(scenario: string | null): UpdateState {
-  return scenario === 'update-available' ? { kind: 'available', version: '0.9.0' } : { kind: 'idle' }
+  return scenario === 'update-available' ? { kind: 'available', version: '1.0.0' } : { kind: 'idle' }
 }

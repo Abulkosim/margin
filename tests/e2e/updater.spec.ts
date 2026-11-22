@@ -179,7 +179,7 @@ for (const theme of ['light', 'dark']) {
     const updates = page.getByRole('region', { name: 'Updates', exact: true })
     await updates.scrollIntoViewIfNeeded()
     await expect(updates.locator('.update-dot')).toBeVisible()
-    await expect(updates.getByRole('status')).toHaveText('Version 0.9.0 available.')
+    await expect(updates.getByRole('status')).toHaveText('Version 1.0.0 available.')
     await expect(updates.getByRole('button')).toHaveAttribute('aria-disabled', 'true')
     await info.attach(`updater-${theme}-dot-settings`, { body: await updates.screenshot(), contentType: 'image/png' })
     expect(await page.evaluate(() => window.__UPDATE_TEST__?.calls)).toEqual([])
