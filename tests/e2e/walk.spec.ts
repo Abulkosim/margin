@@ -5,7 +5,7 @@ import { createDemoState } from '../../src/lib/demo.ts'
 import type { AppState, MakeActivePreview } from '../../src/lib/model.ts'
 
 // Walks every visible state in both themes and fails on defects a screenshot would show: horizontal
-// page scroll, text clipped without an ellipsis, ellipsized text with no way to read it in full,
+// page scroll, text clipped without an ellipsis, ellipsized text outside account names and emails,
 // overlapping text, text or icons below WCAG contrast, and clipped focus rings.
 // Set MARGIN_WALK_DIR to keep the PNGs for review.
 
@@ -150,16 +150,16 @@ async function findDefects(page: Page): Promise<Defect[]> {
       const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700)
       if (ratio < (large ? 3 : 4.5)) defects.push({ kind: 'contrast', text: item.text.slice(0, 60), detail: `${ratio.toFixed(2)}:1 at ${size}px` })
     }
-    // Text cut with an ellipsis must stay readable in full on hover: a title or a tooltip trigger around it.
+    // Only account identity (name, email, plan, status, folder) may be cut with an ellipsis; its full text
+    // stays in the DOM and accessible names. Controls, labels and copy must fit or wrap.
+    const identity = '.account-title, .account-subline, .compact-identity, .managed-account-copy, .account-path'
     for (const element of document.querySelectorAll('body *')) {
       const style = getComputedStyle(element)
-      if (style.textOverflow !== 'ellipsis' || element.scrollWidth <= element.clientWidth + 1 || visuallyHidden(element)) continue
+      if (style.textOverflow !== 'ellipsis' || element.scrollWidth <= element.clientWidth + 1 || visuallyHidden(element) || element.closest(identity)) continue
       const text = element.textContent?.trim() ?? ''
       const box = element.getBoundingClientRect()
       if (!text || box.width < 2 || box.bottom < 0 || box.top > window.innerHeight) continue
-      const titled = element.closest('[title]')?.getAttribute('title')?.includes(text)
-      const tooltip = element.closest('[data-state][aria-describedby], [data-grace-area-trigger], [data-state="closed"][tabindex]')
-      if (!titled && !tooltip) defects.push({ kind: 'truncated', text: text.slice(0, 60), detail: `.${[...element.classList].join('.')}` })
+      defects.push({ kind: 'truncated', text: text.slice(0, 60), detail: `.${[...element.classList].join('.')}` })
     }
     for (const icon of document.querySelectorAll('svg')) {
       const box = icon.getBoundingClientRect()
