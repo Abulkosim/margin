@@ -238,6 +238,48 @@ test('a hundred long account names stay scrollable and keyboard reachable', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
+test('a resting pointer does not take the keyboard choice when the menu scrolls under it', async ({ page }) => {
+  const state = createDemoState(null)
+  state.accounts = Array.from({ length: 40 }, (_, index) => accountSchema.parse({
+    id: `rest-account-${index}`,
+    provider: 'claude',
+    label: `Workspace ${String(index + 1).padStart(2, '0')}`,
+    color: '#b8d1bf',
+    source: { kind: 'configDir', path: `/example/cli/rest-${index}` },
+    identity: { email: null, plan: null },
+    snapshot: null,
+    error: null,
+    refreshing: false,
+  }))
+  await installDesktopBridge(page, { state, failure: 'none' })
+  await page.setViewportSize({ width: 360, height: 480 })
+  await page.goto('/')
+  await openSettings(page)
+  const trigger = page.getByRole('combobox', { name: 'Tray account', exact: true })
+  await trigger.focus()
+  await page.keyboard.press('Space')
+  const menu = page.getByRole('listbox')
+  await expect(menu.getByRole('option')).toHaveCount(41)
+  const box = await menu.boundingBox()
+  if (!box) throw new Error('menu has no box')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.keyboard.press('End')
+  const last = page.getByRole('option', { name: 'Workspace 40', exact: true })
+  await expect(last).toBeFocused()
+  // WebKit sends a mouse move with no movement after the list scrolls.
+  await page.waitForTimeout(300)
+  await expect(last).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(trigger).toContainText('Workspace 40')
+  await page.keyboard.press('Space')
+  const first = page.getByRole('option', { name: 'Lowest remaining', exact: true })
+  await first.scrollIntoViewIfNeeded()
+  const target = await first.boundingBox()
+  if (!target) throw new Error('option has no box')
+  await page.mouse.move(target.x + 10, target.y + target.height / 2, { steps: 4 })
+  await expect(first).toBeFocused()
+})
+
 test('settings tabs and reminder switch work entirely from the keyboard', async ({ page }) => {
   await page.goto('/?demo=1')
   await openSettings(page)
