@@ -1282,6 +1282,10 @@ pub struct Recovery {
 
 /// At launch: finish switches that wrote everything but not Margin's model, and
 /// offer a restore for any that stopped part way or failed verification.
+///
+/// A switch's account move is applied in memory when it finishes, so a later
+/// switch of the same provider marked Done saved it too, and may have reversed
+/// it since: such a Written record is closed instead of replayed.
 pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal, now: Timestamp) -> Recovery {
     let mut recovery = Recovery {
         offer: None,
@@ -1289,7 +1293,16 @@ pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal, now: Time
     };
     let mut records = journal.records();
     records.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-    for record in records {
+    let superseded: Vec<bool> = records
+        .iter()
+        .enumerate()
+        .map(|(index, record)| {
+            records[index + 1..]
+                .iter()
+                .any(|later| later.provider == record.provider && later.state == RecordState::Done)
+        })
+        .collect();
+    for (record, superseded) in records.into_iter().zip(superseded) {
         match record.state {
             RecordState::Started => {
                 let current: Option<Vec<Option<String>>> = record
@@ -1334,6 +1347,9 @@ pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal, now: Time
                         recovery.offer = Some(record);
                     }
                 }
+            }
+            RecordState::Written if superseded => {
+                let _ = journal.mark(&record.id, RecordState::Done);
             }
             RecordState::Written => recovery.apply.push(record),
             RecordState::VerifyFailed | RecordState::RollbackFailed if record.restorable(now) => {

@@ -1840,3 +1840,41 @@ fn codex_login_reads_claims_only_from_well_formed_tokens() {
         assert_eq!((login.key, login.email), (None, None));
     }
 }
+
+fn journal_record(id: &str, provider: &str, created_at: &str, state: &str) -> SwitchRecord {
+    serde_json::from_value(serde_json::json!({
+        "id": id, "provider": provider, "createdAt": created_at, "restore": false,
+        "state": state, "items": [], "locks": []
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_written_switch_saved_by_a_later_switch_is_not_replayed() {
+    let mut journal = FakeJournal {
+        records: vec![
+            journal_record("claude-b", "claude", "2026-10-16T10:05:00Z", "done"),
+            journal_record("claude-a", "claude", "2026-10-16T10:00:00Z", "written"),
+            journal_record("codex-c", "codex", "2026-10-16T10:01:00Z", "written"),
+            journal_record("claude-d", "claude", "2026-10-16T10:06:00Z", "written"),
+        ],
+        ..FakeJournal::default()
+    };
+    let recovery = recover(&FakeStore::default(), &mut journal, time::now());
+    let applied: Vec<&str> = recovery
+        .apply
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect();
+    assert_eq!(applied, ["codex-c", "claude-d"]);
+    let state = |id: &str| {
+        journal
+            .records
+            .iter()
+            .find(|record| record.id == id)
+            .unwrap()
+            .state
+    };
+    assert_eq!(state("claude-a"), RecordState::Done);
+    assert_eq!(state("claude-d"), RecordState::Written);
+}
