@@ -56,7 +56,10 @@ test('a new sign-in on the account never shows the previous sign-in’s history 
   assert.equal(view.state.value.kind, 'loading')
   replies.shift()?.(history(70))
   await setImmediate()
-  assert.equal(view.state.value.kind === 'ready' && view.state.value.history.points[0]?.usedPercent, 70)
+  // Read through a function: the asserts above narrowed `view.state.value.kind`.
+  const state = (): HistoryState => view.state.value
+  const loaded = state()
+  assert.equal(loaded.kind === 'ready' && loaded.history.points[0]?.usedPercent, 70)
 })
 
 test('a newer reading from the same sign-in keeps the loaded history visible while it reloads', async t => {
