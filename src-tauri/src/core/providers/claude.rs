@@ -57,16 +57,17 @@ impl ProfileCache {
     /// The identity to keep when the profile request fails. Tokens rotate, so a
     /// new token keeps the last email and plan on screen, but it may also be a
     /// different sign-in in that folder: its history key is dropped, which pauses
-    /// history instead of adding someone else's readings to it.
+    /// history instead of adding someone else's readings to it. The cache starts
+    /// empty, so a token it has not seen is treated the same way.
     fn fallback(&self, account: &str, token: &[u8; 32], stored: &Identity) -> Identity {
         let cache = self.0.lock().ok();
-        match cache.as_ref().and_then(|cache| cache.get(account)) {
+        let known = cache.as_ref().and_then(|cache| cache.get(account));
+        match known {
             Some(entry) if &entry.token == token => entry.identity.clone(),
-            Some(entry) => Identity {
+            _ => Identity {
                 history_key: None,
-                ..entry.identity.clone()
+                ..known.map_or_else(|| stored.clone(), |entry| entry.identity.clone())
             },
-            None => stored.clone(),
         }
     }
 
@@ -151,6 +152,8 @@ async fn fetch_from(
     Ok((snapshot, identity))
 }
 
+/// The signed-in person, or `None` when the request fails or the body names no one, so a
+/// changed response shape keeps the last-known identity instead of blanking it.
 async fn profile_request(
     client: &reqwest::Client,
     base_url: &str,
@@ -167,7 +170,8 @@ async fn profile_request(
         .await
         .ok()
         .filter(|response| response.status().is_success())?;
-    Some(parse_profile(&response_json(response).await.ok()?))
+    let profile = parse_profile(&response_json(response).await.ok()?);
+    (profile.email.is_some() || profile.history_key.is_some()).then_some(profile)
 }
 
 fn sign_in_directory(source: &AccountSource) -> Option<&Path> {
@@ -1238,6 +1242,19 @@ mod tests {
     }
 
     #[test]
+    fn a_cold_cache_fallback_drops_the_history_key() {
+        let cache = ProfileCache::default();
+        let stored = Identity {
+            email: Some("a@example.test".into()),
+            plan: Some("Pro".into()),
+            history_key: Some("k".repeat(64)),
+        };
+        let fallback = cache.fallback("acct", &[9; 32], &stored);
+        assert_eq!(fallback.email, stored.email);
+        assert_eq!(fallback.history_key, None);
+    }
+
+    #[test]
     fn removed_accounts_leave_the_profile_cache() {
         let cache = ProfileCache::default();
         let identity = Identity {
@@ -1511,6 +1528,48 @@ attributes:
         assert_eq!(identity.email.as_deref(), Some("person@example.test"));
         assert_eq!(identity.plan.as_deref(), Some("Pro"));
         assert_eq!(identity.history_key, None, "a new token pauses history");
+    }
+
+    #[tokio::test]
+    async fn a_profile_without_identity_counts_as_a_failed_request() {
+        for body in ["{}", r#"{"data":{"email":"x"}}"#, r#"{"error":"drift"}"#] {
+            let server = wiremock::MockServer::start().await;
+            wiremock::Mock::given(wiremock::matchers::path("/api/oauth/usage"))
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200)
+                        .set_body_string(include_str!("../../../fixtures/claude-all-windows.json")),
+                )
+                .mount(&server)
+                .await;
+            wiremock::Mock::given(wiremock::matchers::path("/api/oauth/profile"))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+                .mount(&server)
+                .await;
+            let directory = tempfile::tempdir().unwrap();
+            let mut account = config_account(directory.path());
+            account.identity = Identity {
+                email: Some("p@example.test".into()),
+                plan: Some("Pro".into()),
+                history_key: Some("k".repeat(64)),
+            };
+            write_token(directory.path(), "synthetic");
+            let profiles = ProfileCache::default();
+            let client = reqwest::Client::new();
+            let (_, identity) = fetch_from(&client, &account, &profiles, &server.uri())
+                .await
+                .unwrap();
+            assert_eq!(identity.email.as_deref(), Some("p@example.test"), "{body}");
+            assert_eq!(identity.plan.as_deref(), Some("Pro"));
+            assert_eq!(identity.history_key, None);
+            fetch_from(&client, &account, &profiles, &server.uri())
+                .await
+                .unwrap();
+            assert_eq!(
+                profile_calls(&server).await,
+                2,
+                "an empty profile is not cached"
+            );
+        }
     }
 
     #[tokio::test]

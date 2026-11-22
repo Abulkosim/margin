@@ -122,6 +122,7 @@ struct FakeJournal {
     records: Vec<SwitchRecord>,
     backups: HashMap<String, Vec<u8>>,
     fail_begin: bool,
+    fail_restored: bool,
 }
 
 impl Journal for FakeJournal {
@@ -139,6 +140,9 @@ impl Journal for FakeJournal {
     }
 
     fn mark(&mut self, id: &str, state: RecordState) -> Result<(), SwitchError> {
+        if self.fail_restored && state == RecordState::Restored {
+            return Err(SwitchError::Journal);
+        }
         let record = self
             .records
             .iter_mut()
@@ -1111,6 +1115,28 @@ fn restore_writes_the_backup_back_while_the_stores_are_unchanged() {
 }
 
 #[test]
+fn a_restore_that_wrote_the_backup_succeeds_when_closing_the_original_fails() {
+    let fixture = Fixture::default_claude();
+    let before = fixture.store.snapshot();
+    let mut journal = FakeJournal {
+        fail_restored: true,
+        ..FakeJournal::default()
+    };
+    let id = verify_failed(&fixture, &mut journal);
+    let record = restore(
+        &id,
+        time::now(),
+        Running::No,
+        &fixture.store,
+        &FakeLocks::default(),
+        &mut journal,
+    )
+    .unwrap();
+    assert!(record.restore);
+    assert_eq!(fixture.store.snapshot(), before);
+}
+
+#[test]
 fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
     let fixture = Fixture::default_claude();
     let mut journal = FakeJournal::default();
@@ -1839,4 +1865,42 @@ fn codex_login_reads_claims_only_from_well_formed_tokens() {
         let login = login_for(token);
         assert_eq!((login.key, login.email), (None, None));
     }
+}
+
+fn journal_record(id: &str, provider: &str, created_at: &str, state: &str) -> SwitchRecord {
+    serde_json::from_value(serde_json::json!({
+        "id": id, "provider": provider, "createdAt": created_at, "restore": false,
+        "state": state, "items": [], "locks": []
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_written_switch_saved_by_a_later_switch_is_not_replayed() {
+    let mut journal = FakeJournal {
+        records: vec![
+            journal_record("claude-b", "claude", "2026-10-16T10:05:00Z", "done"),
+            journal_record("claude-a", "claude", "2026-10-16T10:00:00Z", "written"),
+            journal_record("codex-c", "codex", "2026-10-16T10:01:00Z", "written"),
+            journal_record("claude-d", "claude", "2026-10-16T10:06:00Z", "written"),
+        ],
+        ..FakeJournal::default()
+    };
+    let recovery = recover(&FakeStore::default(), &mut journal, time::now());
+    let applied: Vec<&str> = recovery
+        .apply
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect();
+    assert_eq!(applied, ["codex-c", "claude-d"]);
+    let state = |id: &str| {
+        journal
+            .records
+            .iter()
+            .find(|record| record.id == id)
+            .unwrap()
+            .state
+    };
+    assert_eq!(state("claude-a"), RecordState::Done);
+    assert_eq!(state("claude-d"), RecordState::Written);
 }

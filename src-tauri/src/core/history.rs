@@ -1,5 +1,6 @@
 use super::fsutil;
 use super::model::{same_email, Account, AccountSource, Identity, Provider};
+use super::store::valid_id;
 use super::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -136,7 +137,7 @@ impl HistoryStore {
             .filter(|point| point.window_id == window_id)
         {
             points.push(point.clone());
-            if timestamp(&point.at).is_none_or(|at| at < since) {
+            if time::stored(&point.at).is_none_or(|at| at < since) {
                 break;
             }
         }
@@ -158,7 +159,7 @@ impl HistoryStore {
             entry.gap = true;
             return;
         };
-        let Some(at) = timestamp(&snapshot.fetched_at) else {
+        let Some(at) = time::stored(&snapshot.fetched_at) else {
             entry.gap = true;
             return;
         };
@@ -178,7 +179,7 @@ impl HistoryStore {
                 || window
                     .resets_at
                     .as_deref()
-                    .is_some_and(|reset| timestamp(reset).is_none())
+                    .is_some_and(|reset| time::stored(reset).is_none())
                 || window.window_seconds == Some(0)
             {
                 entry.gap = true;
@@ -194,7 +195,7 @@ impl HistoryStore {
             let mut resets_at = window.resets_at.clone();
             if let Some(index) = latest {
                 let previous = &entry.saved.points[index];
-                let Some(previous_at) = timestamp(&previous.at) else {
+                let Some(previous_at) = time::stored(&previous.at) else {
                     entry.gap = true;
                     continue;
                 };
@@ -421,11 +422,11 @@ fn migrate_codex_weekly(points: &mut Vec<HistoryPoint>, account: &Account) -> bo
 fn merge_weekly(points: &mut Vec<HistoryPoint>, moved: &[bool]) {
     let mut tagged: Vec<(HistoryPoint, bool)> =
         points.drain(..).zip(moved.iter().copied()).collect();
-    tagged.sort_by_key(|(point, _)| timestamp(&point.at));
+    tagged.sort_by_key(|(point, _)| time::stored(&point.at));
     let mut previous: Option<(Timestamp, bool)> = None;
     for (point, moved) in tagged {
         if point.window_id == "secondary_window" {
-            let at = timestamp(&point.at);
+            let at = time::stored(&point.at);
             if previous.is_some_and(|(before, _)| Some(before) == at) {
                 continue;
             }
@@ -472,7 +473,7 @@ fn prune(points: &mut Vec<HistoryPoint>, now: Timestamp) -> bool {
     let mut total = 0;
     for (index, point) in points.iter().enumerate().rev() {
         let window = point.window_id.as_str();
-        let Some(at) = timestamp(&point.at).filter(|at| *at <= latest) else {
+        let Some(at) = time::stored(&point.at).filter(|at| *at <= latest) else {
             keep[index] = false;
             continue;
         };
@@ -509,22 +510,10 @@ fn prune(points: &mut Vec<HistoryPoint>, now: Timestamp) -> bool {
 }
 
 fn same_reset(a: Option<&str>, b: Option<&str>) -> bool {
-    match (a.and_then(timestamp), b.and_then(timestamp)) {
+    match (a.and_then(time::stored), b.and_then(time::stored)) {
         (Some(a), Some(b)) => (a - b).as_secs().abs() <= RESET_JITTER_SECONDS,
         _ => false,
     }
-}
-
-fn timestamp(value: &str) -> Option<Timestamp> {
-    (value.len() <= 64).then(|| time::parse(value)).flatten()
-}
-
-fn valid_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn validate(saved: &SavedHistory) -> Result<(), String> {
@@ -556,14 +545,14 @@ fn validate(saved: &SavedHistory) -> Result<(), String> {
     }
     let mut latest = HashMap::new();
     for point in &saved.points {
-        let at = timestamp(&point.at).ok_or(READ_ERROR)?;
+        let at = time::stored(&point.at).ok_or(READ_ERROR)?;
         if !valid_id(&point.window_id)
             || !point.used_percent.is_finite()
             || !(0.0..=100.0).contains(&point.used_percent)
             || point
                 .resets_at
                 .as_deref()
-                .is_some_and(|reset| timestamp(reset).is_none())
+                .is_some_and(|reset| time::stored(reset).is_none())
             || point.window_seconds == Some(0)
             || latest
                 .insert(&point.window_id, at)

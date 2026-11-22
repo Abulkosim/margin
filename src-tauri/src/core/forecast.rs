@@ -1,6 +1,6 @@
 use super::time::{self, Timestamp};
 use super::{
-    burn::{same_reset, timestamp},
+    burn::same_reset,
     history::HistoryPoint,
     model::{Snapshot, UsageWindow, WindowScope},
     notifications::{Alert, AlertKind, AlertMemory},
@@ -31,7 +31,7 @@ fn length(window: &UsageWindow) -> Option<i64> {
 /// exact average between them.
 pub fn project(points: &[HistoryPoint], current: &UsageWindow, at: Timestamp) -> Option<Forecast> {
     let length = length(current)?;
-    let resets_at = timestamp(current.resets_at.as_deref()?)?;
+    let resets_at = time::stored(current.resets_at.as_deref()?)?;
     if resets_at <= at || !(0.0..100.0).contains(&current.used_percent) {
         return None;
     }
@@ -42,7 +42,7 @@ pub fn project(points: &[HistoryPoint], current: &UsageWindow, at: Timestamp) ->
                 && point.window_seconds == current.window_seconds
                 && same_reset(point.resets_at.as_ref(), current.resets_at.as_ref())
         })
-        .filter_map(|point| Some((timestamp(&point.at)?, point)))
+        .filter_map(|point| Some((time::stored(&point.at)?, point)))
         .filter(|(point_at, _)| *point_at <= at)
         .collect();
     readings.sort_by_key(|(point_at, _)| *point_at);
@@ -93,7 +93,7 @@ pub fn observe(
     mut history: impl FnMut(&str, Timestamp) -> Vec<HistoryPoint>,
     now: Timestamp,
 ) {
-    let Some(at) = timestamp(&snapshot.fetched_at) else {
+    let Some(at) = time::stored(&snapshot.fetched_at) else {
         return;
     };
     for window in snapshot

@@ -9,6 +9,7 @@ use crate::{
     runtime::{AppState, Runtime, RuntimeState},
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{atomic::Ordering, Arc};
 use std::time::{Duration, Instant};
@@ -197,40 +198,63 @@ impl Drop for Switching<'_> {
     }
 }
 
+/// Rate-limit waits that were running when polling paused, by account id.
+type Holds = HashMap<String, Instant>;
+
 /// Stops polling both accounts so no fetch reads half-swapped files; in-flight
 /// results are dropped because their generation no longer matches.
-async fn pause(app: &AppHandle, runtime: &Runtime, ids: &[String]) {
+async fn pause(app: &AppHandle, runtime: &Runtime, ids: &[String]) -> Holds {
+    let mut holds = Holds::new();
     runtime
-        .update_and_publish(app, |inner| {
-            let later = Instant::now() + Duration::from_secs(120);
-            for id in ids {
-                if let Some(schedule) = inner.schedules.get_mut(id) {
-                    schedule.in_flight = false;
-                    schedule.generation = 0;
-                    schedule.next = later;
-                    schedule.not_before = later;
-                }
-            }
-            for account in inner
-                .view
-                .accounts
-                .iter_mut()
-                .filter(|account| ids.contains(&account.id))
-            {
-                account.refreshing = false;
-            }
-            inner.view.refreshing = inner.view.accounts.iter().any(|account| account.refreshing);
-        })
+        .update_and_publish(app, |inner| holds = hold(inner, ids))
         .await;
+    holds
 }
 
-fn resume(inner: &mut RuntimeState, ids: &[String]) {
+fn hold(inner: &mut RuntimeState, ids: &[String]) -> Holds {
+    let now = Instant::now();
+    let later = now + Duration::from_secs(120);
+    let mut holds = Holds::new();
+    for id in ids {
+        if let Some(schedule) = inner.schedules.get_mut(id) {
+            if schedule.not_before > now {
+                holds.insert(id.clone(), schedule.not_before);
+            }
+            schedule.in_flight = false;
+            schedule.generation = 0;
+            schedule.next = later.max(schedule.not_before);
+            schedule.not_before = schedule.next;
+        }
+    }
+    for account in inner
+        .view
+        .accounts
+        .iter_mut()
+        .filter(|account| ids.contains(&account.id))
+    {
+        account.refreshing = false;
+    }
+    inner.view.refreshing = inner.view.accounts.iter().any(|account| account.refreshing);
+    holds
+}
+
+/// Polls the accounts again right away, except that a rate-limit wait from
+/// before the pause still runs to its end with its backoff.
+fn resume(inner: &mut RuntimeState, ids: &[String], holds: &Holds) {
     let now = Instant::now();
     for id in ids {
         if let Some(schedule) = inner.schedules.get_mut(id) {
-            schedule.next = now;
-            schedule.not_before = now;
-            schedule.failures = 0;
+            match holds.get(id).filter(|until| **until > now) {
+                Some(until) => {
+                    schedule.next = *until;
+                    schedule.not_before = *until;
+                }
+                None => {
+                    schedule.next = now;
+                    schedule.not_before = now;
+                    schedule.failures = 0;
+                }
+            }
         }
     }
 }
@@ -239,12 +263,13 @@ async fn finish(
     app: &AppHandle,
     runtime: &Runtime,
     ids: &[String],
+    holds: &Holds,
     change: impl FnOnce(&mut RuntimeState),
 ) -> (AppState, bool) {
     let view = runtime
         .update_and_publish(app, |inner| {
             change(inner);
-            resume(inner, ids);
+            resume(inner, ids, holds);
             inner.view.switching.active_account_ids = switch::active_ids(&inner.view.accounts);
             inner.view.notice = runtime
                 .persist(&inner.view, &inner.alerts, &inner.delivery)
@@ -272,7 +297,7 @@ pub async fn make_active(
     let ids: Vec<String> = std::iter::once(target.account.id.clone())
         .chain(target.previous.as_ref().map(|account| account.id.clone()))
         .collect();
-    pause(&app, &runtime, &ids).await;
+    let holds = pause(&app, &runtime, &ids).await;
     let moved = RecordAccounts {
         target: target.account.id.clone(),
         previous: target.previous.as_ref().map(|account| account.id.clone()),
@@ -302,7 +327,7 @@ pub async fn make_active(
     match result {
         Ok(outcome) => {
             let record = outcome.record.clone();
-            let (view, persisted) = finish(&app, &runtime, &ids, |inner| {
+            let (view, persisted) = finish(&app, &runtime, &ids, &holds, |inner| {
                 if let Some(moved) = &record.accounts {
                     apply(inner, moved);
                 }
@@ -325,7 +350,7 @@ pub async fn make_active(
                 _ => None,
             };
             let now = crate::core::time::now();
-            finish(&app, &runtime, &ids, |inner| {
+            finish(&app, &runtime, &ids, &holds, |inner| {
                 let Some(failed) = failed else { return };
                 // Verify runs only after every write landed, so the sign-ins did
                 // move: the records follow them, and the restore stays offered.
@@ -419,7 +444,7 @@ pub async fn restore_switch_backup(
             .collect();
         (offer.provider, ids)
     };
-    pause(&app, &runtime, &ids).await;
+    let holds = pause(&app, &runtime, &ids).await;
     let original = record(&runtime.journal(), &id);
     let mut journal = runtime.journal();
     let backup = id.clone();
@@ -437,7 +462,7 @@ pub async fn restore_switch_backup(
     .map_err(|_| SwitchError::Io)
     .and_then(|result| result);
     let failed = result.as_ref().err().cloned();
-    let (view, _) = finish(&app, &runtime, &ids, |inner| {
+    let (view, _) = finish(&app, &runtime, &ids, &holds, |inner| {
         if failed.is_none() {
             inner.view.switching.restore = None;
             if let Some(moved) = original.and_then(|record| record.accounts) {
@@ -490,6 +515,7 @@ pub async fn dismiss_switch_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::poller::Schedule;
 
     #[test]
     fn a_switch_is_done_only_after_the_account_move_is_saved() {
@@ -508,6 +534,78 @@ mod tests {
         assert_eq!(journal.records()[0].state, RecordState::Written);
         complete(&mut journal, "claude-1", true);
         assert_eq!(journal.records()[0].state, RecordState::Done);
+    }
+
+    fn runtime_state(accounts: Vec<Account>) -> (RuntimeState, tempfile::TempDir) {
+        let directory = tempfile::tempdir().unwrap();
+        let state = RuntimeState {
+            view: AppState {
+                revision: 0,
+                accounts,
+                settings: Default::default(),
+                refreshing: false,
+                notice: None,
+                recovery: false,
+                recovered: Vec::new(),
+                ignored_sources: Vec::new(),
+                switching: Default::default(),
+                notification_failed_at: None,
+            },
+            alerts: Default::default(),
+            delivery: Default::default(),
+            schedules: HashMap::new(),
+            history: crate::core::history::HistoryStore::new(directory.path().into()),
+        };
+        (state, directory)
+    }
+
+    fn schedule(wait: Duration, failures: u32) -> Schedule {
+        let now = Instant::now();
+        Schedule {
+            next: now + wait,
+            not_before: now + wait,
+            failures,
+            in_flight: false,
+            generation: 0,
+            wake_retries: 0,
+            fetched: None,
+            outage: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_switch_keeps_rate_limit_backoff_and_refreshes_the_rest() {
+        let (mut inner, _directory) = runtime_state(vec![
+            account("X", None),
+            account("Y", None),
+            account("Z", None),
+        ]);
+        inner
+            .schedules
+            .insert("y".into(), schedule(Duration::from_secs(1800), 3));
+        inner
+            .schedules
+            .insert("x".into(), schedule(Duration::from_secs(300), 2));
+        inner.schedules.get_mut("x").unwrap().not_before = Instant::now();
+        inner
+            .schedules
+            .insert("z".into(), schedule(Duration::ZERO, 0));
+        let ids: Vec<String> = ["x", "y", "z"].map(String::from).into();
+        let holds = hold(&mut inner, &ids);
+        let now = Instant::now();
+        for id in &ids {
+            assert!(inner.schedules[id].not_before >= now + Duration::from_secs(100));
+        }
+        assert!(inner.schedules["y"].not_before >= now + Duration::from_secs(1790));
+        resume(&mut inner, &ids, &holds);
+        let now = Instant::now();
+        let y = &inner.schedules["y"];
+        assert!(y.not_before >= now + Duration::from_secs(1790));
+        assert!(y.next >= y.not_before);
+        assert_eq!(y.failures, 3);
+        let x = &inner.schedules["x"];
+        assert!(x.next <= now && x.not_before <= now);
+        assert_eq!(x.failures, 0);
     }
 
     fn account(label: &str, plan: Option<&str>) -> Account {

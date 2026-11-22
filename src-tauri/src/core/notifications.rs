@@ -414,7 +414,12 @@ pub(super) fn unrecord(
         return;
     }
     match alert.kind {
-        AlertKind::Threshold(threshold) => entry.sent.retain(|sent| *sent < threshold),
+        AlertKind::Threshold(threshold) => {
+            entry.sent.retain(|sent| *sent < threshold);
+            if let Some(unwarned) = unwarned(account_id, alert, before) {
+                entry.forecast = unwarned.forecast;
+            }
+        }
         AlertKind::RunsOut => entry.forecast = false,
         AlertKind::Burn { .. } => entry.burn = before.and_then(|before| before.burn.clone()),
         AlertKind::Reset => {
@@ -423,6 +428,44 @@ pub(super) fn unrecord(
                 entry.sent.clone_from(&before.sent);
             }
         }
+    }
+}
+
+/// The run-out mark a threshold alert set when `forecast::observe` gave it a run-out time,
+/// to take back when the alert is dropped unshown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unwarned {
+    key: String,
+    resets_at: Option<String>,
+    /// The mark from before the alert.
+    forecast: bool,
+}
+
+pub(super) fn unwarned(
+    account_id: &str,
+    alert: &Alert,
+    before: Option<&WindowAlerts>,
+) -> Option<Unwarned> {
+    if !matches!(alert.kind, AlertKind::Threshold(_)) || alert.runs_out.is_none() {
+        return None;
+    }
+    Some(Unwarned {
+        key: format!("{account_id}/{}", alert.window_id),
+        resets_at: alert.resets_at.clone(),
+        forecast: before.is_some_and(|before| {
+            before.forecast && same_period(before.reset.as_ref(), alert.resets_at.as_ref())
+        }),
+    })
+}
+
+/// Restores the run-out mark from before an unshown threshold alert, so a later reading can still
+/// warn about the run-out.
+pub fn take_back(memory: &mut AlertMemory, unwarned: &Unwarned) {
+    if let Some(entry) = memory
+        .get_mut(&unwarned.key)
+        .filter(|entry| same_period(entry.reset.as_ref(), unwarned.resets_at.as_ref()))
+    {
+        entry.forecast = unwarned.forecast;
     }
 }
 

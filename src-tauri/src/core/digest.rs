@@ -97,17 +97,17 @@ impl DigestState {
     }
 
     pub fn last_sent_at(&self) -> Option<Timestamp> {
-        timestamp(&self.last_sent_at)
+        time::stored(&self.last_sent_at)
     }
 
     pub fn validate(&self) -> Result<(), String> {
         let invalid = || "Stored digest state is invalid.".to_string();
-        timestamp(&self.last_sent_at).ok_or_else(invalid)?;
+        time::stored(&self.last_sent_at).ok_or_else(invalid)?;
         let Some(previous) = &self.previous else {
             return Ok(());
         };
-        if timestamp(&previous.from).is_none()
-            || timestamp(&previous.to).is_none()
+        if time::stored(&previous.from).is_none()
+            || time::stored(&previous.to).is_none()
             || previous.accounts.len() > MAX_SUMMARY_ACCOUNTS
             || previous.accounts.iter().any(|row| {
                 row.id.is_empty()
@@ -134,15 +134,11 @@ struct WindowStats {
     observed: SignedDuration,
 }
 
-fn timestamp(value: &str) -> Option<Timestamp> {
-    (value.len() <= 64).then(|| time::parse(value)).flatten()
-}
-
 /// A period changes with the reset time; without reset times, a drop or a gap starts one.
 fn new_period(previous: &HistoryPoint, point: &HistoryPoint) -> bool {
     match (
-        previous.resets_at.as_deref().and_then(timestamp),
-        point.resets_at.as_deref().and_then(timestamp),
+        previous.resets_at.as_deref().and_then(time::stored),
+        point.resets_at.as_deref().and_then(time::stored),
     ) {
         (Some(before), Some(now)) => (now - before).as_secs().abs() > RESET_JITTER_SECONDS,
         _ => {
@@ -167,7 +163,7 @@ fn analyze(
         .iter()
         .filter(|point| CoreWindow::of(&point.window_id) == Some(kind))
     {
-        let Some(at) = timestamp(&point.at).filter(|at| (from..=to).contains(at)) else {
+        let Some(at) = time::stored(&point.at).filter(|at| (from..=to).contains(at)) else {
             continue;
         };
         if previous.is_some_and(|(_, previous_at)| at <= previous_at) {
@@ -421,7 +417,7 @@ impl Digest {
 
     /// A stored summary only reads as "last week" when it ended just before this span.
     fn follows(&self, previous: &WeeklySummary) -> bool {
-        timestamp(&previous.to)
+        time::stored(&previous.to)
             .is_some_and(|ended| self.to - ended <= time::days(COMPARISON_MAX_AGE_DAYS))
     }
 
@@ -475,6 +471,7 @@ pub fn due_at(now: Timestamp, zone: &TimeZone) -> Timestamp {
 /// Some(due) once per Monday 09:00 slot at least six days after the last send;
 /// a long sleep yields one. The floor keeps a westward clock change from
 /// reopening a sent slot and makes enabling just before 09:00 wait a week.
+/// A last send from a clock that was ahead does not count.
 pub fn should_send(
     last_sent_at: Option<Timestamp>,
     now: Timestamp,
@@ -482,6 +479,7 @@ pub fn should_send(
 ) -> Option<Timestamp> {
     let due = due_at(now, zone);
     last_sent_at
+        .and_then(|last| time::not_ahead(last, now))
         .is_none_or(|last| due - last >= time::days(MIN_SEND_GAP_DAYS))
         .then_some(due)
 }
@@ -1001,6 +999,21 @@ mod tests {
                 &TimeZone::UTC
             ),
             Some(at("2026-11-09T09:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn a_send_time_from_a_clock_far_ahead_does_not_block_the_schedule() {
+        let tuesday = at("2026-10-27T10:00:00Z");
+        let monday = at("2026-10-26T09:00:00Z");
+        assert_eq!(
+            should_send(Some(tuesday + time::days(60)), tuesday, &TimeZone::UTC),
+            Some(monday)
+        );
+        assert_eq!(
+            should_send(Some(tuesday + time::mins(1)), tuesday, &TimeZone::UTC),
+            None,
+            "a small step back is still the same send"
         );
     }
 

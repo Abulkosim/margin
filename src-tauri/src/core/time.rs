@@ -382,6 +382,18 @@ pub fn now() -> Timestamp {
     Timestamp::now()
 }
 
+/// How far ahead of the clock a saved time may be and still count. A small step back of the
+/// clock keeps cooldowns and sent slots; a time further ahead was written by a wrong clock.
+pub const CLOCK_SLACK: SignedDuration = mins(5);
+
+/// `at`, unless it is more than `CLOCK_SLACK` after `now`. A saved time from a clock that was
+/// ahead is dropped, so it cannot hold back alerts or digests until the clock catches up.
+pub fn not_ahead(at: Timestamp, now: Timestamp) -> Option<Timestamp> {
+    now.checked_add(CLOCK_SLACK)
+        .is_none_or(|limit| at <= limit)
+        .then_some(at)
+}
+
 pub const fn secs(secs: i64) -> SignedDuration {
     SignedDuration::from_secs(secs)
 }
@@ -543,6 +555,12 @@ pub fn parse(text: &str) -> Option<Timestamp> {
     let local =
         days_from_civil(year, month, day) * DAY + hour * 3600 + minute * 60 + second.min(59);
     Timestamp::new(local - offset, frac + if leap { NANOS } else { 0 })
+}
+
+/// A time read from a saved file or a provider. Text over 64 bytes is not
+/// parsed, since no valid time is that long.
+pub fn stored(text: &str) -> Option<Timestamp> {
+    (text.len() <= 64).then(|| parse(text)).flatten()
 }
 
 /// Whether chrono's RFC 3339 reader accepts `text`.

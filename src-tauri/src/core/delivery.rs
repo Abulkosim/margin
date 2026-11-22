@@ -2,7 +2,7 @@ use super::time::{self, Timestamp};
 use super::{
     digest::DigestState,
     model::{Account, UsageError},
-    notifications::{self, Alert, AlertKind, AlertMemory, Clock12h, WindowAlerts},
+    notifications::{self, Alert, AlertKind, AlertMemory, Clock12h, Unwarned, WindowAlerts},
     outage,
     settings::{NotificationPermission, Settings},
 };
@@ -114,6 +114,17 @@ pub struct Attempt {
     pub failure_changed: bool,
     /// An alert or digest was shown or dropped, so the saved state changed.
     pub save: bool,
+    /// Run-out marks of alerts dropped because they no longer apply; see `take_back`.
+    pub unwarned: Vec<Unwarned>,
+}
+
+impl Attempt {
+    /// Takes back the run-out marks of threshold alerts dropped unshown.
+    pub fn take_back(&self, memory: &mut AlertMemory) {
+        for unwarned in &self.unwarned {
+            notifications::take_back(memory, unwarned);
+        }
+    }
 }
 
 impl Delivery {
@@ -188,6 +199,7 @@ impl Delivery {
         let allowed = settings.notifications
             && settings.notification_permission == NotificationPermission::Granted;
         let mut save = false;
+        let mut unwarned = Vec::new();
         self.pending.retain(|pending| {
             let account = pending
                 .account_id
@@ -195,6 +207,11 @@ impl Delivery {
                 .and_then(|id| accounts.iter().find(|account| account.id == id));
             let wanted = allowed && pending.message.still_wanted(settings, account, now);
             save |= !wanted && pending.message.affects_saved_state();
+            if let (false, Some(account_id), Message::Alert { alert, before, .. }) =
+                (wanted, &pending.account_id, &pending.message)
+            {
+                unwarned.extend(notifications::unwarned(account_id, alert, before.as_ref()));
+            }
             wanted
         });
         let before = failed_at.clone();
@@ -220,6 +237,7 @@ impl Delivery {
         Attempt {
             failure_changed: before != *failed_at,
             save,
+            unwarned,
         }
     }
 }
@@ -228,6 +246,8 @@ impl Delivery {
 mod tests {
     use super::*;
     use crate::core::{
+        forecast,
+        history::HistoryPoint,
         model::{AccountSource, Identity, Provider, Snapshot, UsageWindow},
         notifications::{self, AlertMemory},
     };
@@ -424,7 +444,8 @@ mod tests {
             changed,
             Attempt {
                 failure_changed: true,
-                save: true
+                save: true,
+                unwarned: Vec::new(),
             }
         );
         assert_eq!(failed_at, None);
@@ -732,6 +753,109 @@ mod tests {
         );
         assert_eq!(delivery.pending.len(), 1);
         assert!(after_restart(&memory, &delivery, &next, &[80, 95]).is_empty());
+    }
+
+    /// A threshold alert at 81% that carries a run-out within the hour, queued like the poller.
+    fn raise_with_run_out(memory: &mut AlertMemory, delivery: &mut Delivery) {
+        let snapshot = reading(81.0);
+        let before = memory.clone();
+        let mut alerts = notifications::observe(memory, "a", &snapshot, &[80, 95], at(0));
+        let point = |offset: i64, used: f64| HistoryPoint {
+            window_id: "five_hour".into(),
+            at: (at(0) + time::mins(offset)).to_rfc3339(),
+            used_percent: used,
+            resets_at: Some(RESET.into()),
+            window_seconds: Some(18000),
+            gap_before: false,
+        };
+        let points = [point(-60, 21.0), point(0, 81.0)];
+        forecast::observe(
+            memory,
+            "a",
+            &snapshot,
+            &mut alerts,
+            |_, _| points.to_vec(),
+            at(0),
+        );
+        assert_eq!(alerts.len(), 1);
+        assert!(alerts[0].runs_out.is_some());
+        for alert in alerts {
+            let before = before.get(&format!("a/{}", alert.window_id)).cloned();
+            delivery.enqueue(
+                Some("a"),
+                Message::Alert {
+                    label: "Work".into(),
+                    alert,
+                    before,
+                },
+                at(0),
+            );
+        }
+    }
+
+    /// Run-out warnings the next reading raises from `memory`, with the given thresholds.
+    fn run_outs(memory: &mut AlertMemory, thresholds: &[u8]) -> usize {
+        let snapshot = reading(82.0);
+        let mut alerts = notifications::observe(memory, "a", &snapshot, thresholds, at(60));
+        let point = |offset: i64, used: f64| HistoryPoint {
+            window_id: "five_hour".into(),
+            at: (at(60) + time::mins(offset)).to_rfc3339(),
+            used_percent: used,
+            resets_at: Some(RESET.into()),
+            window_seconds: Some(18000),
+            gap_before: false,
+        };
+        let points = [point(-60, 22.0), point(0, 82.0)];
+        forecast::observe(
+            memory,
+            "a",
+            &snapshot,
+            &mut alerts,
+            |_, _| points.to_vec(),
+            at(60),
+        );
+        alerts
+            .iter()
+            .filter(|alert| alert.kind == AlertKind::RunsOut)
+            .count()
+    }
+
+    #[test]
+    fn a_run_out_carried_by_an_unshown_threshold_alert_is_not_saved_as_warned() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise_with_run_out(&mut memory, &mut delivery);
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        let mut saved = delivery.saved_alerts(&memory);
+        assert!(!saved["a/five_hour"].forecast);
+        assert_eq!(run_outs(&mut saved, &[95]), 1);
+    }
+
+    #[test]
+    fn a_run_out_carried_by_a_dropped_threshold_alert_can_still_warn() {
+        let mut memory = AlertMemory::new();
+        let mut delivery = Delivery::default();
+        let mut failed_at = None;
+        raise_with_run_out(&mut memory, &mut delivery);
+        run(&mut delivery, &mut failed_at, &settings(), at(0), false);
+        let off = Settings {
+            thresholds: vec![95],
+            ..settings()
+        };
+        let attempt = delivery.attempt(
+            &mut failed_at,
+            &off,
+            &[account("a")],
+            at(30),
+            Clock12h(false),
+            |_, _| panic!("a turned-off threshold is not shown"),
+        );
+        assert!(attempt.save);
+        attempt.take_back(&mut memory);
+        assert!(delivery.is_idle());
+        assert_eq!(run_outs(&mut memory, &[95]), 1);
+        assert_eq!(run_outs(&mut memory, &[95]), 0);
     }
 
     #[test]

@@ -530,7 +530,7 @@ fn validate_snapshot(snapshot: &Snapshot) -> Result<(), String> {
     Ok(())
 }
 
-fn valid_id(value: &str) -> bool {
+pub(crate) fn valid_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
         && value
@@ -550,7 +550,7 @@ fn valid_ignored_source(value: &str) -> bool {
 }
 
 pub(crate) fn valid_timestamp(value: &str) -> bool {
-    value.len() <= 64 && time::is_rfc3339(value)
+    time::stored(value).is_some()
 }
 
 #[cfg(test)]
