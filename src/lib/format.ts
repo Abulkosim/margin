@@ -10,9 +10,10 @@ export function quotaTone(usedPercent: number): { 'quota-low': boolean; 'quota-e
   return { 'quota-low': usedPercent >= 80, 'quota-empty': usedPercent >= 100 }
 }
 
+/** Rounds down, as the tray and `margin --line` do (Rust `percent_label`), so it never overstates what is left. */
 export function formatRemaining(used: number): string {
   const remaining = remainingPercent(used)
-  return remaining > 0 && remaining < 1 ? '<1' : Math.round(remaining).toString()
+  return remaining > 0 && remaining < 1 ? '<1' : Math.floor(remaining).toString()
 }
 
 function shortDuration(milliseconds: number): string {
