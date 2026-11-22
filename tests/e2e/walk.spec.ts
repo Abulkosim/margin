@@ -486,3 +486,29 @@ test('a centered empty state stays reachable when a banner leaves too little roo
   const [content, viewport] = await Promise.all([page.locator('.empty-state').boundingBox(), scroller.boundingBox()])
   expect(content!.y).toBeGreaterThanOrEqual(viewport!.y - 0.5)
 })
+
+test('a long email in the Make active title wraps after the @, not mid-word', async ({ page }) => {
+  await bridge(page, longState(), { accountId: 'demo-codex-work', provider: 'codex', kind: 'swap', fingerprint: 'x', target: longEmail, displaced: 'alex@studio.example', folder: '~/.codex-work', running: false } as MakeActivePreview)
+  await page.goto('/')
+  await settings(page, 'Accounts')
+  await page.getByRole('button', { name: 'Make Work active', exact: true }).click()
+  const title = page.getByRole('alertdialog').getByRole('heading')
+  await expect(title).toHaveText(`Make ${longEmail} active?`)
+  const lines = await title.evaluate(heading => {
+    const tops = new Map<number, string>()
+    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent ?? ''
+      for (let index = 0; index < text.length; index++) {
+        const range = document.createRange()
+        range.setStart(node, index)
+        range.setEnd(node, index + 1)
+        const top = Math.round(range.getBoundingClientRect().top)
+        tops.set(top, (tops.get(top) ?? '') + text[index])
+      }
+    }
+    return [...tops.entries()].sort(([a], [b]) => a - b).map(([, line]) => line.trim())
+  })
+  const [local] = longEmail.split('@')
+  expect(lines.some(line => line.endsWith(`${local}@`))).toBe(true)
+})
