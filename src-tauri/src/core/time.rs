@@ -557,6 +557,12 @@ pub fn parse(text: &str) -> Option<Timestamp> {
     Timestamp::new(local - offset, frac + if leap { NANOS } else { 0 })
 }
 
+/// A time read from a saved file or a provider. Text over 64 bytes is not
+/// parsed, since no valid time is that long.
+pub fn stored(text: &str) -> Option<Timestamp> {
+    (text.len() <= 64).then(|| parse(text)).flatten()
+}
+
 /// Whether chrono's RFC 3339 reader accepts `text`.
 pub fn is_rfc3339(text: &str) -> bool {
     parse(text).is_some()

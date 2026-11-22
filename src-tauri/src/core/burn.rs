@@ -31,7 +31,7 @@ impl BurnState {
         [&self.reset, &self.alerted_at, &self.quiet_since]
             .into_iter()
             .flatten()
-            .all(|value| timestamp(value).is_some())
+            .all(|value| time::stored(value).is_some())
     }
 }
 
@@ -61,14 +61,10 @@ impl Burn {
     }
 }
 
-pub(super) fn timestamp(value: &str) -> Option<Timestamp> {
-    (value.len() <= 64).then(|| time::parse(value)).flatten()
-}
-
 pub(super) fn same_reset(a: Option<&String>, b: Option<&String>) -> bool {
     match (a, b) {
         (None, None) => true,
-        (Some(a), Some(b)) => match (timestamp(a), timestamp(b)) {
+        (Some(a), Some(b)) => match (time::stored(a), time::stored(b)) {
             (Some(a), Some(b)) => (a - b).as_secs().abs() <= RESET_JITTER_SECONDS,
             _ => false,
         },
@@ -97,7 +93,7 @@ pub fn hourly_increase(
     let readings = points
         .iter()
         .filter(|point| point.window_id == current.id)
-        .map(|point| Some((timestamp(&point.at)?, point)))
+        .map(|point| Some((time::stored(&point.at)?, point)))
         .collect::<Option<Vec<_>>>()?;
     let &(latest_at, latest) = readings.last()?;
     if at < latest_at
@@ -160,7 +156,7 @@ fn decide(
     let saved = |value: &Option<String>| {
         value
             .as_deref()
-            .and_then(timestamp)
+            .and_then(time::stored)
             .and_then(|at| time::not_ahead(at, now))
     };
     let alerted = saved(&state.alerted_at);
@@ -198,7 +194,7 @@ pub fn observe(
     mut history: impl FnMut(&str, Timestamp) -> Vec<HistoryPoint>,
     now: Timestamp,
 ) -> Vec<Alert> {
-    let Some(at) = timestamp(&snapshot.fetched_at) else {
+    let Some(at) = time::stored(&snapshot.fetched_at) else {
         return Vec::new();
     };
     let mut alerts = Vec::new();
@@ -210,7 +206,7 @@ pub fn observe(
         let Some(entry) = memory.get_mut(&format!("{account_id}/{}", window.id)) else {
             continue;
         };
-        let reset = window.resets_at.as_deref().map(timestamp);
+        let reset = window.resets_at.as_deref().map(time::stored);
         if window.used_percent >= 100.0 || reset.is_some_and(|reset| reset.is_none_or(|r| r <= now))
         {
             continue;

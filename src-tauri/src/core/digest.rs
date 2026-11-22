@@ -97,17 +97,17 @@ impl DigestState {
     }
 
     pub fn last_sent_at(&self) -> Option<Timestamp> {
-        timestamp(&self.last_sent_at)
+        time::stored(&self.last_sent_at)
     }
 
     pub fn validate(&self) -> Result<(), String> {
         let invalid = || "Stored digest state is invalid.".to_string();
-        timestamp(&self.last_sent_at).ok_or_else(invalid)?;
+        time::stored(&self.last_sent_at).ok_or_else(invalid)?;
         let Some(previous) = &self.previous else {
             return Ok(());
         };
-        if timestamp(&previous.from).is_none()
-            || timestamp(&previous.to).is_none()
+        if time::stored(&previous.from).is_none()
+            || time::stored(&previous.to).is_none()
             || previous.accounts.len() > MAX_SUMMARY_ACCOUNTS
             || previous.accounts.iter().any(|row| {
                 row.id.is_empty()
@@ -134,15 +134,11 @@ struct WindowStats {
     observed: SignedDuration,
 }
 
-fn timestamp(value: &str) -> Option<Timestamp> {
-    (value.len() <= 64).then(|| time::parse(value)).flatten()
-}
-
 /// A period changes with the reset time; without reset times, a drop or a gap starts one.
 fn new_period(previous: &HistoryPoint, point: &HistoryPoint) -> bool {
     match (
-        previous.resets_at.as_deref().and_then(timestamp),
-        point.resets_at.as_deref().and_then(timestamp),
+        previous.resets_at.as_deref().and_then(time::stored),
+        point.resets_at.as_deref().and_then(time::stored),
     ) {
         (Some(before), Some(now)) => (now - before).as_secs().abs() > RESET_JITTER_SECONDS,
         _ => {
@@ -167,7 +163,7 @@ fn analyze(
         .iter()
         .filter(|point| CoreWindow::of(&point.window_id) == Some(kind))
     {
-        let Some(at) = timestamp(&point.at).filter(|at| (from..=to).contains(at)) else {
+        let Some(at) = time::stored(&point.at).filter(|at| (from..=to).contains(at)) else {
             continue;
         };
         if previous.is_some_and(|(_, previous_at)| at <= previous_at) {
@@ -421,7 +417,7 @@ impl Digest {
 
     /// A stored summary only reads as "last week" when it ended just before this span.
     fn follows(&self, previous: &WeeklySummary) -> bool {
-        timestamp(&previous.to)
+        time::stored(&previous.to)
             .is_some_and(|ended| self.to - ended <= time::days(COMPARISON_MAX_AGE_DAYS))
     }
 
