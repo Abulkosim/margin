@@ -27,6 +27,7 @@ test('slugs match GitHub heading anchors', () => {
   assert.equal(slug('Verify a download'), 'verify-a-download')
   assert.equal(slug('Phase 7 — Make the claims true'), 'phase-7--make-the-claims-true')
   assert.equal(slug('`margin --json` output'), 'margin---json-output')
+  assert.equal(slug('Nested <<b>i>tags'), 'nested-tags')
   assert.deepEqual([...anchors('# A\n## A\n```\n# not a heading\n```\n<a id="custom"></a>\n')], ['a', 'a-1', 'custom'])
 })
 

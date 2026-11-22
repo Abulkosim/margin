@@ -4,9 +4,17 @@ import { dirname, join, posix, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** GitHub's heading anchor: lowercase, punctuation dropped, spaces to hyphens. */
+function withoutTags(text) {
+  let previous
+  do {
+    previous = text
+    text = text.replace(/<[^<>]*>/g, '')
+  } while (text !== previous)
+  return text
+}
+
 export function slug(heading) {
-  return heading
-    .replace(/<[^>]+>/g, '')
+  return withoutTags(heading)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[`*_~]/g, '')
     .trim()
