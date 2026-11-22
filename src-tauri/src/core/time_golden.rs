@@ -23,6 +23,8 @@ use std::path::PathBuf;
 use support::{instant, plus_seconds, show, zone};
 
 pub(crate) fn golden(name: &str, actual: &str) {
+    let actual = support::unix_folders(actual);
+    let actual = actual.as_str();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/golden")
         .join(format!("{name}.txt"));
@@ -141,7 +143,7 @@ fn account(value: Value) -> Account {
 fn snapshot_account(fetched_at: &str, windows: Value) -> Account {
     account(json!({
         "id": "codex-golden", "provider": "codex", "label": "Work", "color": "#336699",
-        "source": { "kind": "configDir", "path": "/tmp/golden-codex" },
+        "source": { "kind": "configDir", "path": support::folder("codex") },
         "identity": { "email": "work@example.com", "plan": "Pro" },
         "snapshot": { "windows": windows, "fetchedAt": fetched_at, "extraUsage": null },
         "error": null, "refreshing": false
@@ -654,7 +656,7 @@ fn history_files_and_payloads() {
     let old = json!({
         "version": 1,
         "provider": "codex",
-        "source": { "kind": "configDir", "path": "/tmp/golden-codex" },
+        "source": { "kind": "configDir", "path": support::folder("codex") },
         "identity": { "email": "work@example.com", "plan": "Pro" },
         "points": [
             { "windowId": "five_hour", "at": "2026-10-01T10:00:00+00:00", "usedPercent": 5.0, "resetsAt": "2026-10-01T15:00:00+00:00", "windowSeconds": 18000, "gapBefore": true },
@@ -704,4 +706,10 @@ fn history_files_and_payloads() {
     )
     .unwrap();
     golden("history", &out);
+}
+
+#[test]
+fn windows_folders_read_as_unix_in_golden_text() {
+    let stored = serde_json::to_string(r"C:\tmp\golden-codex").unwrap();
+    assert_eq!(support::unix_folders(&stored), "\"/tmp/golden-codex\"");
 }

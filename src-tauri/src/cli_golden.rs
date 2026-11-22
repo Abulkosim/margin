@@ -2,7 +2,10 @@
 //! The expected text lives in `fixtures/golden`; see `core::time_golden`.
 
 use super::*;
-use crate::core::time_golden::{golden, support::instant};
+use crate::core::time_golden::{
+    golden,
+    support::{folder, instant},
+};
 use serde_json::{json, Value};
 use std::fmt::Write as _;
 
@@ -19,7 +22,7 @@ fn accounts() -> Value {
     let account = |provider: &str, id: &str, fetched: &str, windows: Value, error: Value| {
         json!({
             "id": id, "provider": provider, "label": id, "color": "#ffffff",
-            "source": { "kind": "configDir", "path": format!("/tmp/golden-{id}") },
+            "source": { "kind": "configDir", "path": folder(id) },
             "identity": { "email": format!("{id}@example.com"), "plan": "Pro" },
             "snapshot": if fetched.is_empty() { Value::Null } else {
                 json!({ "windows": windows, "fetchedAt": fetched, "extraUsage": null })
