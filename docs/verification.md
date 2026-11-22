@@ -11,6 +11,8 @@ Sweep, PRs #74–#79 (plus Dependabot #69–#73). Checked 2026-11-22 on Linux on
 - **Interface (#76, #77, #79).** A walk of about 200 states per browser now runs in `pnpm test:e2e`. The WebKit test "a hundred long account names" failed in 6 of 8 runs on `main`; the cause was motionless pointer events moving a menu's highlight, now fixed.
 - **Real app on Linux.** A debug build ran under Xvfb with the owner's real Claude and Codex sign-ins and throwaway settings: both accounts were found and read, a second read followed, and `margin --json`/`--line` matched. The popover did not render on the headless display.
 
+**[v0.12.0 is published](https://github.com/Abulkosim/margin/releases/tag/v0.12.0).** Published 2026-11-22 20:55 UTC from `c4aa632`, after the [release build](https://github.com/Abulkosim/margin/actions/runs/45068044857) passed. Checked from Linux on the downloaded draft: all eight listed checksums matched; provenance verified for the four installers, `latest.json` and `SHA256SUMS.txt`; the SBOM attestation verified on the four installers; `latest.json` lists 0.12.0 for all five platforms with signatures; release notes matched `changelogs/v0.12.0.md`. The public latest endpoint serves 0.12.0. The [Homebrew job](https://github.com/Abulkosim/margin/actions/runs/45069158644) pushed `margin 0.12.0` to `Abulkosim/homebrew-tap`; its sha256 matches the DMG in `SHA256SUMS.txt`. As before, the macOS artifact check and updater install test were skipped.
+
 **Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
 
 ## v0.11.0 (2026-11-10)

@@ -2,7 +2,7 @@
 
 Short version: [README → Install](../README.md#install). Downloads: [GitHub Releases](https://github.com/Abulkosim/margin/releases/latest).
 
-Margin is free and open source. Builds are not yet signed with an Apple Developer ID or a Windows publisher certificate, so macOS and Windows warn on first launch. Updates are signed separately and verified in the app. Homebrew and winget packages are not available yet.
+Margin is free and open source. Builds are not yet signed with an Apple Developer ID or a Windows publisher certificate, so macOS and Windows warn on first launch. Updates are signed separately and verified in the app. On a Mac, Homebrew works too (below); a winget package is not available yet.
 
 | Platform | File |
 | --- | --- |
@@ -12,6 +12,8 @@ Margin is free and open source. Builds are not yet signed with an Apple Develope
 ## macOS
 
 These steps match macOS 15 Sequoia and macOS 26 Tahoe. Control-click → **Open** no longer skips the warning on these versions.
+
+With Homebrew: `brew install --cask Abulkosim/tap/margin`, then continue at step 3. `brew upgrade` leaves updates to Margin's own updater.
 
 1. Download `Margin_<version>_universal.dmg`.
 2. Open the DMG and drag **Margin** to **Applications**. `~/Applications` also works.
