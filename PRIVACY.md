@@ -50,7 +50,7 @@ All requests use HTTPS. Provider requests do not follow redirects. Each request 
 | Host | Request | When | Sent |
 | --- | --- | --- | --- |
 | `api.anthropic.com` | `GET /api/oauth/usage` (with `?cedar_ember=1`, retried once without it on 400 or 403) | Each refresh of a Claude account | Access token |
-| `api.anthropic.com` | `GET /api/oauth/profile` | After a successful Claude usage request, at most once an hour per account unless the token changes | Access token |
+| `api.anthropic.com` | `GET /api/oauth/profile` | After a successful Claude usage request. A profile that names the account is reused for an hour, or until the token changes; while the request fails, it is retried on each refresh | Access token |
 | `chatgpt.com` | `GET /backend-api/wham/usage` | Each refresh of a Codex account | Access token, ChatGPT account ID |
 | `chatgpt.com` | `GET /backend-api/wham/rate-limit-reset-credits` | After a Codex usage response that reports a reset credit, at most every 15 minutes per account. Read only; nothing is redeemed. | Access token, ChatGPT account ID |
 | `chatgpt_base_url` host | The same Codex requests on the host set in that folder's `config.toml` | Instead of `chatgpt.com`, when set | Access token, ChatGPT account ID |

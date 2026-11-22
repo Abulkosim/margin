@@ -216,8 +216,15 @@ fn hold(inner: &mut RuntimeState, ids: &[String]) -> Holds {
     let later = now + Duration::from_secs(120);
     let mut holds = Holds::new();
     for id in ids {
+        let rate_limited = inner.view.accounts.iter().any(|account| {
+            account.id == *id
+                && account
+                    .error
+                    .as_ref()
+                    .is_some_and(|error| error.kind == "rateLimited")
+        });
         if let Some(schedule) = inner.schedules.get_mut(id) {
-            if schedule.not_before > now {
+            if rate_limited && schedule.not_before > now {
                 holds.insert(id.clone(), schedule.not_before);
             }
             schedule.in_flight = false;
@@ -515,6 +522,7 @@ pub async fn dismiss_switch_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::model::UsageError;
     use crate::core::poller::Schedule;
 
     #[test]
@@ -579,6 +587,7 @@ mod tests {
             account("X", None),
             account("Y", None),
             account("Z", None),
+            account("W", None),
         ]);
         inner
             .schedules
@@ -587,10 +596,31 @@ mod tests {
             .schedules
             .insert("x".into(), schedule(Duration::from_secs(300), 2));
         inner.schedules.get_mut("x").unwrap().not_before = Instant::now();
+        // W failed with a server error a moment ago: its 5 s spacing is not a
+        // rate-limit wait, so the switch starts its backoff over.
+        inner
+            .schedules
+            .insert("w".into(), schedule(Duration::from_secs(5), 4));
         inner
             .schedules
             .insert("z".into(), schedule(Duration::ZERO, 0));
-        let ids: Vec<String> = ["x", "y", "z"].map(String::from).into();
+        inner.view.accounts[1].error = Some(UsageError {
+            kind: "rateLimited".into(),
+            message: "Rate limited".into(),
+            retry_after_seconds: Some(1800),
+            signed_out_since: None,
+            sign_in_command: None,
+            retry_at: None,
+        });
+        inner.view.accounts[3].error = Some(UsageError {
+            kind: "server".into(),
+            message: "Server error".into(),
+            retry_after_seconds: None,
+            signed_out_since: None,
+            sign_in_command: None,
+            retry_at: None,
+        });
+        let ids: Vec<String> = ["x", "y", "z", "w"].map(String::from).into();
         let holds = hold(&mut inner, &ids);
         let now = Instant::now();
         for id in &ids {
@@ -606,6 +636,9 @@ mod tests {
         let x = &inner.schedules["x"];
         assert!(x.next <= now && x.not_before <= now);
         assert_eq!(x.failures, 0);
+        let w = &inner.schedules["w"];
+        assert!(w.next <= now && w.not_before <= now);
+        assert_eq!(w.failures, 0);
     }
 
     fn account(label: &str, plan: Option<&str>) -> Account {

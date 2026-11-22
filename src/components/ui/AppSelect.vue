@@ -45,6 +45,13 @@ function dismissOnEscape(event: KeyboardEvent) {
   open.value = false
 }
 
+// WebKit sends pointer events with no movement when the list scrolls under a
+// resting pointer; letting them through moves the highlight off the option
+// chosen with the keyboard.
+function ignoreRestingPointer(event: PointerEvent) {
+  if (event.pointerType === 'mouse' && event.movementX === 0 && event.movementY === 0) event.stopPropagation()
+}
+
 function restoreTriggerFocus(event: Event) {
   if (!props.disabled) return
   event.preventDefault()
@@ -84,6 +91,8 @@ watch(open, (isOpen, _wasOpen, onCleanup) => {
         :collision-padding="12"
         @escape-key-down="dismissOnEscape"
         @close-auto-focus="restoreTriggerFocus"
+        @pointermove.capture="ignoreRestingPointer"
+        @pointerleave.capture="ignoreRestingPointer"
       >
         <SelectViewport class="app-select-viewport">
           <SelectItem v-for="option in options" :key="option.value" :value="option.value" :text-value="option.label" class="app-select-item">

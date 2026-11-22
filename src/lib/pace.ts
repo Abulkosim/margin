@@ -8,7 +8,7 @@ const resetJitterSeconds = 300
 const hidden: Pace = { kind: 'hidden' }
 
 const resetOf = (value: string | null): number | null => value === null ? null : Date.parse(value)
-// Whole seconds, as chrono's num_seconds() in burn.rs::same_reset.
+// Whole seconds, as burn.rs::same_reset counts them.
 const sameReset = (a: number | null, b: number | null): boolean => a === null || b === null ? a === b : Math.abs(Math.trunc((a - b) / 1000)) <= resetJitterSeconds
 const inPeriod = (point: HistoryPoint, current: PaceWindow, resetsAt: number): boolean =>
   point.windowId === current.id && point.windowSeconds === current.windowSeconds && sameReset(resetOf(point.resetsAt), resetsAt)
