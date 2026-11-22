@@ -225,6 +225,9 @@ button:disabled:hover {
 .account-filters button:hover {
   background: var(--hover);
 }
+.account-filters button:focus-visible {
+  outline-offset: -2px;
+}
 .account-filters button.active {
   background: var(--accent-soft);
   color: var(--ink);
@@ -238,6 +241,7 @@ button:disabled:hover {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0 22px 12px;
+  scroll-padding-block: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--track) transparent;
 }
@@ -1056,7 +1060,7 @@ button:disabled:hover {
 .settings-tabs {
   display: flex;
   background: var(--hover);
-  margin: 0 23px 22px;
+  margin: 0 23px 16px;
   border-radius: 7px;
   padding: 3px;
   gap: 3px;
@@ -1087,7 +1091,8 @@ button:disabled:hover {
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--track) transparent;
-  padding: 0 23px 18px;
+  padding: 6px 23px 18px;
+  scroll-padding-block: 8px;
   flex: 1;
   overscroll-behavior: contain;
 }
