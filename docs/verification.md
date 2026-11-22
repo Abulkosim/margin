@@ -2,6 +2,17 @@
 
 Status must describe checks actually run, not the presence of test code. Record the date, command, platform, and outcome when changing this file. One `## vX.Y.Z (YYYY-MM-DD)` section per release, newest first, dated as in [CHANGELOG.md](../CHANGELOG.md). Real-machine checks are in [native-checks.md](native-checks.md).
 
+## v0.12.0 (2026-11-22)
+
+Sweep, PRs #74–#79 (plus Dependabot #69–#73). Checked 2026-11-22 on Linux on the combined code before #79 merged, then on #79 rebased onto `main`: `pnpm verify` (127 frontend unit tests, 477 Rust library tests and 7 CLI tests, 1 ignored, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` for disk space), `pnpm test:scripts` (41) and `pnpm test:e2e` (684, Chromium and WebKit, 0 failures). CI passed on each PR, including the macOS universal and Windows x64 jobs.
+
+- **chrono to jiff (#74).** Golden files written by the chrono code pin date parsing, stored files, backup names, `margin --json`/`--line` and local clocks in New York, Tashkent and UTC; they are unchanged after the migration and run on Windows in CI. `cargo deny` passes.
+- **Rust fixes (#75, #79).** Each confirmed with a test that failed first. Not fixed yet: history points dated after a clock that moved back are still deleted (`history.rs` `prune`); a Mac can list one Keychain sign-in twice after Claude Code writes `~/.claude/.credentials.json`; a failed restore of a failed switch offers the stale backup.
+- **Interface (#76, #77, #79).** A walk of about 200 states per browser now runs in `pnpm test:e2e`. The WebKit test "a hundred long account names" failed in 6 of 8 runs on `main`; the cause was motionless pointer events moving a menu's highlight, now fixed.
+- **Real app on Linux.** A debug build ran under Xvfb with the owner's real Claude and Codex sign-ins and throwaway settings: both accounts were found and read, a second read followed, and `margin --json`/`--line` matched. The popover did not render on the headless display.
+
+**Nothing here has run on a real Mac or Windows machine.** Pending, owner: [#45](https://github.com/Abulkosim/margin/issues/45).
+
 ## v0.11.0 (2026-11-10)
 
 Technical-debt sweep, PRs #55–#66 (plus Dependabot #59–#61). Checked 2026-11-10 on Linux at `9872571` (`main` after #66): `pnpm verify` (120 frontend unit tests, 446 Rust library tests and 7 CLI tests, with 1 ignored preview writer, `cargo fmt --check`, strict Clippy; built with `CARGO_PROFILE_DEV_DEBUG=0` for disk space), `pnpm test:scripts` (30) and `pnpm test:e2e` (314, Chromium and WebKit). CI passed on each PR, including the macOS universal and Windows x64 jobs.
