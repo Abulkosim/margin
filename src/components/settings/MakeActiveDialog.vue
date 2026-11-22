@@ -48,7 +48,7 @@ function escape(event: KeyboardEvent): void {
   font: 500 12.5px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   padding: 1px 5px;
   border-radius: var(--radius-xs);
-  background: var(--card);
+  background: var(--inset,var(--card));
   color: var(--ink);
   display: inline-block;
   max-width: 100%;
@@ -70,7 +70,7 @@ function escape(event: KeyboardEvent): void {
   align-items: flex-start;
   padding: 9px 11px;
   border-radius: var(--radius-md);
-  background: var(--card);
+  background: var(--inset,var(--card));
   font-size: 13px;
   line-height: 1.5;
   margin-top: 14px;

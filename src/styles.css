@@ -1496,6 +1496,12 @@ input::placeholder {
   background: var(--surface);
   padding: 23px;
   box-shadow: 0 15px 50px #0004;
+  --inset: var(--card);
+}
+:root[data-theme=dark] .confirm-dialog {
+  background: var(--card);
+  box-shadow: 0 0 0 1px rgba(219,236,221,.1),0 15px 50px #0008;
+  --inset: var(--hover);
 }
 .dialog-icon {
   display: grid;
@@ -1503,7 +1509,7 @@ input::placeholder {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-lg);
-  background: var(--card);
+  background: var(--inset,var(--card));
   color: var(--secondary);
   margin-bottom: 18px;
 }
