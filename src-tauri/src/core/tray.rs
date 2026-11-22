@@ -1,3 +1,4 @@
+use super::time::{self, Timestamp};
 use super::{
     model::{Account, CoreWindow, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
@@ -6,7 +7,6 @@ use super::{
     settings::{Settings, TrayMetric, TrayMode},
 };
 use crate::runtime::{AppState, Runtime};
-use chrono::Utc;
 use serde::Serialize;
 use std::{
     sync::{Arc, Mutex},
@@ -235,13 +235,14 @@ fn place_macos_window(app: &AppHandle, window: &tauri::WebviewWindow, height: f6
     placed.arrow_x
 }
 
-fn expired(window: &UsageWindow, now: chrono::DateTime<Utc>) -> bool {
-    window.resets_at.as_ref().is_some_and(|reset| {
-        chrono::DateTime::parse_from_rfc3339(reset).is_ok_and(|reset| reset <= now)
-    })
+fn expired(window: &UsageWindow, now: Timestamp) -> bool {
+    window
+        .resets_at
+        .as_ref()
+        .is_some_and(|reset| time::parse(reset).is_some_and(|reset| reset <= now))
 }
 
-fn counts(window: &UsageWindow, metric: TrayMetric, now: chrono::DateTime<Utc>) -> bool {
+fn counts(window: &UsageWindow, metric: TrayMetric, now: Timestamp) -> bool {
     let kind = window.core();
     match metric {
         TrayMetric::All => true,
@@ -254,7 +255,7 @@ fn counts(window: &UsageWindow, metric: TrayMetric, now: chrono::DateTime<Utc>) 
 pub fn limiting_window(
     account: &Account,
     metric: TrayMetric,
-    now: chrono::DateTime<Utc>,
+    now: Timestamp,
 ) -> Option<&UsageWindow> {
     let snapshot = account.snapshot.as_ref()?;
     let most_used = |metric| {
@@ -271,11 +272,11 @@ pub fn limiting_window(
     most_used(metric).or_else(|| most_used(TrayMetric::All))
 }
 
-fn remaining(account: &Account, metric: TrayMetric, now: chrono::DateTime<Utc>) -> Option<f64> {
+fn remaining(account: &Account, metric: TrayMetric, now: Timestamp) -> Option<f64> {
     limiting_window(account, metric, now).map(|window| 100.0 - window.used_percent)
 }
 
-pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>) -> bool {
+pub fn stale(account: &Account, settings: &Settings, now: Timestamp) -> bool {
     if account.error.as_ref().is_some_and(|error| {
         account.snapshot.is_none()
             || !matches!(error.kind.as_str(), "rateLimited" | "credentialsChanged")
@@ -283,11 +284,9 @@ pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>)
         return true;
     }
     account.snapshot.as_ref().is_some_and(|snapshot| {
-        let old =
-            chrono::DateTime::parse_from_rfc3339(&snapshot.fetched_at).map_or(true, |fetched| {
-                (now - fetched.with_timezone(&Utc)).num_seconds()
-                    > (settings.idle_poll_interval_seconds * 2).max(180) as i64
-            });
+        let old = time::parse(&snapshot.fetched_at).is_none_or(|fetched| {
+            (now - fetched).as_secs() > (settings.idle_poll_interval_seconds * 2).max(180) as i64
+        });
         // A model or extra window whose reset passed outdates only itself; the
         // card shows it as pending. Core windows speak for the account.
         let has_core = snapshot
@@ -299,9 +298,10 @@ pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>)
             .iter()
             .filter(|window| !has_core || window.scope() == WindowScope::Core)
             .any(|window| {
-                window.resets_at.as_ref().is_some_and(|reset| {
-                    chrono::DateTime::parse_from_rfc3339(reset).map_or(true, |reset| reset <= now)
-                })
+                window
+                    .resets_at
+                    .as_ref()
+                    .is_some_and(|reset| time::parse(reset).is_none_or(|reset| reset <= now))
             })
     })
 }
@@ -309,7 +309,7 @@ pub fn stale(account: &Account, settings: &Settings, now: chrono::DateTime<Utc>)
 pub fn selected<'a>(
     accounts: &'a [Account],
     settings: &Settings,
-    now: chrono::DateTime<Utc>,
+    now: Timestamp,
 ) -> Option<&'a Account> {
     if settings.tray_mode == TrayMode::Pinned {
         if let Some(account) = settings
@@ -378,9 +378,9 @@ pub fn percent_label(amount: f64) -> String {
 }
 
 /// How long ago a timestamp was, in the popover's wording.
-pub fn relative_age(timestamp: &str, now: chrono::DateTime<Utc>) -> Option<String> {
-    let at = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
-    let seconds = (now - at.with_timezone(&Utc)).num_seconds().max(0);
+pub fn relative_age(timestamp: &str, now: Timestamp) -> Option<String> {
+    let at = time::parse(timestamp)?;
+    let seconds = (now - at).as_secs().max(0);
     let (minutes, hours) = (seconds / 60, seconds / 3600);
     Some(if seconds < 10 {
         "just now".to_owned()
@@ -396,7 +396,7 @@ pub fn relative_age(timestamp: &str, now: chrono::DateTime<Utc>) -> Option<Strin
 }
 
 /// The status of an account whose token expired on disk, or `None` for any other account.
-pub fn idle_note(account: &Account, now: chrono::DateTime<Utc>) -> Option<String> {
+pub fn idle_note(account: &Account, now: Timestamp) -> Option<String> {
     account
         .error
         .as_ref()
@@ -414,11 +414,7 @@ pub fn idle_note(account: &Account, now: chrono::DateTime<Utc>) -> Option<String
 }
 
 /// Names the most relevant window whose reset passed with no reading since.
-pub fn unread_reset_note(
-    account: &Account,
-    now: chrono::DateTime<Utc>,
-    clock: Clock12h,
-) -> Option<String> {
+pub fn unread_reset_note(account: &Account, now: Timestamp, clock: Clock12h) -> Option<String> {
     let snapshot = account.snapshot.as_ref()?;
     let unread = |window: &&UsageWindow| snapshot.unread_since_reset(window, now);
     let window = snapshot
@@ -427,11 +423,11 @@ pub fn unread_reset_note(
         .filter(|window| window.scope() == WindowScope::Core)
         .find(unread)
         .or_else(|| snapshot.windows.iter().find(unread))?;
-    let reset = chrono::DateTime::parse_from_rfc3339(window.resets_at.as_deref()?).ok()?;
+    let reset = time::parse(window.resets_at.as_deref()?)?;
     Some(format!(
         "{} reset {}, not read since",
         window.label.chars().take(64).collect::<String>(),
-        reset_clock(reset.with_timezone(&Utc), now, clock)
+        reset_clock(reset, now, clock)
     ))
 }
 
@@ -459,7 +455,7 @@ fn tooltip(
     account: Option<&Account>,
     window: Option<&UsageWindow>,
     is_stale: bool,
-    now: chrono::DateTime<Utc>,
+    now: Timestamp,
     clock: Clock12h,
 ) -> String {
     let Some(account) = account else {
@@ -479,8 +475,7 @@ fn tooltip(
     let reset = window
         .resets_at
         .as_deref()
-        .and_then(|reset| chrono::DateTime::parse_from_rfc3339(reset).ok())
-        .map(|reset| reset.with_timezone(&Utc))
+        .and_then(time::parse)
         .filter(|reset| *reset > now)
         .map(|reset| format!(" · resets {}", reset_clock(reset, now, clock)))
         .unwrap_or_default();
@@ -507,7 +502,7 @@ fn tooltip(
 }
 
 pub fn update(app: &AppHandle, state: &AppState) {
-    let now = Utc::now();
+    let now = time::now();
     let account = selected(&state.accounts, &state.settings, now);
     let window =
         account.and_then(|account| limiting_window(account, state.settings.tray_metric, now));
@@ -823,7 +818,7 @@ mod tests {
                         window_seconds: None,
                     })
                     .collect(),
-                fetched_at: Utc::now().to_rfc3339(),
+                fetched_at: time::now().to_rfc3339(),
                 extra_usage: None,
                 reset_grants: None,
                 balance: None,
@@ -852,23 +847,23 @@ mod tests {
             notification_failed_at: None,
         };
         assert_eq!(
-            selected(&state.accounts, &state.settings, Utc::now())
+            selected(&state.accounts, &state.settings, time::now())
                 .unwrap()
                 .id,
             "a"
         );
         state.accounts[0].error = Some(UsageError::new("network", "Offline"));
         assert_eq!(
-            selected(&state.accounts, &state.settings, Utc::now())
+            selected(&state.accounts, &state.settings, time::now())
                 .unwrap()
                 .id,
             "b"
         );
         state.settings.tray_mode = TrayMode::Pinned;
         state.settings.pinned_account_id = Some("a".into());
-        let pinned = selected(&state.accounts, &state.settings, Utc::now()).unwrap();
+        let pinned = selected(&state.accounts, &state.settings, time::now()).unwrap();
         assert_eq!(pinned.id, "a");
-        assert!(stale(pinned, &state.settings, Utc::now()));
+        assert!(stale(pinned, &state.settings, time::now()));
     }
 
     #[test]
@@ -887,13 +882,13 @@ mod tests {
         };
         for kind in ["rateLimited", "credentialsChanged"] {
             state.accounts[0].error = Some(UsageError::new(kind, "Retrying"));
-            assert!(!stale(&state.accounts[0], &state.settings, Utc::now()));
+            assert!(!stale(&state.accounts[0], &state.settings, time::now()));
             if let Some(snapshot) = state.accounts[0].snapshot.as_mut() {
-                snapshot.fetched_at = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+                snapshot.fetched_at = (time::now() - time::hours(1)).to_rfc3339();
             }
-            assert!(stale(&state.accounts[0], &state.settings, Utc::now()));
+            assert!(stale(&state.accounts[0], &state.settings, time::now()));
             state.accounts[0].snapshot = None;
-            assert!(stale(&state.accounts[0], &state.settings, Utc::now()));
+            assert!(stale(&state.accounts[0], &state.settings, time::now()));
             state.accounts[0] = account("a", &[10.0]);
         }
     }
@@ -908,7 +903,7 @@ mod tests {
                     label: (*id).into(),
                     used_percent: *used,
                     resets_at: reset_hours
-                        .map(|hours| (Utc::now() + chrono::Duration::hours(hours)).to_rfc3339()),
+                        .map(|hours| (time::now() + time::hours(hours)).to_rfc3339()),
                     window_seconds: None,
                 })
                 .collect();
@@ -919,7 +914,7 @@ mod tests {
     #[test]
     fn only_core_resets_make_an_account_stale() {
         let settings = Settings::default();
-        let now = Utc::now();
+        let now = time::now();
         let model_elapsed = windowed(
             "a",
             &[
@@ -939,7 +934,7 @@ mod tests {
     }
 
     fn limiting_id(account: &Account, metric: TrayMetric) -> Option<&str> {
-        limiting_window(account, metric, Utc::now()).map(|window| window.id.as_str())
+        limiting_window(account, metric, time::now()).map(|window| window.id.as_str())
     }
 
     #[test]
@@ -1037,21 +1032,21 @@ mod tests {
             notification_failed_at: None,
         };
         assert_eq!(
-            selected(&state.accounts, &state.settings, Utc::now())
+            selected(&state.accounts, &state.settings, time::now())
                 .unwrap()
                 .id,
             "b"
         );
         state.settings.tray_metric = TrayMetric::All;
         assert_eq!(
-            selected(&state.accounts, &state.settings, Utc::now())
+            selected(&state.accounts, &state.settings, time::now())
                 .unwrap()
                 .id,
             "a"
         );
         state.settings.tray_metric = TrayMetric::Weekly;
         assert_eq!(
-            selected(&state.accounts, &state.settings, Utc::now())
+            selected(&state.accounts, &state.settings, time::now())
                 .unwrap()
                 .id,
             "a"
@@ -1060,9 +1055,9 @@ mod tests {
 
     #[test]
     fn tooltip_names_the_followed_window_and_its_reset_time() {
-        let now = Utc::now();
+        let now = time::now();
         let mut work = windowed("Personal", &[("seven_day", 58.0, Some(30))]);
-        let reset = now + chrono::Duration::hours(30);
+        let reset = now + time::hours(30);
         let window = work.snapshot.as_ref().unwrap().windows[0].clone();
         assert_eq!(
             tooltip(Some(&work), Some(&window), false, now, Clock12h(false)),
@@ -1072,7 +1067,7 @@ mod tests {
             )
         );
         let mut expired = window.clone();
-        expired.resets_at = Some((now - chrono::Duration::minutes(1)).to_rfc3339());
+        expired.resets_at = Some((now - time::mins(1)).to_rfc3339());
         assert_eq!(
             tooltip(Some(&work), Some(&expired), true, now, Clock12h(false)),
             "Margin · Personal · seven_day 42% remaining · last known"
@@ -1095,15 +1090,15 @@ mod tests {
         }
     }
 
-    fn read_ago(account: &mut Account, now: chrono::DateTime<Utc>, hours: i64) {
+    fn read_ago(account: &mut Account, now: Timestamp, hours: i64) {
         if let Some(snapshot) = account.snapshot.as_mut() {
-            snapshot.fetched_at = (now - chrono::Duration::hours(hours)).to_rfc3339();
+            snapshot.fetched_at = (now - time::hours(hours)).to_rfc3339();
         }
     }
 
     #[test]
     fn tooltip_names_an_idle_account_without_calling_it_signed_out() {
-        let now = Utc::now();
+        let now = time::now();
         let clock = Clock12h(false);
         let mut idle = windowed("Work", &[("seven_day", 58.0, None)]);
         idle.error = Some(expired_token());
@@ -1131,7 +1126,7 @@ mod tests {
 
     #[test]
     fn a_window_past_its_reset_is_never_the_current_value() {
-        let now = Utc::now();
+        let now = time::now();
         let clock = Clock12h(false);
         let mut account = windowed(
             "Work",
@@ -1156,7 +1151,7 @@ mod tests {
         for metric in [TrayMetric::Core, TrayMetric::All, TrayMetric::Weekly] {
             assert_eq!(limiting_id(&all_passed, metric), None, "{metric:?}");
         }
-        let reset = now - chrono::Duration::hours(1);
+        let reset = now - time::hours(1);
         assert_eq!(
             tooltip(Some(&all_passed), None, true, now, clock),
             format!(
@@ -1171,7 +1166,7 @@ mod tests {
 
     #[test]
     fn an_account_past_its_reset_does_not_compete_for_the_tray() {
-        let now = Utc::now();
+        let now = time::now();
         let mut passed = windowed("passed", &[("five_hour", 99.0, Some(-1))]);
         read_ago(&mut passed, now, 3);
         let current = windowed("current", &[("five_hour", 20.0, Some(2))]);
@@ -1185,7 +1180,7 @@ mod tests {
 
     #[test]
     fn tooltip_marks_an_incomplete_reading() {
-        let now = Utc::now();
+        let now = time::now();
         let mut account = windowed("Work", &[("seven_day", 58.0, None)]);
         account.snapshot.as_mut().unwrap().incomplete = true;
         let window = account.snapshot.as_ref().unwrap().windows[0].clone();
@@ -1197,7 +1192,7 @@ mod tests {
 
     #[test]
     fn relative_ages_match_the_popover() {
-        let now: chrono::DateTime<Utc> = "2026-10-16T12:00:00Z".parse().unwrap();
+        let now: Timestamp = "2026-10-16T12:00:00Z".parse().unwrap();
         for (at, age) in [
             ("2026-10-16T12:00:05Z", "just now"),
             ("2026-10-16T11:59:55Z", "just now"),

@@ -1,6 +1,6 @@
 use super::fsutil;
 use super::model::{same_email, Account, AccountSource, Identity, Provider};
-use chrono::{DateTime, Duration, Utc};
+use super::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -50,8 +50,8 @@ struct Entry {
     error: Option<String>,
     unreadable: bool,
     gap: bool,
-    expected_at: Option<DateTime<Utc>>,
-    last_observed: Option<DateTime<Utc>>,
+    expected_at: Option<Timestamp>,
+    last_observed: Option<Timestamp>,
     present: HashSet<String>,
     last_percent: HashMap<String, f64>,
     dirty: bool,
@@ -94,7 +94,7 @@ impl HistoryStore {
         })
     }
 
-    pub fn get(&mut self, account: &Account, now: DateTime<Utc>) -> AccountHistory {
+    pub fn get(&mut self, account: &Account, now: Timestamp) -> AccountHistory {
         let entry = self.entry(account);
         let verified = reconcile(entry, account);
         entry.dirty |= prune(&mut entry.saved.points, now);
@@ -121,7 +121,7 @@ impl HistoryStore {
         &mut self,
         account: &Account,
         window_id: &str,
-        since: DateTime<Utc>,
+        since: Timestamp,
     ) -> Vec<HistoryPoint> {
         let entry = self.entry(account);
         if !reconcile(entry, account) || entry.unreadable {
@@ -144,7 +144,7 @@ impl HistoryStore {
         points
     }
 
-    pub fn record(&mut self, account: &Account, interval: u64, now: DateTime<Utc>) {
+    pub fn record(&mut self, account: &Account, interval: u64, now: Timestamp) {
         let path = self.directory.join(format!("{}.json", account.id));
         let entry = self.entry(account);
         if !reconcile(entry, account) || entry.unreadable {
@@ -162,13 +162,12 @@ impl HistoryStore {
             entry.gap = true;
             return;
         };
-        if (now - at).num_seconds().abs() > 30 || entry.last_observed.is_some_and(|last| at <= last)
-        {
+        if (now - at).as_secs().abs() > 30 || entry.last_observed.is_some_and(|last| at <= last) {
             entry.gap = true;
             return;
         }
         let gap = entry.gap || entry.expected_at.is_some_and(|expected| at > expected);
-        entry.expected_at = Some(at + Duration::seconds(interval.min(86_400) as i64 + 30));
+        entry.expected_at = Some(at + time::secs(interval.min(86_400) as i64 + 30));
         entry.last_observed = Some(at);
         entry.gap = snapshot.windows.is_empty();
         let mut present = HashSet::new();
@@ -214,7 +213,7 @@ impl HistoryStore {
                 if observed_decrease && !boundary {
                     gap_before = true;
                 }
-                if !gap_before && !boundary && (at - previous_at).num_seconds() < 60 {
+                if !gap_before && !boundary && (at - previous_at).as_secs() < 60 {
                     continue;
                 }
                 // An unchanged run stores only its first and latest reading.
@@ -423,7 +422,7 @@ fn merge_weekly(points: &mut Vec<HistoryPoint>, moved: &[bool]) {
     let mut tagged: Vec<(HistoryPoint, bool)> =
         points.drain(..).zip(moved.iter().copied()).collect();
     tagged.sort_by_key(|(point, _)| timestamp(&point.at));
-    let mut previous: Option<(DateTime<Utc>, bool)> = None;
+    let mut previous: Option<(Timestamp, bool)> = None;
     for (point, moved) in tagged {
         if point.window_id == "secondary_window" {
             let at = timestamp(&point.at);
@@ -463,12 +462,12 @@ pub(super) fn compact(points: &mut Vec<HistoryPoint>) -> bool {
     points.len() != before
 }
 
-fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) -> bool {
-    let cutoff = now - Duration::days(7);
-    let latest = now + Duration::seconds(30);
+fn prune(points: &mut Vec<HistoryPoint>, now: Timestamp) -> bool {
+    let cutoff = now - time::days(7);
+    let latest = now + time::secs(30);
     let mut keep = vec![true; points.len()];
     let mut clamp = Vec::new();
-    let mut later: HashMap<&str, (usize, DateTime<Utc>)> = HashMap::new();
+    let mut later: HashMap<&str, (usize, Timestamp)> = HashMap::new();
     let mut counts: HashMap<&str, usize> = HashMap::new();
     let mut total = 0;
     for (index, point) in points.iter().enumerate().rev() {
@@ -478,7 +477,7 @@ fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) -> bool {
             continue;
         };
         let expired = at < cutoff;
-        let held = |&(next, next_at): &(usize, DateTime<Utc>)| {
+        let held = |&(next, next_at): &(usize, Timestamp)| {
             next_at > cutoff && continues_run(point, &points[next])
         };
         let count = counts.entry(window).or_default();
@@ -511,19 +510,13 @@ fn prune(points: &mut Vec<HistoryPoint>, now: DateTime<Utc>) -> bool {
 
 fn same_reset(a: Option<&str>, b: Option<&str>) -> bool {
     match (a.and_then(timestamp), b.and_then(timestamp)) {
-        (Some(a), Some(b)) => (a - b).num_seconds().abs() <= RESET_JITTER_SECONDS,
+        (Some(a), Some(b)) => (a - b).as_secs().abs() <= RESET_JITTER_SECONDS,
         _ => false,
     }
 }
 
-fn timestamp(value: &str) -> Option<DateTime<Utc>> {
-    (value.len() <= 64)
-        .then(|| {
-            DateTime::parse_from_rfc3339(value)
-                .ok()
-                .map(|at| at.with_timezone(&Utc))
-        })
-        .flatten()
+fn timestamp(value: &str) -> Option<Timestamp> {
+    (value.len() <= 64).then(|| time::parse(value)).flatten()
 }
 
 fn valid_id(value: &str) -> bool {
@@ -613,8 +606,8 @@ mod tests {
     use super::*;
     use crate::core::model::{Snapshot, UsageError, UsageWindow};
 
-    fn at(seconds: i64) -> DateTime<Utc> {
-        DateTime::from_timestamp(1_792_180_800 + seconds, 0).unwrap()
+    fn at(seconds: i64) -> Timestamp {
+        Timestamp::from_unix_seconds(1_792_180_800 + seconds).unwrap()
     }
 
     fn account(seconds: i64, used: f64) -> Account {
@@ -766,12 +759,9 @@ mod tests {
             at(10_301 - MAX_WINDOW_POINTS as i64).to_rfc3339()
         );
         assert!(!prune(&mut points, at(10_300)));
-        prune(
-            &mut points,
-            at(0) + Duration::days(7) + Duration::seconds(1),
-        );
+        prune(&mut points, at(0) + time::days(7) + time::secs(1));
         assert_eq!(points.len(), MAX_WINDOW_POINTS);
-        prune(&mut points, at(10_300) + Duration::days(8));
+        prune(&mut points, at(10_300) + time::days(8));
         assert!(points.is_empty());
         let mut future = vec![reading("session", 0, 5.0), reading("session", 60, 6.0)];
         assert!(prune(&mut future, at(0)));

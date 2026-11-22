@@ -7,9 +7,9 @@ use crate::core::model::{
     Account, AccountSource, Balance, Credits, Identity, Provider, ResetGrants, Snapshot,
     SpendLimit, UsageError, UsageWindow, MAX_WINDOWS,
 };
+use crate::core::time::{self, Timestamp};
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use chrono::{DateTime, Utc};
 use reqwest::Url;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -190,29 +190,25 @@ async fn fetch_reset_credits(
         return None;
     }
     let value = response_json(response).await.ok()?;
-    parse_reset_credits(&value, Utc::now())
+    parse_reset_credits(&value, time::now())
 }
 
 const MAX_RESETS: u64 = 50;
 
-pub(super) fn parse_reset_credits(value: &Value, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_credits(value: &Value, at: Timestamp) -> Option<ResetGrants> {
     let available = value
         .get("available_count")?
         .as_u64()
         .filter(|count| *count <= MAX_RESETS)?;
     let mut kinds = HashSet::new();
-    let mut soonest: Option<DateTime<Utc>> = None;
+    let mut soonest: Option<Timestamp> = None;
     for credit in value.get("credits")?.as_array()? {
         if credit.get("status")?.as_str()? != "available" {
             continue;
         }
         let expires = match credit.get("expires_at").filter(|value| !value.is_null()) {
             None => None,
-            Some(value) => Some(
-                DateTime::parse_from_rfc3339(value.as_str()?)
-                    .ok()?
-                    .with_timezone(&Utc),
-            ),
+            Some(value) => Some(time::parse(value.as_str()?)?),
         };
         if expires.is_some_and(|expires| expires <= at) {
             continue;
@@ -1387,9 +1383,7 @@ mod tests {
         let value: Value =
             serde_json::from_str(include_str!("../../../fixtures/codex-reset-credits.json"))
                 .unwrap();
-        let at = DateTime::parse_from_rfc3339("2026-10-16T10:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let at = time::parse("2026-10-16T10:00:00Z").unwrap();
         let grants = parse_reset_credits(&value, at).unwrap();
         assert_eq!(grants.available, 2);
         assert_eq!(grants.kind.as_deref(), Some("weekly"));

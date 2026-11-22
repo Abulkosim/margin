@@ -9,7 +9,7 @@ use crate::core::model::{
     valid_keychain_suffix, Account, AccountSource, ExtraUsage, Identity, Provider, ResetGrants,
     Snapshot, UsageError, UsageWindow, MAX_WINDOWS,
 };
-use chrono::{DateTime, Utc};
+use crate::core::time::{self, Timestamp};
 use reqwest::StatusCode;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -101,11 +101,11 @@ async fn fetch_from(
     let credentials = load_credentials(&account.source).await?;
     if let Some(expires_at) = credentials
         .expires_at
-        .filter(|expires_at| *expires_at <= chrono::Utc::now().timestamp_millis() + EXPIRY_SKEW_MS)
+        .filter(|expires_at| *expires_at <= time::now().unix_millis() + EXPIRY_SKEW_MS)
     {
         let directory = sign_in_directory(&account.source);
         return Err(
-            match chrono::DateTime::from_timestamp_millis(expires_at).and_then(super::rfc3339) {
+            match Timestamp::from_unix_millis(expires_at).and_then(super::rfc3339) {
                 Some(since) => token_expired(Provider::Claude, directory, since),
                 None => signed_out(Provider::Claude, directory, None),
             },
@@ -586,7 +586,7 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
         windows,
         fetched_at: now(),
         extra_usage,
-        reset_grants: parse_reset_grants(value.get("cedar_ember"), Utc::now()),
+        reset_grants: parse_reset_grants(value.get("cedar_ember"), time::now()),
         balance: None,
         incomplete,
     })
@@ -594,21 +594,19 @@ pub fn parse_usage(value: &Value) -> Result<Snapshot, UsageError> {
 
 const MAX_RESETS: u64 = 50;
 
-pub(super) fn parse_reset_grants(value: Option<&Value>, at: DateTime<Utc>) -> Option<ResetGrants> {
+pub(super) fn parse_reset_grants(value: Option<&Value>, at: Timestamp) -> Option<ResetGrants> {
     let block = value?.as_object()?;
     if !block.get("eligible")?.as_bool()? {
         return None;
     }
     let mut available: u64 = 0;
-    let mut soonest: Option<DateTime<Utc>> = None;
+    let mut soonest: Option<Timestamp> = None;
     for grant in block.get("grants")?.as_array()? {
         let left = grant.get("resets_left")?.as_u64()?;
         let paused = grant.get("paused")?.as_bool()?;
         let bound = |key| match grant.get(key).filter(|value| !value.is_null()) {
             None => Some(None),
-            Some(value) => DateTime::parse_from_rfc3339(value.as_str()?)
-                .ok()
-                .map(|date| Some(date.with_timezone(&Utc))),
+            Some(value) => time::parse(value.as_str()?).map(Some),
         };
         let starts = bound("starts_at")?;
         let ends = bound("ends_at")?;
@@ -765,9 +763,7 @@ mod tests {
 
     fn grants_at(fixture: &str, at: &str) -> Option<ResetGrants> {
         let value: Value = serde_json::from_str(fixture).unwrap();
-        let at = DateTime::parse_from_rfc3339(at)
-            .unwrap()
-            .with_timezone(&Utc);
+        let at = time::parse(at).unwrap();
         parse_reset_grants(value.get("cedar_ember"), at)
     }
 
@@ -798,7 +794,7 @@ mod tests {
                 .is_none());
         }
         let ineligible = json!({"cedar_ember": {"eligible": false, "grants": [{"resets_left": 1, "paused": false}]}});
-        assert!(parse_reset_grants(ineligible.get("cedar_ember"), Utc::now()).is_none());
+        assert!(parse_reset_grants(ineligible.get("cedar_ember"), time::now()).is_none());
     }
 
     #[test]
@@ -821,7 +817,7 @@ mod tests {
                 .clone(),
             json!({"eligible": true, "grants": [{"resets_left": 1, "paused": false, "ends_at": "9999-12-31T23:30:00-05:00"}]}),
         ] {
-            assert!(parse_reset_grants(Some(&block), Utc::now()).is_none());
+            assert!(parse_reset_grants(Some(&block), time::now()).is_none());
         }
     }
 
@@ -1032,7 +1028,7 @@ mod tests {
     #[test]
     fn alternating_malformed_and_valid_scoped_limits_alert_once() {
         use crate::core::notifications::{observe, AlertKind, AlertMemory};
-        let now: DateTime<Utc> = "2099-10-16T12:00:00Z".parse().unwrap();
+        let now = time::parse("2099-10-16T12:00:00Z").unwrap();
         let mut memory = AlertMemory::new();
         let mut raised = Vec::new();
         for malformed in [false, true, false, true, true, false] {
@@ -1392,7 +1388,7 @@ attributes:
     }
 
     fn write_token(directory: &Path, token: &str) {
-        let expires_at = chrono::Utc::now().timestamp_millis() + 3_600_000;
+        let expires_at = time::now().unix_millis() + 3_600_000;
         std::fs::write(
             directory.join(".credentials.json"),
             format!(r#"{{"claudeAiOauth":{{"accessToken":"{token}","expiresAt":{expires_at},"scopes":["user:profile"]}}}}"#),

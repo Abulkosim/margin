@@ -1,3 +1,4 @@
+use crate::core::time::{self, Timestamp};
 use crate::core::{
     model::{Account, AccountSource, CoreWindow, Provider, UsageError, UsageWindow, WindowScope},
     notifications::{reset_clock, Clock12h},
@@ -6,7 +7,6 @@ use crate::core::{
     store::{self, StoredState},
     tray,
 };
-use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use std::{
     ffi::{OsStr, OsString},
@@ -234,7 +234,7 @@ fn execute(command: Result<Command, String>, out: &mut dyn Write, err: &mut dyn 
                 Command::Line(options) => Env::capture(options.color),
                 _ => Env::plain(),
             };
-            match render(&command, state.as_ref(), app_running, Utc::now(), &env) {
+            match render(&command, state.as_ref(), app_running, time::now(), &env) {
                 Ok((text, empty)) => {
                     let _ = writeln!(out, "{text}");
                     i32::from(empty)
@@ -252,7 +252,7 @@ fn render(
     command: &Command,
     state: Option<&StoredState>,
     app_running: fn() -> Option<bool>,
-    now: DateTime<Utc>,
+    now: Timestamp,
     env: &Env,
 ) -> Result<(String, bool), String> {
     let empty = state.is_none_or(|state| state.accounts.is_empty());
@@ -343,11 +343,7 @@ struct ErrorReport<'a> {
     message: &'a str,
 }
 
-fn report(
-    state: Option<&StoredState>,
-    app_running: Option<bool>,
-    now: DateTime<Utc>,
-) -> Report<'_> {
+fn report(state: Option<&StoredState>, app_running: Option<bool>, now: Timestamp) -> Report<'_> {
     let accounts = state.map_or_else(Vec::new, |state| {
         ordered(&state.accounts, &state.settings, now)
             .into_iter()
@@ -356,7 +352,7 @@ fn report(
     });
     Report {
         schema: SCHEMA,
-        generated_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
+        generated_at: now.to_rfc3339_secs(),
         app_running,
         accounts,
     }
@@ -365,7 +361,7 @@ fn report(
 fn account_report<'a>(
     account: &'a Account,
     settings: &Settings,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> AccountReport<'a> {
     let stale = tray::stale(account, settings, now);
     AccountReport {
@@ -432,11 +428,7 @@ fn rounded(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
 }
 
-fn ordered<'a>(
-    accounts: &'a [Account],
-    settings: &Settings,
-    now: DateTime<Utc>,
-) -> Vec<&'a Account> {
+fn ordered<'a>(accounts: &'a [Account], settings: &Settings, now: Timestamp) -> Vec<&'a Account> {
     let mut accounts: Vec<&Account> = accounts.iter().collect();
     if settings.account_order == AccountOrder::Added {
         return accounts;
@@ -482,7 +474,7 @@ fn line(
     settings: &Settings,
     options: LineOptions,
     env: &Env,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> String {
     if options.short {
         return short_line(accounts, settings, options.all, env.clock, now);
@@ -541,7 +533,7 @@ fn chosen<'a>(
     provider: Provider,
     settings: &Settings,
     env: &Env,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Pick<'a> {
     let subset: Vec<&Account> = accounts
         .iter()
@@ -636,7 +628,7 @@ struct Segment {
     body: Body,
 }
 
-fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segment {
+fn segment(account: &Account, settings: &Settings, now: Timestamp) -> Segment {
     let label = match account.label.trim() {
         "" => account.provider.name().to_owned(),
         label => label.to_owned(),
@@ -680,11 +672,9 @@ fn segment(account: &Account, settings: &Settings, now: DateTime<Utc>) -> Segmen
 }
 
 /// Time until a reset in at most five characters; `None` once it has passed.
-fn time_left(reset: &str, now: DateTime<Utc>) -> Option<String> {
-    let reset = DateTime::parse_from_rfc3339(reset)
-        .ok()?
-        .with_timezone(&Utc);
-    let seconds = (reset - now).num_seconds();
+fn time_left(reset: &str, now: Timestamp) -> Option<String> {
+    let reset = time::parse(reset)?;
+    let seconds = (reset - now).as_secs();
     if seconds <= 0 {
         return None;
     }
@@ -1061,7 +1051,7 @@ fn short_line(
     settings: &Settings,
     all: bool,
     clock: Clock12h,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> String {
     if accounts.is_empty() {
         return "No accounts".into();
@@ -1083,7 +1073,7 @@ fn short_segment(
     settings: &Settings,
     with_reset: bool,
     clock: Clock12h,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> String {
     let Some(window) = tray::limiting_window(account, settings.tray_metric, now) else {
         let state = tray::idle_note(account, now)
@@ -1107,8 +1097,7 @@ fn short_segment(
         if let Some(reset) = window
             .resets_at
             .as_deref()
-            .and_then(|reset| DateTime::parse_from_rfc3339(reset).ok())
-            .map(|reset| reset.with_timezone(&Utc))
+            .and_then(time::parse)
             .filter(|reset| *reset > now)
         {
             text.push_str(&format!(" · resets {}", reset_clock(reset, now, clock)));
@@ -1189,6 +1178,10 @@ fn attach_console() {
 fn attach_console() {}
 
 #[cfg(test)]
+#[path = "cli_golden.rs"]
+mod golden;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::{json, Value};
@@ -1200,7 +1193,7 @@ mod tests {
     }
 
     fn at(hours: i64) -> String {
-        (Utc::now() + chrono::Duration::hours(hours)).to_rfc3339_opts(SecondsFormat::Secs, true)
+        (time::now() + time::hours(hours)).to_rfc3339_secs()
     }
 
     fn account(id: &str, label: &str, windows: Value) -> Value {
@@ -1227,7 +1220,7 @@ mod tests {
 
     fn json_of(state: Option<&StoredState>, running: fn() -> Option<bool>) -> (Value, bool) {
         let (text, empty) =
-            render(&Command::Json, state, running, Utc::now(), &Env::plain()).unwrap();
+            render(&Command::Json, state, running, time::now(), &Env::plain()).unwrap();
         (serde_json::from_str(&text).unwrap(), empty)
     }
 
@@ -1244,7 +1237,7 @@ mod tests {
             &Command::Line(options(all, true)),
             Some(state),
             || None,
-            Utc::now(),
+            time::now(),
             &Env::plain(),
         )
         .unwrap()
@@ -1253,12 +1246,12 @@ mod tests {
 
     // Fixed-clock fixtures for the long line.
 
-    fn now() -> DateTime<Utc> {
+    fn now() -> Timestamp {
         NOW.parse().unwrap()
     }
 
     fn stamp(minutes: i64) -> String {
-        (now() + chrono::Duration::minutes(minutes)).to_rfc3339_opts(SecondsFormat::Secs, true)
+        (now() + time::mins(minutes)).to_rfc3339_secs()
     }
 
     fn acct(provider: &str, id: &str, label: &str, windows: Value) -> Value {
@@ -1561,7 +1554,7 @@ mod tests {
         ];
         let labels = |settings: Value| {
             let state = state(accounts.clone(), settings);
-            ordered(&state.accounts, &state.settings, Utc::now())
+            ordered(&state.accounts, &state.settings, time::now())
                 .iter()
                 .map(|account| account.label.clone())
                 .collect::<Vec<_>>()
@@ -1591,10 +1584,8 @@ mod tests {
             account("b", "Work", json!([window("five_hour", 32.0, 2)])),
         ];
         let reset = |hours| {
-            let reset = DateTime::parse_from_rfc3339(&at(hours))
-                .unwrap()
-                .with_timezone(&Utc);
-            reset_clock(reset, Utc::now(), Clock12h(false))
+            let reset = time::parse(&at(hours)).unwrap();
+            reset_clock(reset, time::now(), Clock12h(false))
         };
         let lowest = state(accounts.clone(), json!({}));
         assert_eq!(
@@ -1652,7 +1643,7 @@ mod tests {
                             &Command::Line(options(all, short)),
                             state,
                             || None,
-                            Utc::now(),
+                            time::now(),
                             &Env::plain()
                         )
                         .unwrap(),
@@ -2067,12 +2058,7 @@ mod tests {
 
     #[test]
     fn time_left_fits_five_characters() {
-        let left = |seconds: i64| {
-            time_left(
-                &(now() + chrono::Duration::seconds(seconds)).to_rfc3339(),
-                now(),
-            )
-        };
+        let left = |seconds: i64| time_left(&(now() + time::secs(seconds)).to_rfc3339(), now());
         assert_eq!(left(-1), None);
         assert_eq!(left(0), None);
         assert_eq!(left(30).as_deref(), Some("<1m"));

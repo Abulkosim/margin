@@ -1,8 +1,8 @@
+use super::time::{self, Date, SignedDuration, TimeZone, Timestamp, Weekday};
 use super::{
     history::HistoryPoint,
     model::{CoreWindow, Provider},
 };
-use chrono::{DateTime, Datelike, Duration, LocalResult, NaiveDate, TimeZone, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -46,8 +46,8 @@ pub struct AccountWeek {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Digest {
-    pub from: DateTime<Utc>,
-    pub to: DateTime<Utc>,
+    pub from: Timestamp,
+    pub to: Timestamp,
     pub accounts: Vec<AccountWeek>,
     pub previous: Option<WeeklySummary>,
 }
@@ -80,7 +80,7 @@ pub struct DigestState {
 impl DigestState {
     /// Enabling starts the clock now, so the first digest is the first Monday
     /// 09:00 at least six days out.
-    pub fn enabled_at(now: DateTime<Utc>) -> Self {
+    pub fn enabled_at(now: Timestamp) -> Self {
         Self {
             last_sent_at: now.to_rfc3339(),
             previous: None,
@@ -89,14 +89,14 @@ impl DigestState {
 
     /// Re-enabling restarts the clock but keeps the last summary, so the
     /// next digest can still say "(last week …)".
-    pub fn re_enabled(previous: Option<Self>, now: DateTime<Utc>) -> Self {
+    pub fn re_enabled(previous: Option<Self>, now: Timestamp) -> Self {
         Self {
             previous: previous.and_then(|state| state.previous),
             ..Self::enabled_at(now)
         }
     }
 
-    pub fn last_sent_at(&self) -> Option<DateTime<Utc>> {
+    pub fn last_sent_at(&self) -> Option<Timestamp> {
         timestamp(&self.last_sent_at)
     }
 
@@ -127,18 +127,15 @@ impl DigestState {
 
 struct WindowStats {
     week: WindowWeek,
-    by_day: BTreeMap<NaiveDate, f64>,
-    days: BTreeSet<NaiveDate>,
+    by_day: BTreeMap<Date, f64>,
+    days: BTreeSet<Date>,
     /// Time between consecutive readings with no gap between them; a
     /// compacted flat run counts in full.
-    observed: Duration,
+    observed: SignedDuration,
 }
 
-fn timestamp(value: &str) -> Option<DateTime<Utc>> {
-    (value.len() <= 64)
-        .then(|| DateTime::parse_from_rfc3339(value).ok())
-        .flatten()
-        .map(|at| at.with_timezone(&Utc))
+fn timestamp(value: &str) -> Option<Timestamp> {
+    (value.len() <= 64).then(|| time::parse(value)).flatten()
 }
 
 /// A period changes with the reset time; without reset times, a drop or a gap starts one.
@@ -147,7 +144,7 @@ fn new_period(previous: &HistoryPoint, point: &HistoryPoint) -> bool {
         previous.resets_at.as_deref().and_then(timestamp),
         point.resets_at.as_deref().and_then(timestamp),
     ) {
-        (Some(before), Some(now)) => (now - before).num_seconds().abs() > RESET_JITTER_SECONDS,
+        (Some(before), Some(now)) => (now - before).as_secs().abs() > RESET_JITTER_SECONDS,
         _ => {
             point.gap_before
                 || point.used_percent < previous.used_percent
@@ -156,15 +153,15 @@ fn new_period(previous: &HistoryPoint, point: &HistoryPoint) -> bool {
     }
 }
 
-fn analyze<Tz: TimeZone>(
+fn analyze(
     points: &[HistoryPoint],
     kind: CoreWindow,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-    zone: &Tz,
+    from: Timestamp,
+    to: Timestamp,
+    zone: &TimeZone,
 ) -> Option<WindowStats> {
     let mut stats: Option<WindowStats> = None;
-    let mut previous: Option<(&HistoryPoint, DateTime<Utc>)> = None;
+    let mut previous: Option<(&HistoryPoint, Timestamp)> = None;
     let mut period_hit = false;
     for point in points
         .iter()
@@ -176,7 +173,7 @@ fn analyze<Tz: TimeZone>(
         if previous.is_some_and(|(_, previous_at)| at <= previous_at) {
             continue;
         }
-        let day = at.with_timezone(zone).date_naive();
+        let day = at.date(zone);
         let used = point.used_percent;
         let current = stats.get_or_insert_with(|| WindowStats {
             week: WindowWeek {
@@ -188,7 +185,7 @@ fn analyze<Tz: TimeZone>(
             },
             by_day: BTreeMap::new(),
             days: BTreeSet::new(),
-            observed: Duration::zero(),
+            observed: SignedDuration::ZERO,
         });
         current.week.peak_used = current.week.peak_used.max(used);
         let starts_period = previous.is_none_or(|(earlier, _)| new_period(earlier, point));
@@ -204,10 +201,10 @@ fn analyze<Tz: TimeZone>(
         if let Some((earlier, earlier_at)) = previous {
             if !point.gap_before {
                 current.observed += at - earlier_at;
-                let mut date = earlier_at.with_timezone(zone).date_naive();
+                let mut date = earlier_at.date(zone);
                 while date < day {
                     current.days.insert(date);
-                    date = date.succ_opt()?;
+                    date = date.tomorrow().ok()?;
                 }
                 // A confirmed reset starts the new period at `used`, all of it spent.
                 let delta = if starts_period {
@@ -225,18 +222,18 @@ fn analyze<Tz: TimeZone>(
     stats
 }
 
-fn hours(span: Duration) -> f64 {
-    span.num_seconds().max(0) as f64 / 3600.0
+fn hours(span: SignedDuration) -> f64 {
+    span.as_secs().max(0) as f64 / 3600.0
 }
 
 /// None when no account has at least 24 hours of readings inside the last 7 days.
-pub fn digest<Tz: TimeZone>(
+pub fn digest(
     history: &[AccountInput<'_>],
     previous: Option<&WeeklySummary>,
-    now: DateTime<Utc>,
-    zone: &Tz,
+    now: Timestamp,
+    zone: &TimeZone,
 ) -> Option<Digest> {
-    let from = now - Duration::days(7);
+    let from = now - time::days(7);
     let mut accounts = Vec::new();
     for input in history {
         let session = analyze(input.points, CoreWindow::Session, from, now, zone);
@@ -257,7 +254,7 @@ pub fn digest<Tz: TimeZone>(
                     .by_day
                     .iter()
                     .filter(|(_, consumed)| **consumed > 0.0)
-                    .fold(None, |best: Option<(&NaiveDate, &f64)>, entry| match best {
+                    .fold(None, |best: Option<(&Date, &f64)>, entry| match best {
                         Some(best) if best.1 >= entry.1 => Some(best),
                         _ => Some(entry),
                     })
@@ -376,7 +373,7 @@ impl Digest {
         if let Some(weekly) = &account.weekly {
             if weekly.limit_hits > 0 {
                 parts.push(match weekly.limit_hit_day {
-                    Some(day) => format!("weekly limit reached {day}"),
+                    Some(day) => format!("weekly limit reached {}", time::weekday_name(day)),
                     None => "weekly limit reached".to_string(),
                 });
             } else {
@@ -411,7 +408,7 @@ impl Digest {
             });
         }
         if let Some(day) = account.busiest_day {
-            parts.push(format!("busiest {day}"));
+            parts.push(format!("busiest {}", time::weekday_name(day)));
         }
         let mut line = format!("{}: {}", account.label, parts.join(", "));
         if account.coverage_hours < FULL_WEEK_HOURS {
@@ -425,7 +422,7 @@ impl Digest {
     /// A stored summary only reads as "last week" when it ended just before this span.
     fn follows(&self, previous: &WeeklySummary) -> bool {
         timestamp(&previous.to)
-            .is_some_and(|ended| self.to - ended <= Duration::days(COMPARISON_MAX_AGE_DAYS))
+            .is_some_and(|ended| self.to - ended <= time::days(COMPARISON_MAX_AGE_DAYS))
     }
 
     pub fn summary(&self) -> WeeklySummary {
@@ -453,43 +450,39 @@ impl Digest {
     }
 }
 
-fn nine_oclock<Tz: TimeZone>(zone: &Tz, date: NaiveDate) -> DateTime<Utc> {
-    let naive = date.and_hms_opt(9, 0, 0).expect("09:00 is a valid time");
-    match zone.from_local_datetime(&naive) {
-        LocalResult::Single(at) | LocalResult::Ambiguous(at, _) => at.with_timezone(&Utc),
-        LocalResult::None => zone
-            .from_local_datetime(&(naive + Duration::hours(1)))
-            .earliest()
-            .map_or_else(
-                || Utc.from_utc_datetime(&naive),
-                |at| at.with_timezone(&Utc),
-            ),
-    }
+/// The first 09:00 on `date` in `zone`; 10:00 when clocks skip 09:00.
+fn nine_oclock(zone: &TimeZone, date: Date) -> Timestamp {
+    let nine = date.at(9, 0, 0, 0);
+    time::earliest(zone, nine)
+        .or_else(|| time::earliest(zone, date.at(10, 0, 0, 0)))
+        .or_else(|| time::as_utc(nine))
+        .expect("a civil date in jiff's range is a valid UTC instant")
 }
 
 /// Most recent Monday 09:00 in `zone` at or before `now`.
-pub fn due_at<Tz: TimeZone>(now: DateTime<Utc>, zone: &Tz) -> DateTime<Utc> {
-    let date = now.with_timezone(zone).date_naive();
-    let monday = date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
+pub fn due_at(now: Timestamp, zone: &TimeZone) -> Timestamp {
+    let date = now.date(zone);
+    let back = |date: Date, days: i64| date.checked_sub(time::days(days)).unwrap_or(date);
+    let monday = back(date, i64::from(date.weekday().to_monday_zero_offset()));
     let candidate = nine_oclock(zone, monday);
     if candidate <= now {
         candidate
     } else {
-        nine_oclock(zone, monday - Duration::days(7))
+        nine_oclock(zone, back(monday, 7))
     }
 }
 
 /// Some(due) once per Monday 09:00 slot at least six days after the last send;
 /// a long sleep yields one. The floor keeps a westward clock change from
 /// reopening a sent slot and makes enabling just before 09:00 wait a week.
-pub fn should_send<Tz: TimeZone>(
-    last_sent_at: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-    zone: &Tz,
-) -> Option<DateTime<Utc>> {
+pub fn should_send(
+    last_sent_at: Option<Timestamp>,
+    now: Timestamp,
+    zone: &TimeZone,
+) -> Option<Timestamp> {
     let due = due_at(now, zone);
     last_sent_at
-        .is_none_or(|last| due - last >= Duration::days(MIN_SEND_GAP_DAYS))
+        .is_none_or(|last| due - last >= time::days(MIN_SEND_GAP_DAYS))
         .then_some(due)
 }
 
@@ -511,7 +504,7 @@ fn mark_sent(
 pub async fn deliver(runtime: &crate::runtime::Runtime) {
     use super::settings::NotificationPermission;
 
-    let now = Utc::now();
+    let now = time::now();
     let mut inner = runtime.inner.lock().await;
     let settings = &inner.view.settings;
     if !settings.weekly_digest
@@ -522,7 +515,7 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
     }
     let state = runtime.digest_state();
     let last_sent_at = state.as_ref().and_then(DigestState::last_sent_at);
-    let Some(due) = should_send(last_sent_at, now, &chrono::Local) else {
+    let Some(due) = should_send(last_sent_at, now, &time::local()) else {
         return;
     };
     let accounts = inner.view.accounts.clone();
@@ -550,7 +543,7 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
         .collect();
     let before = state.clone();
     let previous = state.and_then(|state| state.previous);
-    let digest = digest(&inputs, previous.as_ref(), now, &chrono::Local);
+    let digest = digest(&inputs, previous.as_ref(), now, &time::local());
     let next = DigestState {
         last_sent_at: due.to_rfc3339(),
         previous: digest.as_ref().map(Digest::summary),
@@ -581,21 +574,20 @@ pub async fn deliver(runtime: &crate::runtime::Runtime) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{FixedOffset, NaiveDateTime};
 
     const SESSION: &str = "five_hour";
     const WEEKLY: &str = "seven_day";
 
-    fn at(value: &str) -> DateTime<Utc> {
+    fn at(value: &str) -> Timestamp {
         value.parse().unwrap()
     }
 
     /// Monday 2026-10-26 09:00 UTC.
-    fn now() -> DateTime<Utc> {
+    fn now() -> Timestamp {
         at("2026-10-26T09:00:00Z")
     }
 
-    fn point(window: &str, at: DateTime<Utc>, used: f64, reset: &str, gap: bool) -> HistoryPoint {
+    fn point(window: &str, at: Timestamp, used: f64, reset: &str, gap: bool) -> HistoryPoint {
         HistoryPoint {
             window_id: window.into(),
             at: at.to_rfc3339(),
@@ -609,7 +601,7 @@ mod tests {
     fn session(minutes: i64, used: f64, reset: &str) -> HistoryPoint {
         point(
             SESSION,
-            at("2026-10-21T10:00:00Z") + Duration::minutes(minutes),
+            at("2026-10-21T10:00:00Z") + time::mins(minutes),
             used,
             reset,
             false,
@@ -639,7 +631,7 @@ mod tests {
     }
 
     fn only(points: &[HistoryPoint]) -> Digest {
-        digest(&[input("a", points)], None, now(), &Utc).unwrap()
+        digest(&[input("a", points)], None, now(), &TimeZone::UTC).unwrap()
     }
 
     fn week(digest: &Digest, index: usize) -> &AccountWeek {
@@ -658,7 +650,7 @@ mod tests {
         assert_eq!(session.limit_hits, 1);
         assert_eq!(session.consumed, 100.0);
         assert_eq!(session.peak_used, 100.0);
-        assert_eq!(session.limit_hit_day, Some(Weekday::Wed));
+        assert_eq!(session.limit_hit_day, Some(Weekday::Wednesday));
     }
 
     #[test]
@@ -739,7 +731,7 @@ mod tests {
             point(WEEKLY, at("2026-10-25T10:00:00Z"), 12.0, RESET, true),
         ];
         assert!(
-            super::digest(&[input("a", &points)], None, now(), &Utc).is_none(),
+            super::digest(&[input("a", &points)], None, now(), &TimeZone::UTC).is_none(),
             "two readings across a gap are not six days of data"
         );
         points.insert(
@@ -821,26 +813,26 @@ mod tests {
             &[input("fresh", &fresh), input("thu", &thursday)],
             None,
             now(),
-            &Utc,
+            &TimeZone::UTC,
         )
         .unwrap();
         assert_eq!(digest.accounts.len(), 1);
         assert_eq!(week(&digest, 0).id, "thu");
         assert_eq!(week(&digest, 0).coverage_hours, 72.0);
         assert_eq!(digest.body(), "thu: weekly low 59% left (3 days of data)");
-        assert!(super::digest(&[input("fresh", &fresh)], None, now(), &Utc).is_none());
-        assert!(super::digest(&[], None, now(), &Utc).is_none());
+        assert!(super::digest(&[input("fresh", &fresh)], None, now(), &TimeZone::UTC).is_none());
+        assert!(super::digest(&[], None, now(), &TimeZone::UTC).is_none());
     }
 
     #[test]
     fn retention_edge_includes_the_clamped_first_reading_only() {
         const RESET: &str = "2026-10-29T00:00:00Z";
-        let from = now() - Duration::days(7);
-        let before = from - Duration::seconds(1);
+        let from = now() - time::days(7);
+        let before = from - time::secs(1);
         let points = vec![
             point(WEEKLY, before, 99.0, RESET, false),
             point(WEEKLY, from, 30.0, RESET, false),
-            point(WEEKLY, from + Duration::days(2), 50.0, RESET, false),
+            point(WEEKLY, from + time::days(2), 50.0, RESET, false),
         ];
         let digest = only(&points);
         let weekly = week(&digest, 0).weekly.as_ref().unwrap();
@@ -853,14 +845,14 @@ mod tests {
     #[test]
     fn busiest_day_follows_the_local_day_of_the_later_reading() {
         const RESET: &str = "2026-10-21T00:00:00Z";
-        let east = FixedOffset::east_opt(5 * 3600).unwrap();
+        let east = fixed(5);
         let points = with_floor(vec![
             point(SESSION, at("2026-10-20T16:00:00Z"), 10.0, RESET, false),
             point(SESSION, at("2026-10-20T18:00:00Z"), 20.0, RESET, false),
             point(SESSION, at("2026-10-20T20:00:00Z"), 60.0, RESET, false),
         ]);
         let local = digest(&[input("a", &points)], None, now(), &east).unwrap();
-        assert_eq!(week(&local, 0).busiest_day, Some(Weekday::Wed));
+        assert_eq!(week(&local, 0).busiest_day, Some(Weekday::Wednesday));
         let utc = only(&points);
         assert_eq!(week(&utc, 0).busiest_day, None);
         let two_days = with_floor(vec![
@@ -869,7 +861,7 @@ mod tests {
             point(SESSION, at("2026-10-21T10:00:00Z"), 15.0, RESET, false),
         ]);
         let utc = only(&two_days);
-        assert_eq!(week(&utc, 0).busiest_day, Some(Weekday::Tue));
+        assert_eq!(week(&utc, 0).busiest_day, Some(Weekday::Tuesday));
     }
 
     #[test]
@@ -889,13 +881,26 @@ mod tests {
                 session_periods: 3,
             }],
         };
-        let digest = super::digest(&[input("a", &points)], Some(&previous), now(), &Utc).unwrap();
+        let digest = super::digest(
+            &[input("a", &points)],
+            Some(&previous),
+            now(),
+            &TimeZone::UTC,
+        )
+        .unwrap();
         assert_eq!(digest.body(), "a: weekly low 14% left (last week 29% left)");
-        let renamed = super::digest(&[input("b", &points)], Some(&previous), now(), &Utc).unwrap();
+        let renamed = super::digest(
+            &[input("b", &points)],
+            Some(&previous),
+            now(),
+            &TimeZone::UTC,
+        )
+        .unwrap();
         assert_eq!(renamed.body(), "b: weekly low 14% left");
         let mut stale = previous.clone();
         stale.to = "2026-10-05T09:00:00+00:00".into();
-        let stale = super::digest(&[input("a", &points)], Some(&stale), now(), &Utc).unwrap();
+        let stale =
+            super::digest(&[input("a", &points)], Some(&stale), now(), &TimeZone::UTC).unwrap();
         assert_eq!(
             stale.body(),
             "a: weekly low 14% left",
@@ -903,7 +908,8 @@ mod tests {
         );
         let mut edge = previous.clone();
         edge.to = "2026-10-18T09:00:00+00:00".into();
-        let edge = super::digest(&[input("a", &points)], Some(&edge), now(), &Utc).unwrap();
+        let edge =
+            super::digest(&[input("a", &points)], Some(&edge), now(), &TimeZone::UTC).unwrap();
         assert!(edge.body().contains("(last week 29% left)"));
         let summary = digest.summary();
         assert_eq!(summary.accounts[0].weekly_peak, Some(86.0));
@@ -916,108 +922,84 @@ mod tests {
         .is_ok());
     }
 
-    /// America/New_York for 2026: DST from Mar 8 07:00Z to Nov 1 06:00Z.
-    #[derive(Clone, Copy, Debug)]
-    struct NewYork;
-
-    impl NewYork {
-        fn offset_at_utc(utc: &NaiveDateTime) -> FixedOffset {
-            let start = at("2026-03-08T07:00:00Z").naive_utc();
-            let end = at("2026-11-01T06:00:00Z").naive_utc();
-            let hours = if (start..end).contains(utc) { -4 } else { -5 };
-            FixedOffset::east_opt(hours * 3600).unwrap()
-        }
+    /// America/New_York's rules, without the tz database: DST from the second
+    /// Sunday of March to the first Sunday of November.
+    fn new_york() -> TimeZone {
+        TimeZone::posix("EST5EDT,M3.2.0,M11.1.0").unwrap()
     }
 
-    impl TimeZone for NewYork {
-        type Offset = FixedOffset;
-
-        fn from_offset(_: &FixedOffset) -> Self {
-            NewYork
-        }
-
-        fn offset_from_local_datetime(&self, local: &NaiveDateTime) -> LocalResult<FixedOffset> {
-            let candidates: Vec<FixedOffset> = [-4, -5]
-                .into_iter()
-                .map(|hours| FixedOffset::east_opt(hours * 3600).unwrap())
-                .filter(|offset| {
-                    let utc = *local - Duration::seconds(i64::from(offset.local_minus_utc()));
-                    Self::offset_at_utc(&utc) == *offset
-                })
-                .collect();
-            match candidates.as_slice() {
-                [single] => LocalResult::Single(*single),
-                [first, second] => LocalResult::Ambiguous(*first, *second),
-                _ => LocalResult::None,
-            }
-        }
-
-        fn offset_from_utc_datetime(&self, utc: &NaiveDateTime) -> FixedOffset {
-            Self::offset_at_utc(utc)
-        }
-
-        fn offset_from_local_date(&self, local: &NaiveDate) -> LocalResult<FixedOffset> {
-            self.offset_from_local_datetime(&local.and_hms_opt(12, 0, 0).unwrap())
-        }
-
-        fn offset_from_utc_date(&self, utc: &NaiveDate) -> FixedOffset {
-            Self::offset_at_utc(&utc.and_hms_opt(12, 0, 0).unwrap())
-        }
+    fn fixed(hours: i8) -> TimeZone {
+        TimeZone::fixed(time::Offset::constant(hours))
     }
 
     #[test]
     fn schedule_fires_once_per_monday_morning() {
         let monday = at("2026-10-26T09:00:00Z");
         assert_eq!(
-            should_send(None, at("2026-10-25T23:59:00Z"), &Utc),
+            should_send(None, at("2026-10-25T23:59:00Z"), &TimeZone::UTC),
             Some(at("2026-10-19T09:00:00Z"))
         );
         assert_eq!(
             should_send(
                 Some(at("2026-10-19T09:00:00Z")),
                 at("2026-10-25T23:59:00Z"),
-                &Utc
+                &TimeZone::UTC
             ),
             None
         );
         assert_eq!(
-            should_send(Some(at("2026-10-19T09:00:00Z")), monday, &Utc),
+            should_send(Some(at("2026-10-19T09:00:00Z")), monday, &TimeZone::UTC),
             Some(monday)
         );
-        assert_eq!(should_send(Some(monday), monday, &Utc), None);
+        assert_eq!(should_send(Some(monday), monday, &TimeZone::UTC), None);
         assert_eq!(
-            should_send(Some(monday), at("2026-10-26T09:30:00Z"), &Utc),
+            should_send(Some(monday), at("2026-10-26T09:30:00Z"), &TimeZone::UTC),
             None
         );
         let tuesday = at("2026-10-27T10:00:00Z");
         assert_eq!(
-            should_send(Some(at("2026-10-19T09:00:00Z")), tuesday, &Utc),
+            should_send(Some(at("2026-10-19T09:00:00Z")), tuesday, &TimeZone::UTC),
             Some(monday)
         );
-        assert_eq!(should_send(Some(monday), tuesday, &Utc), None);
+        assert_eq!(should_send(Some(monday), tuesday, &TimeZone::UTC), None);
         let three_weeks = at("2026-10-05T09:00:00Z");
-        assert_eq!(should_send(Some(three_weeks), tuesday, &Utc), Some(monday));
         assert_eq!(
-            should_send(Some(monday), at("2026-11-02T08:59:59Z"), &Utc),
+            should_send(Some(three_weeks), tuesday, &TimeZone::UTC),
+            Some(monday)
+        );
+        assert_eq!(
+            should_send(Some(monday), at("2026-11-02T08:59:59Z"), &TimeZone::UTC),
             None
         );
         assert_eq!(
-            should_send(Some(monday), at("2026-11-02T09:00:00Z"), &Utc),
+            should_send(Some(monday), at("2026-11-02T09:00:00Z"), &TimeZone::UTC),
             Some(at("2026-11-02T09:00:00Z"))
         );
         let wednesday = at("2026-10-28T12:00:00Z");
         let enabled = DigestState::enabled_at(wednesday);
         assert_eq!(
-            should_send(enabled.last_sent_at(), at("2026-10-30T09:00:00Z"), &Utc),
+            should_send(
+                enabled.last_sent_at(),
+                at("2026-10-30T09:00:00Z"),
+                &TimeZone::UTC
+            ),
             None
         );
         assert_eq!(
-            should_send(enabled.last_sent_at(), at("2026-11-02T09:00:00Z"), &Utc),
+            should_send(
+                enabled.last_sent_at(),
+                at("2026-11-02T09:00:00Z"),
+                &TimeZone::UTC
+            ),
             None,
             "fewer than six days of data"
         );
         assert_eq!(
-            should_send(enabled.last_sent_at(), at("2026-11-09T09:00:00Z"), &Utc),
+            should_send(
+                enabled.last_sent_at(),
+                at("2026-11-09T09:00:00Z"),
+                &TimeZone::UTC
+            ),
             Some(at("2026-11-09T09:00:00Z"))
         );
     }
@@ -1026,21 +1008,32 @@ mod tests {
     fn enabling_just_before_nine_waits_a_week() {
         let enabled = DigestState::enabled_at(at("2026-10-26T08:59:00Z"));
         let monday = at("2026-10-26T09:00:00Z");
-        assert_eq!(should_send(enabled.last_sent_at(), monday, &Utc), None);
         assert_eq!(
-            should_send(enabled.last_sent_at(), at("2026-10-27T09:00:00Z"), &Utc),
+            should_send(enabled.last_sent_at(), monday, &TimeZone::UTC),
             None
         );
         assert_eq!(
-            should_send(enabled.last_sent_at(), at("2026-11-02T09:00:00Z"), &Utc),
+            should_send(
+                enabled.last_sent_at(),
+                at("2026-10-27T09:00:00Z"),
+                &TimeZone::UTC
+            ),
+            None
+        );
+        assert_eq!(
+            should_send(
+                enabled.last_sent_at(),
+                at("2026-11-02T09:00:00Z"),
+                &TimeZone::UTC
+            ),
             Some(at("2026-11-02T09:00:00Z"))
         );
     }
 
     #[test]
     fn a_westward_clock_change_does_not_reopen_a_sent_slot() {
-        let east = FixedOffset::east_opt(5 * 3600).unwrap();
-        let west = FixedOffset::west_opt(5 * 3600).unwrap();
+        let east = fixed(5);
+        let west = fixed(-5);
         let sent = should_send(None, at("2026-10-26T04:00:00Z"), &east).unwrap();
         assert_eq!(sent, at("2026-10-26T04:00:00Z"));
         let later_that_monday = at("2026-10-26T15:00:00Z");
@@ -1091,7 +1084,7 @@ mod tests {
 
     #[test]
     fn due_slot_stays_at_nine_local_across_dst() {
-        let east = FixedOffset::east_opt(5 * 3600).unwrap();
+        let east = fixed(5);
         assert_eq!(
             due_at(at("2026-10-26T03:59:00Z"), &east),
             at("2026-10-19T04:00:00Z")
@@ -1102,41 +1095,39 @@ mod tests {
         );
         // Spring forward on Sunday Mar 8: Monday Mar 9 09:00 EDT = 13:00Z, the week before 14:00Z.
         assert_eq!(
-            due_at(at("2026-03-09T13:00:00Z"), &NewYork),
+            due_at(at("2026-03-09T13:00:00Z"), &new_york()),
             at("2026-03-09T13:00:00Z")
         );
         assert_eq!(
-            due_at(at("2026-03-09T12:59:00Z"), &NewYork),
+            due_at(at("2026-03-09T12:59:00Z"), &new_york()),
             at("2026-03-02T14:00:00Z")
         );
         assert_eq!(
-            due_at(at("2026-03-09T13:00:00Z"), &NewYork)
-                .with_timezone(&NewYork)
-                .format("%a %H:%M")
-                .to_string(),
+            due_at(at("2026-03-09T13:00:00Z"), &new_york())
+                .civil(&new_york())
+                .weekday_time(false),
             "Mon 09:00"
         );
         // Fall back on Sunday Nov 1: Monday Nov 2 09:00 EST = 14:00Z, the week before 13:00Z.
         assert_eq!(
-            due_at(at("2026-11-02T14:00:00Z"), &NewYork),
+            due_at(at("2026-11-02T14:00:00Z"), &new_york()),
             at("2026-11-02T14:00:00Z")
         );
         assert_eq!(
-            due_at(at("2026-11-02T13:30:00Z"), &NewYork),
+            due_at(at("2026-11-02T13:30:00Z"), &new_york()),
             at("2026-10-26T13:00:00Z")
         );
         assert_eq!(
-            due_at(at("2026-11-02T14:00:00Z"), &NewYork)
-                .with_timezone(&NewYork)
-                .format("%a %H:%M")
-                .to_string(),
+            due_at(at("2026-11-02T14:00:00Z"), &new_york())
+                .civil(&new_york())
+                .weekday_time(false),
             "Mon 09:00"
         );
         assert_eq!(
             should_send(
                 Some(at("2026-10-26T13:00:00Z")),
                 at("2026-11-02T14:00:00Z"),
-                &NewYork
+                &new_york()
             ),
             Some(at("2026-11-02T14:00:00Z"))
         );
@@ -1165,7 +1156,7 @@ mod tests {
                 periods: 1,
                 limit_hits: weekly_hits,
                 consumed: 0.0,
-                limit_hit_day: (weekly_hits > 0).then_some(Weekday::Thu),
+                limit_hit_day: (weekly_hits > 0).then_some(Weekday::Thursday),
             }),
             busiest_day: None,
             coverage_hours: 168.0,
@@ -1174,7 +1165,7 @@ mod tests {
 
     fn sample(accounts: Vec<AccountWeek>) -> Digest {
         Digest {
-            from: now() - Duration::days(7),
+            from: now() - time::days(7),
             to: now(),
             accounts,
             previous: None,
@@ -1196,10 +1187,10 @@ mod tests {
             account_week("Personal", 86.0, 0, 14, 2),
             account_week("Codex", 60.0, 0, 9, 1),
         ]);
-        many.accounts[1].busiest_day = Some(Weekday::Wed);
+        many.accounts[1].busiest_day = Some(Weekday::Wednesday);
         many.previous = Some(WeeklySummary {
-            from: (now() - Duration::days(14)).to_rfc3339(),
-            to: (now() - Duration::days(7)).to_rfc3339(),
+            from: (now() - time::days(14)).to_rfc3339(),
+            to: (now() - time::days(7)).to_rfc3339(),
             accounts: vec![SummaryRow {
                 id: "Personal".into(),
                 weekly_peak: Some(71.0),

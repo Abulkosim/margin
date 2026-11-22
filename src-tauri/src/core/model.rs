@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use super::time::{self, Timestamp};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_LABEL_CHARS: usize = 48;
@@ -268,8 +268,8 @@ pub struct Snapshot {
 impl Snapshot {
     /// True once a window's reset has passed with no reading since: its percentage describes
     /// the previous period, and the current value is unknown.
-    pub fn unread_since_reset(&self, window: &UsageWindow, now: DateTime<Utc>) -> bool {
-        let parse = |value: &str| DateTime::parse_from_rfc3339(value).ok();
+    pub fn unread_since_reset(&self, window: &UsageWindow, now: Timestamp) -> bool {
+        let parse = time::parse;
         let Some(reset) = window.resets_at.as_deref().and_then(parse) else {
             return false;
         };
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn only_a_reset_after_the_last_reading_counts_as_unread() {
-        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let at = |value: &str| time::parse(value).unwrap();
         let window = |reset: Option<&str>| UsageWindow {
             id: "five_hour".into(),
             label: "Session".into(),

@@ -1,8 +1,8 @@
 use super::{claude, codex, percent, retry_after, timestamp};
 use crate::core::model::{Snapshot, UsageError, UsageWindow};
+use crate::core::time::{self, Timestamp};
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use chrono::{DateTime, FixedOffset, Utc};
 use proptest::prelude::*;
 use proptest::sample::Index;
 use proptest::test_runner::TestCaseError;
@@ -230,7 +230,7 @@ fn object(entries: &[(&str, Value)]) -> Value {
 
 fn readable_timestamp(value: &str) -> Result<(), TestCaseError> {
     prop_assert!(
-        DateTime::parse_from_rfc3339(value).is_ok()
+        time::is_rfc3339(value)
             && value.len() == 20
             && value.ends_with('Z')
             && value.as_bytes()[..4].iter().all(u8::is_ascii_digit),
@@ -504,7 +504,7 @@ fn comparable(snapshot: &Snapshot) -> Value {
 
 /// Same meaning, different spelling: unknown keys in non-empty objects, integer readings sent
 /// as floats, and timestamps in another offset.
-fn respell(value: &mut Value, extra: &Value, offset: &FixedOffset, key: Option<&str>) {
+fn respell(value: &mut Value, extra: &Value, offset: &i32, key: Option<&str>) {
     match value {
         Value::Object(map) => {
             if !map.is_empty() {
@@ -526,22 +526,22 @@ fn respell(value: &mut Value, extra: &Value, offset: &FixedOffset, key: Option<&
             if let (true, Some(whole)) = (reading, number.as_u64()) {
                 *value = json!(whole as f64);
             } else if let (Some("reset_at"), Some(seconds)) = (key, number.as_i64()) {
-                if let Some(date) = DateTime::from_timestamp(seconds, 0) {
-                    *value = json!(date.with_timezone(offset).to_rfc3339());
+                if let Some(date) = Timestamp::from_unix_seconds(seconds) {
+                    *value = json!(date.to_rfc3339_at(*offset));
                 }
             }
         }
         Value::String(text) => {
-            if let Ok(date) = DateTime::parse_from_rfc3339(text) {
-                *text = date.with_timezone(offset).to_rfc3339();
+            if let Some(date) = time::parse(text) {
+                *text = date.to_rfc3339_at(*offset);
             }
         }
         _ => {}
     }
 }
 
-fn offset() -> impl Strategy<Value = FixedOffset> {
-    (-48i32..=56).prop_map(|quarters| FixedOffset::east_opt(quarters * 900).unwrap())
+fn offset() -> impl Strategy<Value = i32> {
+    (-48i32..=56).prop_map(|quarters| quarters * 900)
 }
 
 #[derive(Debug, Clone)]
@@ -1223,13 +1223,13 @@ proptest! {
 
     #[test]
     fn claude_reset_grants_count_only_usable_resets(grants in grants()) {
-        let at = DateTime::parse_from_rfc3339(VALID_RESET).unwrap().with_timezone(&Utc);
+        let at = time::parse(VALID_RESET).unwrap();
         let block = json!({
             "eligible": true,
             "grants": grants.iter().map(|grant| json!({
                 "resets_left": grant.left,
                 "paused": grant.paused,
-                "ends_at": grant.ends.map(|offset| (at + chrono::Duration::seconds(offset)).to_rfc3339()),
+                "ends_at": grant.ends.map(|offset| (at + time::secs(offset)).to_rfc3339()),
             })).collect::<Vec<_>>(),
         });
         let mut total: u128 = 0;
@@ -1254,7 +1254,7 @@ proptest! {
         steps in mutations(),
         claude_steps in mutations(),
     ) {
-        let at = DateTime::parse_from_rfc3339("2026-10-16T10:00:00Z").unwrap().with_timezone(&Utc);
+        let at = time::parse("2026-10-16T10:00:00Z").unwrap();
         let value = mutated(include_str!("../../../fixtures/codex-reset-credits.json"), &steps);
         if let Some(grants) = codex::parse_reset_credits(&value, at) {
             prop_assert_eq!(value["available_count"].as_u64(), Some(u64::from(grants.available)));
@@ -1409,7 +1409,7 @@ proptest! {
         match timestamp(Some(&json!(seconds))) {
             Ok(Some(parsed)) => {
                 readable_timestamp(&parsed)?;
-                prop_assert_eq!(DateTime::parse_from_rfc3339(&parsed).unwrap().timestamp(), seconds);
+                prop_assert_eq!(time::parse(&parsed).unwrap(), Timestamp::from_unix_seconds(seconds).unwrap());
             }
             Ok(None) => prop_assert!(false, "a timestamp became unknown"),
             Err(_) => prop_assert!(!(-62_167_219_200..=253_402_300_799).contains(&seconds)),
@@ -1425,7 +1425,7 @@ proptest! {
         };
         let mut headers = HeaderMap::new();
         headers.insert(RETRY_AFTER, header);
-        let now = DateTime::parse_from_rfc3339("2026-10-16T10:00:00Z").unwrap().with_timezone(&Utc);
+        let now = time::parse("2026-10-16T10:00:00Z").unwrap();
         prop_assert!(retry_after(&headers, now).is_none_or(|seconds| (1..=86_400).contains(&seconds)));
     }
 

@@ -1011,7 +1011,7 @@ fn journal_recovery_detects_unfinished_switches() {
         .begin(&record, &backup_blob(&record.id, &pending).unwrap())
         .unwrap();
 
-    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    let recovery = recover(&fixture.store, &mut journal, time::now());
     assert!(recovery.offer.is_none() && recovery.apply.is_empty());
     assert_eq!(journal.records()[0].state, RecordState::Abandoned);
 
@@ -1020,7 +1020,7 @@ fn journal_recovery_detects_unfinished_switches() {
         .store
         .write(&pending[0].location, pending[0].after.as_ref().unwrap())
         .unwrap();
-    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    let recovery = recover(&fixture.store, &mut journal, time::now());
     let baseline = recovery.offer.as_ref().and_then(|offer| offer.live.clone());
     assert_eq!(
         recovery.offer.map(|record| record.id),
@@ -1032,12 +1032,12 @@ fn journal_recovery_detects_unfinished_switches() {
     fixture
         .store
         .set(&pending[1].location, &credential("refreshed-later"));
-    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    let recovery = recover(&fixture.store, &mut journal, time::now());
     assert_eq!(recovery.offer.and_then(|offer| offer.live), baseline);
     assert_eq!(
         restore(
             &record.id,
-            chrono::Utc::now(),
+            time::now(),
             Running::No,
             &fixture.store,
             &FakeLocks::default(),
@@ -1055,7 +1055,7 @@ fn journal_recovery_detects_unfinished_switches() {
             None => fixture.store.clear(&write.location).unwrap(),
         }
     }
-    let recovery = recover(&fixture.store, &mut journal, chrono::Utc::now());
+    let recovery = recover(&fixture.store, &mut journal, time::now());
     assert!(recovery.offer.is_none());
     assert_eq!(recovery.apply.len(), 1);
     assert_eq!(journal.records()[0].state, RecordState::Written);
@@ -1092,7 +1092,7 @@ fn restore_writes_the_backup_back_while_the_stores_are_unchanged() {
         failed.live.as_deref(),
         Some(&fingerprints(&fixture.store, &failed.items)[..])
     );
-    let now = chrono::Utc::now();
+    let now = time::now();
     assert!(RestoreOffer::new(&failed, now).is_some());
     let record = restore(
         &id,
@@ -1115,7 +1115,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
     let fixture = Fixture::default_claude();
     let mut journal = FakeJournal::default();
     let id = verify_failed(&fixture, &mut journal);
-    let now = chrono::Utc::now();
+    let now = time::now();
     fixture.store.set(
         &fixture.source.credentials[0],
         &credential("refreshed-later"),
@@ -1140,7 +1140,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
     let fixture = Fixture::default_claude();
     let mut journal = FakeJournal::default();
     let id = verify_failed(&fixture, &mut journal);
-    let later = chrono::Utc::now() + chrono::Duration::minutes(31);
+    let later = time::now() + time::mins(31);
     let before = fixture.store.snapshot();
     assert!(RestoreOffer::new(&journal.records[0], later).is_none());
     assert_eq!(
@@ -1163,7 +1163,7 @@ fn restore_refuses_when_the_sign_ins_changed_or_the_offer_expired() {
     assert_eq!(
         restore(
             &outcome.record.id,
-            chrono::Utc::now(),
+            time::now(),
             Running::No,
             &fixture.store,
             &FakeLocks::default(),
@@ -1189,7 +1189,7 @@ fn restore_refuses_while_codex_runs() {
         assert_eq!(
             restore(
                 &id,
-                chrono::Utc::now(),
+                time::now(),
                 running,
                 &fixture.store,
                 &FakeLocks::default(),
@@ -1381,7 +1381,7 @@ fn disk_journal_keeps_five_recent_records_and_private_backups() {
     };
     let mut old = new_record(Provider::Codex, false, &[], Vec::new());
     old.id = "codex-old".into();
-    old.created_at = (chrono::Utc::now() - chrono::Duration::days(8)).to_rfc3339();
+    old.created_at = (time::now() - time::days(8)).to_rfc3339();
     journal.begin(&old, b"old").unwrap();
     let mut ids = Vec::new();
     for index in 0..6 {
@@ -1522,7 +1522,7 @@ fn person(id: &str, label: &str, source: AccountSource, email: &str) -> Account 
                 resets_at: None,
                 window_seconds: Some(18_000),
             }],
-            fetched_at: chrono::Utc::now().to_rfc3339(),
+            fetched_at: time::now().to_rfc3339(),
             extra_usage: None,
             reset_grants: None,
             balance: None,
@@ -1569,7 +1569,7 @@ fn records_follow_the_person_and_keep_their_history() {
         ),
     ];
     let mut history = HistoryStore::new(directory.path().join("history"));
-    let now = chrono::Utc::now();
+    let now = time::now();
     for account in &accounts {
         history.record(account, 60, now);
     }
@@ -1761,7 +1761,11 @@ fn only_the_switch_module_writes_cli_files() {
     let mut checked = 0;
     for (path, source) in found {
         let source = source.replace("\r\n", "\n");
-        if path == root.join("core").join("switch.rs") || path.starts_with(&switch) {
+        // Golden tests are test-only modules that write their expected text and temp files.
+        let test_only = path == root.join("cli_golden.rs")
+            || path == root.join("core").join("time_golden.rs")
+            || path.starts_with(root.join("core").join("time_golden"));
+        if path == root.join("core").join("switch.rs") || path.starts_with(&switch) || test_only {
             continue;
         }
         let production = source
