@@ -57,16 +57,17 @@ impl ProfileCache {
     /// The identity to keep when the profile request fails. Tokens rotate, so a
     /// new token keeps the last email and plan on screen, but it may also be a
     /// different sign-in in that folder: its history key is dropped, which pauses
-    /// history instead of adding someone else's readings to it.
+    /// history instead of adding someone else's readings to it. The cache starts
+    /// empty, so a token it has not seen is treated the same way.
     fn fallback(&self, account: &str, token: &[u8; 32], stored: &Identity) -> Identity {
         let cache = self.0.lock().ok();
-        match cache.as_ref().and_then(|cache| cache.get(account)) {
+        let known = cache.as_ref().and_then(|cache| cache.get(account));
+        match known {
             Some(entry) if &entry.token == token => entry.identity.clone(),
-            Some(entry) => Identity {
+            _ => Identity {
                 history_key: None,
-                ..entry.identity.clone()
+                ..known.map_or_else(|| stored.clone(), |entry| entry.identity.clone())
             },
-            None => stored.clone(),
         }
     }
 
@@ -1235,6 +1236,19 @@ mod tests {
         let rotated = cache.fallback("a", &[2; 32], &stored);
         assert_eq!(rotated.email, cached.email);
         assert_eq!(rotated.history_key, None);
+    }
+
+    #[test]
+    fn a_cold_cache_fallback_drops_the_history_key() {
+        let cache = ProfileCache::default();
+        let stored = Identity {
+            email: Some("a@example.test".into()),
+            plan: Some("Pro".into()),
+            history_key: Some("k".repeat(64)),
+        };
+        let fallback = cache.fallback("acct", &[9; 32], &stored);
+        assert_eq!(fallback.email, stored.email);
+        assert_eq!(fallback.history_key, None);
     }
 
     #[test]
