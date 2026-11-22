@@ -1,5 +1,5 @@
-import type { Account, ResetGrants, Settings, UsageWindow } from './model'
-import type { Pace } from './pace'
+import type { Account, ResetGrants, Settings, UsageWindow } from './model.ts'
+import type { Pace } from './pace.ts'
 
 export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, 100 - used))

@@ -1,7 +1,7 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
-import { accountHistorySchema, createDemoHistory, type AccountHistory } from './history'
-import type { Account } from './model'
-import { invoke } from './tauri'
+import { accountHistorySchema, createDemoHistory, type AccountHistory } from './history.ts'
+import type { Account } from './model.ts'
+import { invoke } from './tauri.ts'
 
 export type HistoryState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; history: AccountHistory }
 
@@ -14,7 +14,7 @@ export function useAccountHistory(account: () => Account, demo: () => boolean, o
   let request = 0
   let destroyed = false
   let outdated = false
-  let loaded: { reading: string; email: string | null } | null = null
+  let loaded: { reading: string; id: string; email: string | null } | null = null
   const readingKey = (source: Account): string => JSON.stringify([source.id, source.identity.email, source.snapshot?.fetchedAt])
 
   async function load(): Promise<void> {
@@ -22,7 +22,7 @@ export function useAccountHistory(account: () => Account, demo: () => boolean, o
     outdated = false
     const source = account()
     const id = source.id
-    loaded = { reading: readingKey(source), email: source.identity.email }
+    loaded = { reading: readingKey(source), id, email: source.identity.email }
     try {
       const payload: unknown = demo() ? createDemoHistory(source) : await invoke('get_account_history', { id })
       const history = accountHistorySchema.parse(payload)
@@ -51,8 +51,10 @@ export function useAccountHistory(account: () => Account, demo: () => boolean, o
     const source = account()
     if (loaded?.reading === readingKey(source)) return
     const history = state.value.kind === 'ready' ? state.value.history : null
-    const sameSignIn = loaded?.email === source.identity.email
+    const sameSignIn = loaded?.id === source.id && loaded.email === source.identity.email
     if (!outdated && !open() && sameSignIn && history?.accountId === source.id && covers(history)) return
+    // Another sign-in's readings must not show, even briefly, while this one's history loads.
+    if (!sameSignIn) state.value = { kind: 'loading' }
     refresh()
   }
 
