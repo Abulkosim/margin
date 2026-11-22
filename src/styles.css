@@ -784,8 +784,6 @@ button:disabled:hover {
 }
 .empty-scroll {
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .empty-state {
   text-align: center;
@@ -794,6 +792,7 @@ button:disabled:hover {
   flex-direction: column;
   padding: 10px 6px 35px;
   width: 100%;
+  margin: auto 0;
 }
 .empty-illustration {
   position: relative;
