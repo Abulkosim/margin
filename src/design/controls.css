@@ -279,10 +279,6 @@
   to { opacity: 0; }
 }
 
-@media (max-width: 350px) {
-  .app-select-trigger { min-width: 95px; max-width: 125px; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .app-select-content,
   .app-tooltip-content,

@@ -84,6 +84,7 @@ button:disabled:hover {
 .preview-stage {
   min-height: 100dvh;
   display: grid;
+  grid-template-columns: minmax(0,1fr);
   place-items: center;
   padding: 32px 20px;
   background: radial-gradient(ellipse at 50% 35%,color-mix(in srgb,var(--stage),var(--accent) 10%),var(--stage) 70%);
@@ -647,7 +648,7 @@ button:disabled:hover {
   gap: 6px;
   color: var(--tertiary);
   font-size: 13px;
-  white-space: nowrap;
+  line-height: 1.35;
   min-width: 0;
 }
 .status-dot {
@@ -1036,7 +1037,7 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 20px 21px 19px;
+  padding: 20px 23px 19px 21px;
   flex-shrink: 0;
 }
 .settings-header h1 {
@@ -1185,11 +1186,15 @@ button:disabled:hover {
 }
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   min-height: 38px;
   margin-top: 8px;
+}
+.setting-row>:first-child {
+  flex: 1 1 140px;
 }
 .setting-row label,.setting-label {
   font-size: 14px;
@@ -1912,10 +1917,6 @@ input::placeholder {
   .settings-footnote>span {
     display: none;
   }
-  .setting-row select {
-    min-width: 95px;
-    max-width: 125px;
-  }
   .dialog-actions {
     flex-direction: column;
   }
@@ -1925,6 +1926,32 @@ input::placeholder {
   .compact-columns,.compact-row {
     grid-template-columns: 24px minmax(0,1fr) 40px 40px 50px 10px;
     column-gap: 7px;
+  }
+  .settings-header {
+    padding-left: 15px;
+    padding-right: 17px;
+  }
+}
+@media(max-width:320px) {
+  .app-header:has(.account-filters) .wordmark,.account-filters button span,.settings-autosave {
+    display: none;
+  }
+}
+.account-list {
+  container-type: inline-size;
+}
+@container (max-width: 300px) {
+  .compact-columns,.compact-row {
+    grid-template-columns: 24px minmax(0,1fr) 40px 40px 10px;
+  }
+  .compact-columns>span:last-child,.compact-reset {
+    display: none;
+  }
+  .compact-row.no-values .compact-identity {
+    grid-column: 2 / 4;
+  }
+  .compact-empty {
+    grid-column: 4;
   }
 }
 @media(prefers-reduced-motion:reduce) {
