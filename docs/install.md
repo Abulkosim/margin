@@ -39,7 +39,7 @@ Margin then asks nothing else. It has no Dock icon or app window; look for its i
 
 1. Download `Margin_<version>_x64-setup.exe` (or the `.msi`).
 2. Run it. If **Windows protected your PC** appears, click **More info → Run anyway**.
-3. The installer adds Margin for the current user. If WebView2 is missing, it [downloads Microsoft's setup program](https://v2.tauri.app/distribute/windows-installer/#downloaded-bootstrapper), so first installation may need internet access.
+3. The setup EXE installs Margin for your user account; the MSI installs it in `C:\Program Files\Margin` for everyone on the PC. If WebView2 is missing, it [downloads Microsoft's setup program](https://v2.tauri.app/distribute/windows-installer/#downloaded-bootstrapper), so first installation may need internet access.
 4. Margin appears in the system tray. Windows may put new icons in the overflow menu (**^**); drag it onto the taskbar to keep it visible.
 
 A managed device may hide **Run anyway**. See [Microsoft Defender SmartScreen](https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/).
@@ -87,7 +87,7 @@ First turn off **Start at login** in Margin's Settings, then right-click the Mar
 ~/Library/Application Support/com.abulkosim.margin/
 ```
 
-If Start at login was left on, also delete `~/Library/LaunchAgents/Margin.plist`.
+If Start at login was left on, also delete `~/Library/LaunchAgents/Margin.plist`. If you used **Make active**, open Keychain Access and delete the items named `Margin backup`; they hold copies of CLI tokens.
 
 **Windows.** Open **Settings → Apps → Installed apps**, choose **Margin → Uninstall**. To remove settings, last-known usage, and history, delete:
 
@@ -97,4 +97,4 @@ If Start at login was left on, also delete `~/Library/LaunchAgents/Margin.plist`
 
 `%LOCALAPPDATA%\com.abulkosim.margin\` holds the WebView cache and can be deleted too.
 
-Uninstalling never touches Claude Code or Codex folders (`~/.claude`, `~/.codex`, or custom ones) or Keychain items. Your CLI sign-ins keep working.
+Uninstalling never touches Claude Code or Codex folders (`~/.claude`, `~/.codex`, or custom ones) or their Keychain items. Your CLI sign-ins keep working.

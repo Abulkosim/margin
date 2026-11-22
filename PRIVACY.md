@@ -8,7 +8,7 @@ This page describes Margin's current release. It is derived from the source code
 
 - No telemetry, analytics, crash reporting, or ads.
 - Network requests go only to the provider usage endpoints and to GitHub Releases for update checks.
-- CLI credential files are read, never written.
+- CLI credential files are read, never written, except when you confirm **Make active**.
 - Tokens stay in the Rust process. The interface never receives them.
 - Margin stores settings, last-known usage, and usage history on your computer only.
 - **Report a problem** opens a GitHub issue page in your browser after you review its contents. GitHub receives those details when the page opens, and they become public only if you submit it.
@@ -50,9 +50,10 @@ All requests use HTTPS. Provider requests do not follow redirects. Each request 
 | Host | Request | When | Sent |
 | --- | --- | --- | --- |
 | `api.anthropic.com` | `GET /api/oauth/usage` (with `?cedar_ember=1`, retried once without it on 400 or 403) | Each refresh of a Claude account | Access token |
-| `api.anthropic.com` | `GET /api/oauth/profile` | After a successful Claude usage request | Access token |
+| `api.anthropic.com` | `GET /api/oauth/profile` | After a successful Claude usage request, at most once an hour per account unless the token changes | Access token |
 | `chatgpt.com` | `GET /backend-api/wham/usage` | Each refresh of a Codex account | Access token, ChatGPT account ID |
-| `chatgpt_base_url` host | Usage path on the host set in that folder's `config.toml` | Instead of `chatgpt.com`, when set | Access token, ChatGPT account ID |
+| `chatgpt.com` | `GET /backend-api/wham/rate-limit-reset-credits` | After a Codex usage response that reports a reset credit, at most every 15 minutes per account. Read only; nothing is redeemed. | Access token, ChatGPT account ID |
+| `chatgpt_base_url` host | The same Codex requests on the host set in that folder's `config.toml` | Instead of `chatgpt.com`, when set | Access token, ChatGPT account ID |
 | `github.com` | `GET /Abulkosim/margin/releases/latest/download/latest.json` | Once a day while **Check for updates daily** is on (default), and when you choose **Check for updates** | Nothing about you or your accounts |
 | `github.com` | Download of the matching release asset | Only when you choose to install an update | Nothing about you or your accounts |
 
@@ -87,9 +88,10 @@ Margin writes only to its own data folder:
 | File | Contents |
 | --- | --- |
 | `state.json` | Settings (including your answer to the Start at login prompt), account list (label, color, provider, folder path or Keychain source), account email, plan, and hashed account identifier, last-known usage and last error per account, notification thresholds already sent |
-| `history/<account id>.json` | Usage readings for up to seven days or 10,000 window readings per account, with the account's source, email, plan, and a hashed account identifier |
+| `history/<account id>.json` | Usage readings for up to seven days, at most 10,240 per window and 80,000 per account, with the account's source, email, plan, and a hashed account identifier |
+| `state.json.bak-<time>` | A copy of `state.json`, made before Margin resets a damaged settings file or drops entries it could not load. The newest five are kept. |
 
-On macOS, both files are created with owner-only permissions (`0600`). Files are replaced atomically. Removing an account deletes its history file. See [`store.rs`](src-tauri/src/core/store.rs) and [`history.rs`](src-tauri/src/core/history.rs).
+On macOS, settings and history files are created with owner-only permissions (`0600`). Files are replaced atomically. Removing an account deletes its history file. See [`store.rs`](src-tauri/src/core/store.rs) and [`history.rs`](src-tauri/src/core/history.rs).
 
 Tokens are never written to these files.
 
@@ -113,7 +115,7 @@ Other changes Margin makes, only when you turn them on or ask for them:
 
 ## Tokens
 
-Tokens are parsed in Rust into structures that cannot be serialized ([`claude.rs`](src-tauri/src/core/providers/claude.rs), [`codex.rs`](src-tauri/src/core/providers/codex.rs)). They are read again for each refresh and not kept between refreshes. The interface receives account details, usage snapshots, and errors. It can listen for state events only ([`capabilities/main.json`](src-tauri/capabilities/main.json)).
+Tokens are parsed in Rust into structures that cannot be serialized ([`claude.rs`](src-tauri/src/core/providers/claude.rs), [`codex.rs`](src-tauri/src/core/providers/codex.rs)). They are read again for each refresh and not kept between refreshes. The interface receives account details, usage snapshots, and errors through Margin's own commands. Its only Tauri permissions are listening for state events and opening the folder picker ([`capabilities/main.json`](src-tauri/capabilities/main.json)).
 
 ## Updates
 
@@ -139,7 +141,7 @@ Get-FileHash Margin_<version>_x64-setup.exe -Algorithm SHA256
 
 ## Removing your data
 
-Quit Margin, delete the app, then delete the data folder listed above. Turn off Start at login first, or remove the LaunchAgent or startup entry by hand.
+Quit Margin, delete the app, then delete the data folder listed above. Turn off Start at login first, or remove the LaunchAgent (`~/Library/LaunchAgents/Margin.plist`) or startup entry by hand. On macOS, also delete any Keychain items named `Margin backup` in Keychain Access; they exist only if you used **Make active** and hold copies of CLI tokens.
 
 ## Questions
 

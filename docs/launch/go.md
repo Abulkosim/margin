@@ -1,6 +1,6 @@
-# Launch kit (v0.10.2)
+# Launch kit (v0.11.0)
 
-Facts for every post, checked against the README for v0.10.2 on 2026-11-10. Older drafts in [posts.md](posts.md) predate Make active; use the facts here.
+Facts for every post, checked against the README and code for v0.11.0 on 2026-11-22. Older drafts in [posts.md](posts.md) predate Make active; use the facts here.
 
 - Free, MIT. macOS 12+ (universal), Windows x64. Unsigned: macOS → Privacy & Security → Open Anyway; Windows → More info → Run anyway. Checksums and build attestations on each release.
 - Reads the sign-ins Claude Code and Codex already stored and calls their OAuth usage endpoints. No cookies, no CLI scraping, no telemetry, no backend.

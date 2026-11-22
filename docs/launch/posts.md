@@ -40,7 +40,7 @@ Rules (sidebar via a Reddit mirror, 2026-10-22): the rules text itself was not f
 >
 > https://github.com/Abulkosim/margin
 
-**Attach:** `docs/images/overview-dark.png` (or the 3.3 GIF).
+**Attach:** `docs/images/overview-dark.png` (or a new recording of the real app; the 3.3 GIF was removed as stale).
 
 **Expect in comments:**
 - "Why not CodexBar?" → see shared answer.
@@ -159,7 +159,7 @@ Under 280 characters (231 including the URL):
 >
 > https://github.com/Abulkosim/margin
 
-**Attach:** the 15s demo GIF from plan 3.3 (tray → popover → countdown → history) once it exists. Until then `docs/images/overview-dark.png`.
+**Attach:** a short recording of the real app (tray → popover → countdown → history) once it exists (plan 7.4). Until then `docs/images/overview-dark.png`.
 
 **Expect:** "vs CodexBar?" → shared answer, short. "Bypass?" → "No, it shows the limits."
 
@@ -167,7 +167,7 @@ Under 280 characters (231 including the URL):
 
 ## Show HN (last)
 
-Post only after README hero (3.1), demo GIF (3.3), and v0.5.0 are done, and after the Reddit posts settle. Owner-written; this is a starting point. HN dislikes marketing: plain, first person, technical. Link to the repo, not the site.
+Post only after the README hero (3.1) and a real-app recording (7.4) are done, and after the Reddit posts settle. Owner-written; this is a starting point. HN dislikes marketing: plain, first person, technical. Link to the repo, not the site.
 
 **Title** (80 chars, at the limit; shorter fallback: `Show HN: Margin – Claude Code and Codex usage for many accounts` (63)):
 

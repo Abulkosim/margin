@@ -7,8 +7,8 @@ Releases are unsigned by a verified publisher. macOS uses ad-hoc signing for App
 1. Run `pnpm verify` and `pnpm test:e2e`, then the macOS checks in [native-checks.md](native-checks.md).
 2. Commit both `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Frontend installs use `--frozen-lockfile`; Rust checks and builds use `--locked`.
 3. Set the same version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
-4. Write `changelogs/vX.Y.Z.md` and add it to `CHANGELOG.md`. Use the release date and a few short bullets describing user-visible changes. Link to installation instructions instead of repeating them. The release workflow uses this file for GitHub release notes and the update manifest.
-5. Run `pnpm test:scripts` and `node scripts/check-release.mjs vX.Y.Z`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement.
+4. Write `changelogs/vX.Y.Z.md` and add it to `CHANGELOG.md`. Point the README download links and the issue form version placeholders at the new version. Use the release date and a few short bullets describing user-visible changes. Link to installation instructions instead of repeating them. The release workflow uses this file for GitHub release notes and the update manifest.
+5. Run `pnpm test:scripts` and `node scripts/check-release.mjs vX.Y.Z`, substituting the intended version. Release validation requires the public updater key, the GitHub manifest URL, and signed-version enforcement. `scripts/check-docs.mjs`, part of `pnpm test:scripts`, fails on broken doc links and on a README, changelog or issue form that names another version.
 6. Push the release commit and confirm all checks on `main` pass. Create and push the matching annotated tag.
 
 Never put real credential files, token values, account IDs, or unredacted provider responses into commits, artifacts, screenshots, or release notes.
@@ -21,7 +21,7 @@ Never put real credential files, token values, account IDs, or unredacted provid
 - CodeQL scans the workflows, TypeScript and Rust on pull requests, `main` and weekly. Findings appear under Security → Code scanning.
 - Release tag pushes in `Abulkosim/margin` only: signs updater artifacts, validates matching versions and lockfiles, waits for all jobs to pass, verifies each updater signature and its signed version, generates `latest.json` and SHA-256 checksums, generates an SPDX SBOM of the Rust and npm lockfiles, records GitHub build provenance for the four installers, `latest.json` and `SHA256SUMS.txt`, attests the SBOM against the four installers, and creates or updates a draft GitHub release.
 
-Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rust dependency updates. Builds have read-only repository access; only the release job has write access, plus the OIDC token and attestation permissions needed for provenance. Pull requests, main builds, forks, and manual workflow runs disable updater artifact generation and receive no signing secrets. The release pipeline uses the existing standard GitHub runners and GitHub Releases; no additional hosted service is required.
+Actions are pinned to commit SHAs. Dependabot proposes action, frontend, and Rust dependency updates. Workflows default to read-only repository access; only the release job can write to the repository, plus the OIDC token and attestation permissions needed for provenance, and the Pages job can deploy the site. Pull requests, main builds, forks, and manual workflow runs disable updater artifact generation and receive no signing secrets; a manual run from a release tag gives the gated `homebrew` and `winget` jobs their own tokens. `scripts/check-workflows.mjs`, part of `pnpm test:scripts`, fails on an action not pinned to a commit, a workflow-level write permission, a job without a timeout, a pull request workflow without a concurrency group, or a `pull_request_target` trigger. The release pipeline uses the existing standard GitHub runners and GitHub Releases; no additional hosted service is required.
 
 ## Publish
 
@@ -110,7 +110,7 @@ A dispatch also re-runs the frontend and native checks; the release job stays sk
 
 👤 Owner steps:
 
-1. Create the public repo `Abulkosim/homebrew-tap` with a `Casks/` folder (the job copies the seed cask in on first run).
+1. The public repo `Abulkosim/homebrew-tap` exists with a `Casks/` folder but no `margin.rb` yet; the job copies the seed cask in on first run.
 2. Create a fine-grained PAT limited to that repo with **Contents: Read and write**.
 3. In `Abulkosim/margin` → Settings → Secrets and variables → Actions: add secret `HOMEBREW_TAP_TOKEN`, then variable `HOMEBREW_TAP_ENABLED=true`.
 4. After publishing a release, dispatch as above. Check with `brew install --cask Abulkosim/tap/margin` and `brew livecheck --cask Abulkosim/tap/margin`.
