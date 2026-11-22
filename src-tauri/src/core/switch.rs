@@ -15,6 +15,7 @@ use super::fsutil;
 use super::model::{Account, AccountSource, Provider};
 use super::providers::claude::{keychain_service, keychain_suffix};
 use super::providers::codex::jwt_claims;
+use super::time::{self, Timestamp};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -808,14 +809,12 @@ pub struct SwitchRecord {
 }
 
 impl SwitchRecord {
-    fn age_minutes(&self, now: chrono::DateTime<chrono::Utc>) -> Option<i64> {
-        chrono::DateTime::parse_from_rfc3339(&self.created_at)
-            .ok()
-            .map(|at| (now - at.with_timezone(&chrono::Utc)).num_minutes())
+    fn age_minutes(&self, now: Timestamp) -> Option<i64> {
+        time::parse(&self.created_at).map(|at| (now - at).as_mins())
     }
 
     /// Failed or unfinished, with live fingerprints, and under 30 minutes old.
-    pub fn restorable(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+    pub fn restorable(&self, now: Timestamp) -> bool {
         matches!(
             self.state,
             RecordState::Started | RecordState::VerifyFailed | RecordState::RollbackFailed
@@ -1031,7 +1030,7 @@ pub fn execute(
 /// Writes a backup's values back, under the same locks, as a journaled operation.
 pub fn restore(
     id: &str,
-    now: chrono::DateTime<chrono::Utc>,
+    now: Timestamp,
     running: Running,
     store: &dyn CredentialStore,
     locks: &dyn LockSet,
@@ -1094,12 +1093,12 @@ pub fn restore(
     Ok(record)
 }
 
-pub(crate) fn record_stamp(now: chrono::DateTime<chrono::Utc>) -> String {
-    now.format("%Y%m%dT%H%M%SZ").to_string()
+pub(crate) fn record_stamp(now: Timestamp) -> String {
+    now.compact()
 }
 
-pub(crate) fn aside_stamp(now: chrono::DateTime<chrono::Utc>) -> String {
-    now.format("%Y%m%dT%H%M%S%.3fZ").to_string()
+pub(crate) fn aside_stamp(now: Timestamp) -> String {
+    now.compact_millis()
 }
 
 fn new_record(
@@ -1108,10 +1107,10 @@ fn new_record(
     writes: &[Write],
     locks: Vec<PathBuf>,
 ) -> SwitchRecord {
-    let now = chrono::Utc::now();
+    let now = time::now();
     let nonce = sha(format!(
         "{}-{}-{:?}",
-        now.timestamp_nanos_opt().unwrap_or_default(),
+        now.unix_nanos(),
         std::process::id(),
         std::thread::current().id()
     )
@@ -1119,7 +1118,7 @@ fn new_record(
     SwitchRecord {
         id: format!("{}-{}-{}", provider.key(), record_stamp(now), &nonce[..8]),
         provider,
-        created_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        created_at: now.to_rfc3339_secs(),
         restore,
         state: RecordState::Started,
         items: writes
@@ -1262,7 +1261,7 @@ pub struct RestoreOffer {
 }
 
 impl RestoreOffer {
-    pub fn new(record: &SwitchRecord, now: chrono::DateTime<chrono::Utc>) -> Option<Self> {
+    pub fn new(record: &SwitchRecord, now: Timestamp) -> Option<Self> {
         record.restorable(now).then(|| Self {
             id: record.id.clone(),
             provider: record.provider,
@@ -1283,11 +1282,7 @@ pub struct Recovery {
 
 /// At launch: finish switches that wrote everything but not Margin's model, and
 /// offer a restore for any that stopped part way or failed verification.
-pub fn recover(
-    store: &dyn CredentialStore,
-    journal: &mut dyn Journal,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Recovery {
+pub fn recover(store: &dyn CredentialStore, journal: &mut dyn Journal, now: Timestamp) -> Recovery {
     let mut recovery = Recovery {
         offer: None,
         apply: Vec::new(),
@@ -1424,7 +1419,7 @@ impl DiskJournal {
     }
 
     fn set_aside(&self) -> Result<(), SwitchError> {
-        let stamp = aside_stamp(chrono::Utc::now());
+        let stamp = aside_stamp(time::now());
         let aside = self.dir.join(format!("switches.unreadable-{stamp}.json"));
         std::fs::rename(self.index(), aside).map_err(|_| SwitchError::Journal)
     }
@@ -1491,16 +1486,15 @@ impl Journal for DiskJournal {
         };
         self.store_backup(&record.id, backup)?;
         records.push(record.clone());
-        let now = chrono::Utc::now();
-        let cutoff = now - chrono::Duration::days(KEEP_DAYS);
+        let now = time::now();
+        let cutoff = now - time::days(KEEP_DAYS);
         let keep_from = records.len().saturating_sub(KEEP_RECORDS);
         let (kept, dropped): (Vec<_>, Vec<_>) =
             records.into_iter().enumerate().partition(|(index, entry)| {
                 entry.id == record.id
                     || entry.restorable(now)
                     || (*index >= keep_from
-                        && chrono::DateTime::parse_from_rfc3339(&entry.created_at)
-                            .is_ok_and(|at| at > cutoff))
+                        && time::parse(&entry.created_at).is_some_and(|at| at > cutoff))
             });
         let kept: Vec<SwitchRecord> = kept.into_iter().map(|(_, entry)| entry).collect();
         if let Err(error) = self.save(&kept) {

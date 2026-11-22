@@ -1,16 +1,16 @@
+use super::time::{self, Timestamp};
 use super::{
     model::{Account, UsageError},
     notifications::{reset_clock, Clock12h},
 };
-use chrono::{DateTime, Duration, Utc};
 
 /// How long an account stays unreadable before Margin says its alerts cannot fire.
 const AFTER_MINUTES: i64 = 30;
 
 #[derive(Debug, Default)]
 pub struct Outage {
-    since: Option<DateTime<Utc>>,
-    failed: Option<DateTime<Utc>>,
+    since: Option<Timestamp>,
+    failed: Option<Timestamp>,
     alerted: bool,
 }
 
@@ -23,19 +23,18 @@ pub fn hides_usage(error: &UsageError) -> bool {
 /// The newest reading from an account on another usage host that is reading fine right now.
 /// Providers stand in for hosts: two Codex accounts with different `chatgpt_base_url` values count
 /// as one host, which can only keep Margin quiet.
-pub fn connection_proof(accounts: &[Account], account: &Account) -> Option<DateTime<Utc>> {
+pub fn connection_proof(accounts: &[Account], account: &Account) -> Option<Timestamp> {
     accounts
         .iter()
         .filter(|other| other.provider != account.provider && other.error.is_none())
         .filter_map(|other| other.snapshot.as_ref())
-        .filter_map(|snapshot| DateTime::parse_from_rfc3339(&snapshot.fetched_at).ok())
-        .map(|at| at.with_timezone(&Utc))
+        .filter_map(|snapshot| time::parse(&snapshot.fetched_at))
         .max()
 }
 
 impl Outage {
     /// A request for this account just failed.
-    pub fn failed(&mut self, now: DateTime<Utc>) {
+    pub fn failed(&mut self, now: Timestamp) {
         self.failed = Some(now);
     }
 
@@ -51,9 +50,9 @@ impl Outage {
         &mut self,
         error: Option<&UsageError>,
         last_reading: Option<&str>,
-        proof: Option<DateTime<Utc>>,
-        now: DateTime<Utc>,
-    ) -> Option<DateTime<Utc>> {
+        proof: Option<Timestamp>,
+        now: Timestamp,
+    ) -> Option<Timestamp> {
         let Some(error) = error.filter(|error| hides_usage(error)) else {
             *self = Self::default();
             return None;
@@ -72,10 +71,8 @@ impl Outage {
             }
         }
         let since = *self.since.get_or_insert(now);
-        let last = last_reading
-            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())?
-            .with_timezone(&Utc);
-        let after = Duration::minutes(AFTER_MINUTES);
+        let last = last_reading.and_then(time::parse)?;
+        let after = time::mins(AFTER_MINUTES);
         if self.alerted || now - since < after || now - last < after {
             return None;
         }
@@ -95,16 +92,11 @@ pub fn title(account_label: &str) -> String {
     format!("{account_label} · Usage not updating")
 }
 
-pub fn body(
-    error: &UsageError,
-    last: DateTime<Utc>,
-    now: DateTime<Utc>,
-    clock: Clock12h,
-) -> String {
+pub fn body(error: &UsageError, last: Timestamp, now: Timestamp, clock: Clock12h) -> String {
     let reading = format!("Last reading {}", reset_clock(last, now, clock));
     let until = error
         .retry_at
-        .and_then(DateTime::from_timestamp_millis)
+        .and_then(Timestamp::from_unix_millis)
         .filter(|at| *at > now);
     match (error.kind.as_str(), until) {
         ("rateLimited", Some(until)) => format!(
@@ -122,8 +114,8 @@ pub fn body(
 mod tests {
     use super::*;
 
-    fn at(minutes: i64) -> DateTime<Utc> {
-        "2099-12-31T12:00:00Z".parse::<DateTime<Utc>>().unwrap() + Duration::minutes(minutes)
+    fn at(minutes: i64) -> Timestamp {
+        "2099-12-31T12:00:00Z".parse::<Timestamp>().unwrap() + time::mins(minutes)
     }
 
     fn limited() -> UsageError {
@@ -207,13 +199,13 @@ mod tests {
     }
 
     /// A check at `minute`, with `proof` as the other host's newest reading.
-    fn network_tick(outage: &mut Outage, minute: i64, proof: Option<i64>) -> Option<DateTime<Utc>> {
+    fn network_tick(outage: &mut Outage, minute: i64, proof: Option<i64>) -> Option<Timestamp> {
         let last = at(-600).to_rfc3339();
         outage.observe(Some(&network()), Some(&last), proof.map(at), at(minute))
     }
 
     /// The same check right after a failed request.
-    fn network_poll(outage: &mut Outage, minute: i64, proof: Option<i64>) -> Option<DateTime<Utc>> {
+    fn network_poll(outage: &mut Outage, minute: i64, proof: Option<i64>) -> Option<Timestamp> {
         outage.failed(at(minute));
         network_tick(outage, minute, proof)
     }
@@ -369,9 +361,9 @@ mod tests {
         let now = at(0);
         let last = at(-45);
         assert_eq!(title("Work"), "Work · Usage not updating");
-        let local = |at: DateTime<Utc>| reset_clock(at, now, clock);
+        let local = |at: Timestamp| reset_clock(at, now, clock);
         let until = UsageError {
-            retry_at: Some(at(50).timestamp_millis()),
+            retry_at: Some(at(50).unix_millis()),
             ..limited()
         };
         assert_eq!(

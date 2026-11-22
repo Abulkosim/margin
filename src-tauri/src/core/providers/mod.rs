@@ -5,7 +5,7 @@ mod properties;
 
 use super::fsutil;
 use super::model::{Account, Identity, Provider, Snapshot, UsageError};
-use chrono::{DateTime, Datelike, SecondsFormat, Utc};
+use super::time::{self, Timestamp};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -49,7 +49,7 @@ pub async fn fetch(
 }
 
 fn now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+    time::now().to_rfc3339_secs()
 }
 
 fn malformed_response() -> UsageError {
@@ -222,7 +222,7 @@ fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderM
             Provider::Codex => "Codex usage access was denied. Check this account's sign-in and subscription.",
         }),
         429 => UsageError {
-            retry_after_seconds: retry_after(headers, Utc::now())
+            retry_after_seconds: retry_after(headers, time::now())
                 .and_then(|seconds| u32::try_from(seconds).ok()),
             ..UsageError::new("rateLimited", "The provider asked us to wait. Retrying automatically.")
         },
@@ -232,18 +232,13 @@ fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderM
     }
 }
 
-pub(crate) fn retry_after(headers: &HeaderMap, now: DateTime<Utc>) -> Option<u64> {
+pub(crate) fn retry_after(headers: &HeaderMap, now: Timestamp) -> Option<u64> {
     let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
     if let Ok(seconds) = value.parse::<u64>() {
         return Some(seconds.clamp(1, MAX_RETRY_AFTER_SECONDS));
     }
-    let target = DateTime::parse_from_rfc2822(value)
-        .ok()?
-        .with_timezone(&Utc);
-    Some(
-        (target.signed_duration_since(now).num_seconds().max(1) as u64)
-            .min(MAX_RETRY_AFTER_SECONDS),
-    )
+    let target = time::parse_rfc2822(value)?;
+    Some(((target - now).as_secs().max(1) as u64).min(MAX_RETRY_AFTER_SECONDS))
 }
 
 fn percent(value: &Value) -> Result<f64, UsageError> {
@@ -259,22 +254,20 @@ pub(crate) fn timestamp(value: Option<&Value>) -> Result<Option<String>, UsageEr
         return Ok(None);
     };
     let parsed = if let Some(value) = value.as_str() {
-        DateTime::parse_from_rfc3339(value)
-            .map(|value| value.with_timezone(&Utc))
-            .map_err(|_| malformed_response())?
+        time::parse(value).ok_or_else(malformed_response)?
     } else if let Some(value) = value.as_i64() {
-        DateTime::from_timestamp(value, 0).ok_or_else(malformed_response)?
+        Timestamp::from_unix_seconds(value).ok_or_else(malformed_response)?
     } else {
         return Err(malformed_response());
     };
     rfc3339(parsed).map(Some).ok_or_else(malformed_response)
 }
 
-/// The interface reads four-digit years only; chrono writes others as `+10000` or `-0001`.
-fn rfc3339(date: DateTime<Utc>) -> Option<String> {
+/// The interface reads four-digit years only; others would be written as `+10000` or `-0001`.
+fn rfc3339(date: Timestamp) -> Option<String> {
     (0..=9999)
         .contains(&date.year())
-        .then(|| date.to_rfc3339_opts(SecondsFormat::Secs, true))
+        .then(|| date.to_rfc3339_secs())
 }
 
 fn nonempty_string(value: Option<&Value>) -> Option<String> {
@@ -346,9 +339,7 @@ mod tests {
     #[test]
     fn retry_after_accepts_seconds_and_http_dates() {
         let mut headers = HeaderMap::new();
-        let now = DateTime::parse_from_rfc3339("2026-10-16T10:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let now = time::parse("2026-10-16T10:00:00Z").unwrap();
         headers.insert(RETRY_AFTER, HeaderValue::from_static("120"));
         assert_eq!(retry_after(&headers, now), Some(120));
         headers.insert(

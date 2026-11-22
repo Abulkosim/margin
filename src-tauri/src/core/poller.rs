@@ -1,3 +1,4 @@
+use super::time::{self, Timestamp};
 use super::{
     burn,
     delivery::Message,
@@ -10,7 +11,6 @@ use super::{
     tray,
 };
 use crate::runtime::{publish, AppState, Runtime, RuntimeState};
-use chrono::{DateTime, Utc};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -246,7 +246,7 @@ fn submit_pending(
         &mut view.notification_failed_at,
         &view.settings,
         &view.accounts,
-        chrono::Utc::now(),
+        time::now(),
         Clock12h::system(),
         |title, body| submit(app, title, body),
     );
@@ -257,7 +257,7 @@ fn submit_pending(
 }
 
 /// Queues an alert for accounts that just crossed 30 minutes without a reading.
-fn not_updating(inner: &mut crate::runtime::RuntimeState, now: chrono::DateTime<chrono::Utc>) {
+fn not_updating(inner: &mut crate::runtime::RuntimeState, now: Timestamp) {
     let crate::runtime::RuntimeState {
         view,
         schedules,
@@ -320,7 +320,7 @@ fn apply_result(
     result: Result<(Snapshot, Identity), UsageError>,
     visible: bool,
     now: Instant,
-    wall: DateTime<Utc>,
+    wall: Timestamp,
 ) -> Applied {
     if !inner
         .schedules
@@ -434,8 +434,7 @@ fn apply_result(
             if error.kind == "rateLimited" {
                 let delay = schedule.next.saturating_duration_since(now);
                 retry_at = Some(
-                    wall.timestamp_millis()
-                        + i64::try_from(delay.as_millis()).unwrap_or(i64::MAX / 2),
+                    wall.unix_millis() + i64::try_from(delay.as_millis()).unwrap_or(i64::MAX / 2),
                 );
             }
         } else {
@@ -505,7 +504,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                     );
                 }
             }
-            not_updating(&mut inner, chrono::Utc::now());
+            not_updating(&mut inner, time::now());
             let failure_changed = submit_pending(&app, &runtime, &mut inner);
             let now = Instant::now();
             let mut due = Vec::new();
@@ -577,7 +576,7 @@ pub fn start(app: AppHandle, runtime: Arc<Runtime>) {
                         result,
                         visible,
                         Instant::now(),
-                        chrono::Utc::now(),
+                        time::now(),
                     );
                     let wake = match applied {
                         Applied::Dropped => return,
@@ -760,9 +759,8 @@ mod tests {
         }
     }
 
-    fn wall(minutes: i64) -> DateTime<Utc> {
-        "2099-12-31T12:00:00Z".parse::<DateTime<Utc>>().unwrap()
-            + chrono::Duration::minutes(minutes)
+    fn wall(minutes: i64) -> Timestamp {
+        "2099-12-31T12:00:00Z".parse::<Timestamp>().unwrap() + time::mins(minutes)
     }
 
     fn reading(used: f64, minutes: i64) -> Snapshot {
@@ -965,7 +963,7 @@ mod tests {
         let error = state.view.accounts[0].error.as_ref().unwrap();
         assert_eq!(
             error.retry_at,
-            Some(wall(0).timestamp_millis() + i64::try_from(wait.as_millis()).unwrap())
+            Some(wall(0).unix_millis() + i64::try_from(wait.as_millis()).unwrap())
         );
         assert!(!state.view.accounts[0].refreshing);
         assert!(!state.view.refreshing);

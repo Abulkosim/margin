@@ -27,8 +27,8 @@ fn margin(dir: &Path, args: &[&str]) -> (i32, String, String) {
 }
 
 fn stamp(hours: i64) -> String {
-    (chrono::Utc::now() + chrono::Duration::hours(hours) + chrono::Duration::seconds(30))
-        .to_rfc3339()
+    use margin_lib::core::time;
+    (time::now() + time::hours(hours) + time::secs(30)).to_rfc3339()
 }
 
 fn codex_account(id: &str, label: &str, dir: &Path, session_used: f64) -> Value {

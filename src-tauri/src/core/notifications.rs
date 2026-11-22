@@ -1,8 +1,8 @@
+use super::time::{self, TimeZone, Timestamp};
 use super::{
     burn::BurnState,
     model::{Snapshot, UsageWindow, WindowScope},
 };
-use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::OnceLock;
@@ -29,12 +29,14 @@ pub struct WindowAlerts {
 
 impl WindowAlerts {
     pub(super) fn validate(&self) -> Result<(), String> {
-        if self.reset.as_ref().is_some_and(|reset| {
-            reset.len() > 64 || chrono::DateTime::parse_from_rfc3339(reset).is_err()
-        }) || self
-            .sent
-            .iter()
-            .any(|threshold| !(1..=100).contains(threshold))
+        if self
+            .reset
+            .as_ref()
+            .is_some_and(|reset| reset.len() > 64 || !time::is_rfc3339(reset))
+            || self
+                .sent
+                .iter()
+                .any(|threshold| !(1..=100).contains(threshold))
         {
             return Err("Stored notification state is invalid.".into());
         }
@@ -58,24 +60,21 @@ pub struct Alert {
     pub resets_at: Option<String>,
     pub used_percent: f64,
     /// When the window is projected to reach its limit, if that is before it resets.
-    pub runs_out: Option<DateTime<Utc>>,
+    pub runs_out: Option<Timestamp>,
 }
 
 impl Alert {
-    pub fn title(&self, account_label: &str, now: DateTime<Utc>, clock: Clock12h) -> String {
-        self.title_in(&Local, clock, account_label, now)
+    pub fn title(&self, account_label: &str, now: Timestamp, clock: Clock12h) -> String {
+        self.title_in(&time::local(), clock, account_label, now)
     }
 
-    pub(crate) fn title_in<Tz: TimeZone>(
+    pub(crate) fn title_in(
         &self,
-        zone: &Tz,
+        zone: &TimeZone,
         clock: Clock12h,
         account_label: &str,
-        now: DateTime<Utc>,
-    ) -> String
-    where
-        Tz::Offset: std::fmt::Display,
-    {
+        now: Timestamp,
+    ) -> String {
         let window = &self.window_label;
         match self.kind {
             AlertKind::Threshold(100) => format!("{account_label} · {window} limit reached"),
@@ -99,26 +98,23 @@ impl Alert {
         }
     }
 
-    pub fn body(&self, now: DateTime<Utc>, clock: Clock12h) -> Option<String> {
-        self.body_in(&Local, clock, now)
+    pub fn body(&self, now: Timestamp, clock: Clock12h) -> Option<String> {
+        self.body_in(&time::local(), clock, now)
     }
 
-    pub(crate) fn body_in<Tz: TimeZone>(
+    pub(crate) fn body_in(
         &self,
-        zone: &Tz,
+        zone: &TimeZone,
         clock: Clock12h,
-        now: DateTime<Utc>,
-    ) -> Option<String>
-    where
-        Tz::Offset: std::fmt::Display,
-    {
+        now: Timestamp,
+    ) -> Option<String> {
         let reset = parse(self.resets_at.as_ref()).filter(|reset| *reset > now);
         if self.kind == AlertKind::RunsOut {
             let left = (100.0 - self.used_percent).floor().clamp(0.0, 100.0);
             return Some(match reset {
                 Some(reset) => format!(
                     "{left}% left · Resets in {} · {}",
-                    short_duration((reset - now).num_milliseconds()),
+                    short_duration(time::millis(reset - now)),
                     clock_in(zone, clock, reset, now)
                 ),
                 None => format!("{left}% left"),
@@ -137,7 +133,7 @@ impl Alert {
         let reset = reset?;
         Some(format!(
             "Resets in {} · {}",
-            short_duration((reset - now).num_milliseconds()),
+            short_duration(time::millis(reset - now)),
             clock_in(zone, clock, reset, now)
         ))
     }
@@ -155,29 +151,20 @@ impl Clock12h {
     }
 }
 
-pub fn reset_clock(at: DateTime<Utc>, now: DateTime<Utc>, clock: Clock12h) -> String {
-    clock_in(&Local, clock, at, now)
+pub fn reset_clock(at: Timestamp, now: Timestamp, clock: Clock12h) -> String {
+    clock_in(&time::local(), clock, at, now)
 }
 
-pub(crate) fn clock_in<Tz: TimeZone>(
-    zone: &Tz,
-    clock: Clock12h,
-    at: DateTime<Utc>,
-    now: DateTime<Utc>,
-) -> String
-where
-    Tz::Offset: std::fmt::Display,
-{
-    let local = at.with_timezone(zone);
-    let time = if clock.0 { "%-I:%M %p" } else { "%H:%M" };
-    let pattern = if local.date_naive() == now.with_timezone(zone).date_naive() {
-        time.to_owned()
-    } else if (at - now).abs() < chrono::Duration::days(6) {
-        format!("%a {time}")
+/// `16:30` today, `Mon 16:30` within six days, else `Oct 6 16:30`.
+pub(crate) fn clock_in(zone: &TimeZone, clock: Clock12h, at: Timestamp, now: Timestamp) -> String {
+    let local = at.civil(zone);
+    if local.same_day(&now.civil(zone)) {
+        local.time_of_day(clock.0)
+    } else if (at - now).abs() < time::days(6) {
+        local.weekday_time(clock.0)
     } else {
-        format!("%b %-d {time}")
-    };
-    local.format(&pattern).to_string()
+        local.date_time(clock.0)
+    }
 }
 
 /// Reads the OS clock preference. Nothing here runs in tests: the formatters
@@ -304,16 +291,14 @@ fn short_duration(milliseconds: i64) -> String {
     format!("{}d {}h", hours / 24, hours % 24)
 }
 
-fn parse(value: Option<&String>) -> Option<DateTime<Utc>> {
-    value
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|value| value.with_timezone(&Utc))
+fn parse(value: Option<&String>) -> Option<Timestamp> {
+    value.and_then(|value| time::parse(value))
 }
 
 fn same_period(previous: Option<&String>, current: Option<&String>) -> bool {
     match (parse(previous), parse(current)) {
         (Some(previous), Some(current)) => {
-            (current - previous).num_seconds().abs() <= RESET_JITTER_SECONDS
+            (current - previous).as_secs().abs() <= RESET_JITTER_SECONDS
         }
         _ => true,
     }
@@ -333,7 +318,7 @@ pub fn observe(
     account_id: &str,
     snapshot: &Snapshot,
     thresholds: &[u8],
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> Vec<Alert> {
     // A window missing from an incomplete reading may still exist.
     if !snapshot.incomplete {
@@ -448,8 +433,8 @@ mod tests {
 
     const RESET: &str = "2100-01-01T00:00:00Z";
 
-    fn now() -> DateTime<Utc> {
-        "2099-12-31T22:40:00Z".parse().unwrap()
+    fn now() -> Timestamp {
+        time::parse("2099-12-31T22:40:00Z").unwrap()
     }
 
     fn reading(used: f64, reset: &str) -> Snapshot {
@@ -612,7 +597,7 @@ mod tests {
             runs_out: None,
         };
         assert_eq!(
-            alert.title_in(&Utc, Clock12h(false), "Personal", now()),
+            alert.title_in(&TimeZone::UTC, Clock12h(false), "Personal", now()),
             "Personal · Session 5% left"
         );
         let jumped = Alert {
@@ -620,11 +605,13 @@ mod tests {
             ..alert.clone()
         };
         assert_eq!(
-            jumped.title_in(&Utc, Clock12h(false), "Personal", now()),
+            jumped.title_in(&TimeZone::UTC, Clock12h(false), "Personal", now()),
             "Personal · Session 2% left"
         );
         assert_eq!(
-            alert.body_in(&Utc, Clock12h(false), now()).as_deref(),
+            alert
+                .body_in(&TimeZone::UTC, Clock12h(false), now())
+                .as_deref(),
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let early = Alert {
@@ -633,7 +620,7 @@ mod tests {
             ..alert.clone()
         };
         assert_eq!(
-            early.title_in(&Utc, Clock12h(false), "Personal", now()),
+            early.title_in(&TimeZone::UTC, Clock12h(false), "Personal", now()),
             "Personal · Session 20% left"
         );
         let full = Alert {
@@ -641,7 +628,7 @@ mod tests {
             ..alert.clone()
         };
         assert_eq!(
-            full.title_in(&Utc, Clock12h(false), "Work", now()),
+            full.title_in(&TimeZone::UTC, Clock12h(false), "Work", now()),
             "Work · Session limit reached"
         );
         let reset = Alert {
@@ -650,28 +637,29 @@ mod tests {
             ..alert
         };
         assert_eq!(
-            reset.title_in(&Utc, Clock12h(false), "Personal", now()),
+            reset.title_in(&TimeZone::UTC, Clock12h(false), "Personal", now()),
             "Personal · Session limit reset"
         );
         assert_eq!(reset.body(now(), Clock12h(false)), None);
         assert_eq!(short_duration(30_000), "<1m");
-        assert_eq!(reset.body_in(&Utc, Clock12h(false), now()), None);
+        assert_eq!(reset.body_in(&TimeZone::UTC, Clock12h(false), now()), None);
         assert_eq!(short_duration(90 * 3_600_000), "3d 18h");
     }
 
     #[test]
     fn run_out_copy_names_the_time_and_the_reset() {
-        let reset: DateTime<Utc> = RESET.parse().unwrap();
+        let reset = time::parse(RESET).unwrap();
         let alert = Alert {
             window_id: "five_hour".into(),
             window_label: "Session".into(),
             kind: AlertKind::Burn { increase: 20 },
             resets_at: Some(RESET.into()),
             used_percent: 64.0,
-            runs_out: Some(reset - chrono::Duration::minutes(30)),
+            runs_out: Some(reset - time::mins(30)),
         };
-        let title = |alert: &Alert| alert.title_in(&Utc, Clock12h(false), "Personal", now());
-        let body = |alert: &Alert| alert.body_in(&Utc, Clock12h(false), now());
+        let title =
+            |alert: &Alert| alert.title_in(&TimeZone::UTC, Clock12h(false), "Personal", now());
+        let body = |alert: &Alert| alert.body_in(&TimeZone::UTC, Clock12h(false), now());
         assert_eq!(
             title(&alert),
             "Personal · Session: 20% used in the last hour"
@@ -689,7 +677,7 @@ mod tests {
             Some("Resets in 1h 20m · Fri 00:00")
         );
         let passed = Alert {
-            runs_out: Some(now() - chrono::Duration::minutes(1)),
+            runs_out: Some(now() - time::mins(1)),
             ..alert.clone()
         };
         assert_eq!(
@@ -727,21 +715,36 @@ mod tests {
 
     #[test]
     fn reset_clock_names_the_day_only_when_needed() {
-        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let at = |value: &str| time::parse(value).unwrap();
         let now = at("2099-12-31T10:00:00Z");
         assert_eq!(
-            clock_in(&Utc, Clock12h(false), at("2099-12-31T16:30:00Z"), now),
+            clock_in(
+                &TimeZone::UTC,
+                Clock12h(false),
+                at("2099-12-31T16:30:00Z"),
+                now
+            ),
             "16:30"
         );
         assert_eq!(
-            clock_in(&Utc, Clock12h(false), at("2100-01-01T09:05:00Z"), now),
+            clock_in(
+                &TimeZone::UTC,
+                Clock12h(false),
+                at("2100-01-01T09:05:00Z"),
+                now
+            ),
             "Fri 09:05"
         );
         assert_eq!(
-            clock_in(&Utc, Clock12h(false), at("2100-01-08T09:05:00Z"), now),
+            clock_in(
+                &TimeZone::UTC,
+                Clock12h(false),
+                at("2100-01-08T09:05:00Z"),
+                now
+            ),
             "Jan 8 09:05"
         );
-        let east = chrono::FixedOffset::east_opt(9 * 3600).unwrap();
+        let east = TimeZone::fixed(time::Offset::constant(9));
         assert_eq!(
             clock_in(&east, Clock12h(false), at("2099-12-31T16:30:00Z"), now),
             "Fri 01:30"
@@ -750,23 +753,23 @@ mod tests {
 
     #[test]
     fn twelve_hour_clock_drops_the_leading_zero_and_names_the_half() {
-        let at = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let at = |value: &str| time::parse(value).unwrap();
         let today = at("2099-12-31T10:00:00Z");
         let twelve = Clock12h(true);
         assert_eq!(
-            clock_in(&Utc, twelve, at("2099-12-31T16:30:00Z"), today),
+            clock_in(&TimeZone::UTC, twelve, at("2099-12-31T16:30:00Z"), today),
             "4:30 PM"
         );
         assert_eq!(
-            clock_in(&Utc, twelve, at("2099-12-31T00:05:00Z"), today),
+            clock_in(&TimeZone::UTC, twelve, at("2099-12-31T00:05:00Z"), today),
             "12:05 AM"
         );
         assert_eq!(
-            clock_in(&Utc, twelve, at("2100-01-01T16:30:00Z"), today),
+            clock_in(&TimeZone::UTC, twelve, at("2100-01-01T16:30:00Z"), today),
             "Fri 4:30 PM"
         );
         assert_eq!(
-            clock_in(&Utc, twelve, at("2100-01-08T09:05:00Z"), today),
+            clock_in(&TimeZone::UTC, twelve, at("2100-01-08T09:05:00Z"), today),
             "Jan 8 9:05 AM"
         );
         let alert = Alert {
@@ -778,7 +781,7 @@ mod tests {
             runs_out: None,
         };
         assert_eq!(
-            alert.body_in(&Utc, twelve, now()).as_deref(),
+            alert.body_in(&TimeZone::UTC, twelve, now()).as_deref(),
             Some("Resets in 1h 20m · Fri 12:00 AM")
         );
     }

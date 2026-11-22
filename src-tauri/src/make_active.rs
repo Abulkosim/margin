@@ -324,7 +324,7 @@ pub async fn make_active(
                 }
                 _ => None,
             };
-            let now = chrono::Utc::now();
+            let now = crate::core::time::now();
             finish(&app, &runtime, &ids, |inner| {
                 let Some(failed) = failed else { return };
                 // Verify runs only after every write landed, so the sign-ins did
@@ -377,7 +377,7 @@ fn relocate_history(inner: &mut RuntimeState, moved: &RecordAccounts) {
 /// At launch: finish switches whose files were written but whose account move
 /// wasn't saved, and surface a restore for any that stopped part way.
 pub fn recover(inner: &mut RuntimeState, journal: &mut DiskJournal) {
-    let now = chrono::Utc::now();
+    let now = crate::core::time::now();
     let recovery = switch::recover(&SystemStore, journal, now);
     for record in recovery.apply {
         let applied = record
@@ -426,7 +426,7 @@ pub async fn restore_switch_backup(
     let result = tauri::async_runtime::spawn_blocking(move || {
         switch::restore(
             &backup,
-            chrono::Utc::now(),
+            crate::core::time::now(),
             switch::running(provider),
             &SystemStore,
             &ProperLockfile::default(),
@@ -499,7 +499,7 @@ mod tests {
             keychain: false,
         };
         let record: SwitchRecord = serde_json::from_value(serde_json::json!({
-            "id": "claude-1", "provider": "claude", "createdAt": chrono::Utc::now().to_rfc3339(),
+            "id": "claude-1", "provider": "claude", "createdAt": crate::core::time::now().to_rfc3339(),
             "restore": false, "state": "written", "items": [], "locks": []
         }))
         .unwrap();

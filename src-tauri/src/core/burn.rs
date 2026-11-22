@@ -1,9 +1,9 @@
+use super::time::{self, Timestamp};
 use super::{
     history::HistoryPoint,
     model::{Snapshot, UsageWindow},
     notifications::{self, Alert, AlertKind, AlertMemory},
 };
-use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 
@@ -52,27 +52,24 @@ pub struct Burn {
 }
 
 impl Burn {
-    fn runs_out(&self, used: f64, at: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    fn runs_out(&self, used: f64, at: Timestamp) -> Option<Timestamp> {
         if self.increase <= 0.0 || self.span_seconds <= 0 {
             return None;
         }
         let seconds = (100.0 - used).max(0.0) * self.span_seconds as f64 / self.increase;
-        at.checked_add_signed(Duration::try_seconds(seconds.ceil() as i64)?)
+        at.checked_add(time::try_secs(seconds.ceil() as i64)?)
     }
 }
 
-pub(super) fn timestamp(value: &str) -> Option<DateTime<Utc>> {
-    (value.len() <= 64)
-        .then(|| DateTime::parse_from_rfc3339(value).ok())
-        .flatten()
-        .map(|at| at.with_timezone(&Utc))
+pub(super) fn timestamp(value: &str) -> Option<Timestamp> {
+    (value.len() <= 64).then(|| time::parse(value)).flatten()
 }
 
 pub(super) fn same_reset(a: Option<&String>, b: Option<&String>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => match (timestamp(a), timestamp(b)) {
-            (Some(a), Some(b)) => (a - b).num_seconds().abs() <= RESET_JITTER_SECONDS,
+            (Some(a), Some(b)) => (a - b).as_secs().abs() <= RESET_JITTER_SECONDS,
             _ => false,
         },
         _ => false,
@@ -95,7 +92,7 @@ fn continues(
 pub fn hourly_increase(
     points: &[HistoryPoint],
     current: &UsageWindow,
-    at: DateTime<Utc>,
+    at: Timestamp,
 ) -> Option<Burn> {
     let readings = points
         .iter()
@@ -104,7 +101,7 @@ pub fn hourly_increase(
         .collect::<Option<Vec<_>>>()?;
     let &(latest_at, latest) = readings.last()?;
     if at < latest_at
-        || (at - latest_at).num_seconds() > LATEST_SLACK_SECONDS
+        || (at - latest_at).as_secs() > LATEST_SLACK_SECONDS
         || !continues(
             latest,
             current.used_percent,
@@ -133,10 +130,10 @@ pub fn hourly_increase(
     }
     let segment = &readings[start..];
     let (first_at, first) = segment[0];
-    if first_at > at - Duration::minutes(MIN_SPAN_MINUTES) {
+    if first_at > at - time::mins(MIN_SPAN_MINUTES) {
         return None;
     }
-    let target = at - Duration::minutes(LOOKBACK_MINUTES);
+    let target = at - time::mins(LOOKBACK_MINUTES);
     let (from, baseline) = segment
         .iter()
         .rev()
@@ -146,7 +143,7 @@ pub fn hourly_increase(
         });
     Some(Burn {
         increase: (current.used_percent - baseline).max(0.0),
-        span_seconds: (at - from).num_seconds(),
+        span_seconds: (at - from).as_secs(),
     })
 }
 
@@ -157,16 +154,16 @@ fn decide(
     burn: Option<Burn>,
     resets_at: Option<&String>,
     threshold: u8,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> bool {
     let alerted = state.alerted_at.as_deref().and_then(timestamp);
     let in_period = alerted.is_some() && same_reset(state.reset.as_ref(), resets_at);
-    let cooled = alerted.is_none_or(|at| now - at >= Duration::minutes(COOLDOWN_MINUTES));
+    let cooled = alerted.is_none_or(|at| now - at >= time::mins(COOLDOWN_MINUTES));
     let quiet = state
         .quiet_since
         .as_deref()
         .and_then(timestamp)
-        .is_some_and(|since| now - since >= Duration::minutes(QUIET_MINUTES));
+        .is_some_and(|since| now - since >= time::mins(QUIET_MINUTES));
     let fast = burn.is_some_and(|burn| burn.increase >= f64::from(threshold));
     if fast && cooled && (!in_period || quiet) {
         *state = BurnState {
@@ -192,8 +189,8 @@ pub fn observe(
     snapshot: &Snapshot,
     threshold: u8,
     suppressed: &HashSet<String>,
-    mut history: impl FnMut(&str, DateTime<Utc>) -> Vec<HistoryPoint>,
-    now: DateTime<Utc>,
+    mut history: impl FnMut(&str, Timestamp) -> Vec<HistoryPoint>,
+    now: Timestamp,
 ) -> Vec<Alert> {
     let Some(at) = timestamp(&snapshot.fetched_at) else {
         return Vec::new();
@@ -212,7 +209,7 @@ pub fn observe(
         {
             continue;
         }
-        let points = history(&window.id, at - Duration::minutes(LOOKBACK_MINUTES));
+        let points = history(&window.id, at - time::mins(LOOKBACK_MINUTES));
         let burn = hourly_increase(&points, window, at);
         let mut state = entry.burn.clone().unwrap_or_default();
         let fired = decide(&mut state, burn, window.resets_at.as_ref(), threshold, now);
@@ -243,12 +240,12 @@ mod tests {
 
     const RESET: &str = "2099-12-31T14:00:00Z";
 
-    fn at() -> DateTime<Utc> {
+    fn at() -> Timestamp {
         "2099-12-31T12:00:00Z".parse().unwrap()
     }
 
-    fn minutes(offset: i64) -> DateTime<Utc> {
-        at() + Duration::minutes(offset)
+    fn minutes(offset: i64) -> Timestamp {
+        at() + time::mins(offset)
     }
 
     fn point(offset: i64, used: f64) -> HistoryPoint {

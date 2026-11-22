@@ -19,6 +19,7 @@ pub mod security;
 pub mod settings;
 pub mod store;
 pub mod switch;
+pub mod time;
 pub mod tray;
 
 #[cfg(test)]

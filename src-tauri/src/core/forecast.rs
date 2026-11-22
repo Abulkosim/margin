@@ -1,21 +1,21 @@
+use super::time::{self, Timestamp};
 use super::{
     burn::{same_reset, timestamp},
     history::HistoryPoint,
     model::{Snapshot, UsageWindow, WindowScope},
     notifications::{Alert, AlertKind, AlertMemory},
 };
-use chrono::{DateTime, Duration, Utc};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Forecast {
-    pub runs_out: DateTime<Utc>,
-    pub resets_at: DateTime<Utc>,
+    pub runs_out: Timestamp,
+    pub resets_at: Timestamp,
 }
 
 /// How far back the rate is read, and how far ahead a run-out warns: a fifth of the window,
 /// one hour for a 5-hour session and about 34 hours for a week.
-pub fn lookback(window: &UsageWindow) -> Option<Duration> {
-    length(window).map(|seconds| Duration::seconds(seconds / 5))
+pub fn lookback(window: &UsageWindow) -> Option<time::SignedDuration> {
+    length(window).map(|seconds| time::secs(seconds / 5))
 }
 
 fn length(window: &UsageWindow) -> Option<i64> {
@@ -29,11 +29,7 @@ fn length(window: &UsageWindow) -> Option<i64> {
 /// is before the reset. Needs readings spanning a tenth of the window in the current period.
 /// Gaps between readings are fine: used % only grows within a period, so two readings give the
 /// exact average between them.
-pub fn project(
-    points: &[HistoryPoint],
-    current: &UsageWindow,
-    at: DateTime<Utc>,
-) -> Option<Forecast> {
+pub fn project(points: &[HistoryPoint], current: &UsageWindow, at: Timestamp) -> Option<Forecast> {
     let length = length(current)?;
     let resets_at = timestamp(current.resets_at.as_deref()?)?;
     if resets_at <= at || !(0.0..100.0).contains(&current.used_percent) {
@@ -50,7 +46,7 @@ pub fn project(
         .filter(|(point_at, _)| *point_at <= at)
         .collect();
     readings.sort_by_key(|(point_at, _)| *point_at);
-    let target = at - Duration::seconds(length / 5);
+    let target = at - time::secs(length / 5);
     let (from, baseline) = match readings
         .iter()
         .rposition(|(point_at, _)| *point_at <= target)
@@ -62,8 +58,8 @@ pub fn project(
             let (before_at, before) = readings[index];
             match readings.get(index + 1) {
                 Some(&(after_at, after)) if !after.gap_before && after_at > before_at => {
-                    let share = (target - before_at).num_milliseconds() as f64
-                        / (after_at - before_at).num_milliseconds() as f64;
+                    let share = time::millis(target - before_at) as f64
+                        / time::millis(after_at - before_at) as f64;
                     let used =
                         before.used_percent + (after.used_percent - before.used_percent) * share;
                     (target, used)
@@ -72,14 +68,14 @@ pub fn project(
             }
         }
     };
-    let span = (at - from).num_seconds();
+    let span = (at - from).as_secs();
     let increase = current.used_percent - baseline;
     if span < length / 10 || increase <= 0.0 {
         return None;
     }
     let seconds = (100.0 - current.used_percent) * span as f64 / increase;
-    let runs_out = at.checked_add_signed(Duration::try_seconds(seconds.ceil() as i64)?)?;
-    let margin = Duration::seconds(length / 60);
+    let runs_out = at.checked_add(time::try_secs(seconds.ceil() as i64)?)?;
+    let margin = time::secs(length / 60);
     (runs_out + margin <= resets_at).then_some(Forecast {
         runs_out,
         resets_at,
@@ -94,8 +90,8 @@ pub fn observe(
     account_id: &str,
     snapshot: &Snapshot,
     alerts: &mut Vec<Alert>,
-    mut history: impl FnMut(&str, DateTime<Utc>) -> Vec<HistoryPoint>,
-    now: DateTime<Utc>,
+    mut history: impl FnMut(&str, Timestamp) -> Vec<HistoryPoint>,
+    now: Timestamp,
 ) {
     let Some(at) = timestamp(&snapshot.fetched_at) else {
         return;
@@ -152,12 +148,12 @@ mod tests {
     const RESET: &str = "2099-12-31T14:00:00Z";
     const WEEK_RESET: &str = "2100-01-03T12:00:00Z";
 
-    fn at() -> DateTime<Utc> {
+    fn at() -> Timestamp {
         "2099-12-31T12:00:00Z".parse().unwrap()
     }
 
-    fn minutes(offset: i64) -> DateTime<Utc> {
-        at() + Duration::minutes(offset)
+    fn minutes(offset: i64) -> Timestamp {
+        at() + time::mins(offset)
     }
 
     fn point(offset: i64, used: f64) -> HistoryPoint {
@@ -181,7 +177,7 @@ mod tests {
         }
     }
 
-    fn runs_out(points: &[HistoryPoint], used: f64) -> Option<DateTime<Utc>> {
+    fn runs_out(points: &[HistoryPoint], used: f64) -> Option<Timestamp> {
         project(points, &session(used), at()).map(|forecast| forecast.runs_out)
     }
 
@@ -197,7 +193,7 @@ mod tests {
         let points = ramp(-90, 0, 0.0, 0.5);
         assert_eq!(runs_out(&points, 45.0), Some(minutes(110)));
         let forecast = project(&points, &session(45.0), at()).unwrap();
-        assert_eq!(forecast.resets_at, RESET.parse::<DateTime<Utc>>().unwrap());
+        assert_eq!(forecast.resets_at, RESET.parse::<Timestamp>().unwrap());
     }
 
     #[test]
@@ -256,11 +252,11 @@ mod tests {
 
     #[test]
     fn reset_jitter_is_the_same_period_and_order_does_not_matter() {
-        let reset: DateTime<Utc> = RESET.parse().unwrap();
+        let reset: Timestamp = RESET.parse().unwrap();
         let mut points = ramp(-60, 0, 0.0, 0.8);
         for (index, point) in points.iter_mut().enumerate() {
             let shift = (index as i64 % 3 - 1) * 30;
-            point.resets_at = Some((reset + Duration::seconds(shift)).to_rfc3339());
+            point.resets_at = Some((reset + time::secs(shift)).to_rfc3339());
         }
         points.reverse();
         assert_eq!(runs_out(&points, 48.0), Some(minutes(65)));
@@ -292,8 +288,8 @@ mod tests {
             reading(0, 70.0, false),
         ];
         let forecast = project(&overnight, &window, at()).unwrap();
-        assert_eq!(forecast.runs_out, at() + Duration::seconds(80_640));
-        assert_eq!(lookback(&window), Some(Duration::seconds(120_960)));
+        assert_eq!(forecast.runs_out, at() + time::secs(80_640));
+        assert_eq!(lookback(&window), Some(time::secs(120_960)));
     }
 
     fn snapshot(used: f64) -> Snapshot {

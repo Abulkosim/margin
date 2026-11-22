@@ -1,3 +1,4 @@
+use super::time::{self, Timestamp};
 use super::{
     digest::DigestState,
     model::{Account, UsageError},
@@ -5,7 +6,6 @@ use super::{
     outage,
     settings::{NotificationPermission, Settings},
 };
-use chrono::{DateTime, Duration, Utc};
 
 /// Waits before each retry of a notification that could not be submitted.
 const RETRY_DELAYS_SECONDS: [i64; 3] = [60, 300, 900];
@@ -21,7 +21,7 @@ pub enum Message {
     NotUpdating {
         label: String,
         error: UsageError,
-        last: DateTime<Utc>,
+        last: Timestamp,
     },
     Digest {
         title: String,
@@ -32,7 +32,7 @@ pub enum Message {
 }
 
 impl Message {
-    fn render(&self, now: DateTime<Utc>, clock: Clock12h) -> (String, Option<String>) {
+    fn render(&self, now: Timestamp, clock: Clock12h) -> (String, Option<String>) {
         match self {
             Self::Alert { label, alert, .. } => {
                 (alert.title(label, now, clock), alert.body(now, clock))
@@ -64,12 +64,7 @@ impl Message {
         !matches!(self, Self::NotUpdating { .. })
     }
 
-    fn still_wanted(
-        &self,
-        settings: &Settings,
-        account: Option<&Account>,
-        now: DateTime<Utc>,
-    ) -> bool {
+    fn still_wanted(&self, settings: &Settings, account: Option<&Account>, now: Timestamp) -> bool {
         match self {
             Self::Alert { alert, .. } => {
                 let enabled = match alert.kind {
@@ -79,9 +74,10 @@ impl Message {
                     AlertKind::RunsOut => settings.pace_alerts,
                 };
                 let open = alert.kind == AlertKind::Reset
-                    || alert.resets_at.as_deref().is_none_or(|reset| {
-                        DateTime::parse_from_rfc3339(reset).is_ok_and(|reset| reset > now)
-                    });
+                    || alert
+                        .resets_at
+                        .as_deref()
+                        .is_none_or(|reset| time::parse(reset).is_some_and(|reset| reset > now));
                 enabled && open && account.is_some_and(|account| account.error.is_none())
             }
             Self::NotUpdating { error, .. } => {
@@ -100,7 +96,7 @@ struct Pending {
     account_id: Option<String>,
     message: Message,
     retries: usize,
-    due: DateTime<Utc>,
+    due: Timestamp,
 }
 
 /// Notifications waiting to be submitted, in memory. Alert memory and the digest state record a
@@ -121,7 +117,7 @@ pub struct Attempt {
 }
 
 impl Delivery {
-    pub fn enqueue(&mut self, account_id: Option<&str>, message: Message, now: DateTime<Utc>) {
+    pub fn enqueue(&mut self, account_id: Option<&str>, message: Message, now: Timestamp) {
         self.pending.retain(|pending| {
             pending.account_id.as_deref() != account_id || !pending.message.same_slot(&message)
         });
@@ -185,7 +181,7 @@ impl Delivery {
         failed_at: &mut Option<String>,
         settings: &Settings,
         accounts: &[Account],
-        now: DateTime<Utc>,
+        now: Timestamp,
         clock: Clock12h,
         mut submit: impl FnMut(&str, Option<&str>) -> bool,
     ) -> Attempt {
@@ -218,7 +214,7 @@ impl Delivery {
                 return false;
             };
             pending.retries += 1;
-            pending.due = now + Duration::seconds(*delay);
+            pending.due = now + time::secs(*delay);
             true
         });
         Attempt {
@@ -238,8 +234,8 @@ mod tests {
 
     const RESET: &str = "2100-01-01T00:00:00Z";
 
-    fn at(seconds: i64) -> DateTime<Utc> {
-        "2099-12-31T12:00:00Z".parse::<DateTime<Utc>>().unwrap() + Duration::seconds(seconds)
+    fn at(seconds: i64) -> Timestamp {
+        "2099-12-31T12:00:00Z".parse::<Timestamp>().unwrap() + time::secs(seconds)
     }
 
     fn account(id: &str) -> Account {
@@ -303,7 +299,7 @@ mod tests {
         delivery: &mut Delivery,
         failed_at: &mut Option<String>,
         settings: &Settings,
-        now: DateTime<Utc>,
+        now: Timestamp,
         works: bool,
     ) -> Vec<String> {
         let mut titles = Vec::new();
@@ -485,7 +481,7 @@ mod tests {
 
         let mut delivery = Delivery::default();
         delivery.enqueue(Some("a"), threshold(80), at(0));
-        let past_reset: DateTime<Utc> = "2100-01-01T00:00:01Z".parse().unwrap();
+        let past_reset: Timestamp = "2100-01-01T00:00:01Z".parse().unwrap();
         assert!(run(&mut delivery, &mut failed_at, &settings(), past_reset, true).is_empty());
     }
 
@@ -543,7 +539,7 @@ mod tests {
         memory: &mut AlertMemory,
         delivery: &mut Delivery,
         snapshot: &Snapshot,
-        now: DateTime<Utc>,
+        now: Timestamp,
     ) -> Vec<AlertKind> {
         let before = memory.clone();
         let alerts = notifications::observe(memory, "a", snapshot, &[80, 95], now);

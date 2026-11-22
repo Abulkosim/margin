@@ -26,7 +26,7 @@ pub async fn get_account_history(
         .find(|account| account.id == id)
         .cloned()
         .ok_or("Account no longer exists.")?;
-    Ok(inner.history.get(&account, chrono::Utc::now()))
+    Ok(inner.history.get(&account, crate::core::time::now()))
 }
 
 #[tauri::command]
@@ -67,7 +67,7 @@ pub async fn send_test_notification(
         "Margin · Test notification",
         Some("Usage alerts will appear like this."),
     );
-    let failed_at = (!submitted).then(|| chrono::Utc::now().to_rfc3339());
+    let failed_at = (!submitted).then(|| crate::core::time::now().to_rfc3339());
     let mut inner = runtime.inner.lock().await;
     if inner.view.notification_failed_at != failed_at {
         inner.view.notification_failed_at = failed_at;
@@ -289,7 +289,7 @@ pub async fn save_settings(
     if enabling_digest {
         runtime.set_digest_state(Some(DigestState::re_enabled(
             previous_digest.clone(),
-            chrono::Utc::now(),
+            crate::core::time::now(),
         )));
     }
     if let Err(error) = runtime.persist(&next, &inner.alerts, &inner.delivery) {

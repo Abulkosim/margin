@@ -416,7 +416,7 @@ mod tests {
         assert!(inner.view.notice.is_none());
         assert!(inner
             .history
-            .get(&account, chrono::Utc::now())
+            .get(&account, crate::core::time::now())
             .error
             .is_some());
         assert!(runtime
@@ -449,7 +449,7 @@ mod tests {
         std::fs::write(history.join("codex-test.json"), "{damaged").unwrap();
         std::fs::write(history.join("codex-other.json"), "{kept").unwrap();
         let runtime = Runtime::new(path).unwrap();
-        let now = chrono::Utc::now();
+        let now = crate::core::time::now();
         assert!(runtime
             .inner
             .lock()
