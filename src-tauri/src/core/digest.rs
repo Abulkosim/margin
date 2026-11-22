@@ -475,6 +475,7 @@ pub fn due_at(now: Timestamp, zone: &TimeZone) -> Timestamp {
 /// Some(due) once per Monday 09:00 slot at least six days after the last send;
 /// a long sleep yields one. The floor keeps a westward clock change from
 /// reopening a sent slot and makes enabling just before 09:00 wait a week.
+/// A last send from a clock that was ahead does not count.
 pub fn should_send(
     last_sent_at: Option<Timestamp>,
     now: Timestamp,
@@ -482,6 +483,7 @@ pub fn should_send(
 ) -> Option<Timestamp> {
     let due = due_at(now, zone);
     last_sent_at
+        .and_then(|last| time::not_ahead(last, now))
         .is_none_or(|last| due - last >= time::days(MIN_SEND_GAP_DAYS))
         .then_some(due)
 }
@@ -1001,6 +1003,21 @@ mod tests {
                 &TimeZone::UTC
             ),
             Some(at("2026-11-09T09:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn a_send_time_from_a_clock_far_ahead_does_not_block_the_schedule() {
+        let tuesday = at("2026-10-27T10:00:00Z");
+        let monday = at("2026-10-26T09:00:00Z");
+        assert_eq!(
+            should_send(Some(tuesday + time::days(60)), tuesday, &TimeZone::UTC),
+            Some(monday)
+        );
+        assert_eq!(
+            should_send(Some(tuesday + time::mins(1)), tuesday, &TimeZone::UTC),
+            None,
+            "a small step back is still the same send"
         );
     }
 

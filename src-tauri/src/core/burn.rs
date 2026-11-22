@@ -148,7 +148,8 @@ pub fn hourly_increase(
 }
 
 /// Fires once when the rate crosses the threshold, then waits for both a 60 minute cooldown and,
-/// within the same period, a quiet hour below the threshold before it can fire again.
+/// within the same period, a quiet hour below the threshold before it can fire again. Times saved
+/// by a clock that was ahead are ignored.
 fn decide(
     state: &mut BurnState,
     burn: Option<Burn>,
@@ -156,14 +157,17 @@ fn decide(
     threshold: u8,
     now: Timestamp,
 ) -> bool {
-    let alerted = state.alerted_at.as_deref().and_then(timestamp);
+    let saved = |value: &Option<String>| {
+        value
+            .as_deref()
+            .and_then(timestamp)
+            .and_then(|at| time::not_ahead(at, now))
+    };
+    let alerted = saved(&state.alerted_at);
+    let quiet_since = saved(&state.quiet_since);
     let in_period = alerted.is_some() && same_reset(state.reset.as_ref(), resets_at);
     let cooled = alerted.is_none_or(|at| now - at >= time::mins(COOLDOWN_MINUTES));
-    let quiet = state
-        .quiet_since
-        .as_deref()
-        .and_then(timestamp)
-        .is_some_and(|since| now - since >= time::mins(QUIET_MINUTES));
+    let quiet = quiet_since.is_some_and(|since| now - since >= time::mins(QUIET_MINUTES));
     let fast = burn.is_some_and(|burn| burn.increase >= f64::from(threshold));
     if fast && cooled && (!in_period || quiet) {
         *state = BurnState {
@@ -174,7 +178,9 @@ fn decide(
         return true;
     }
     if in_period && burn.is_some() && !fast {
-        state.quiet_since.get_or_insert_with(|| now.to_rfc3339());
+        if quiet_since.is_none() {
+            state.quiet_since = Some(now.to_rfc3339());
+        }
     } else {
         state.quiet_since = None;
     }
@@ -405,6 +411,34 @@ mod tests {
             10,
             at()
         ));
+    }
+
+    #[test]
+    fn times_from_a_clock_far_ahead_do_not_block_alerts() {
+        let first = Some(RESET.to_string());
+        let next = Some("2099-12-31T19:00:00Z".to_string());
+        let ahead = (at() + time::days(1)).to_rfc3339();
+        let mut state = BurnState {
+            reset: first.clone(),
+            alerted_at: Some(ahead.clone()),
+            quiet_since: None,
+        };
+        assert!(decide(&mut state, fast(), next.as_ref(), 20, at()));
+
+        let mut state = BurnState {
+            reset: first.clone(),
+            alerted_at: Some(minutes(-120).to_rfc3339()),
+            quiet_since: Some(ahead),
+        };
+        assert!(!decide(&mut state, slow(), first.as_ref(), 20, at()));
+        assert!(decide(&mut state, fast(), first.as_ref(), 20, minutes(61)));
+
+        let mut state = BurnState::default();
+        assert!(decide(&mut state, fast(), first.as_ref(), 20, minutes(1)));
+        assert!(
+            !decide(&mut state, fast(), next.as_ref(), 20, at()),
+            "a small step back keeps the cooldown"
+        );
     }
 
     fn snapshot(used: f64, label: &str) -> Snapshot {
