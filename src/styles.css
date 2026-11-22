@@ -29,6 +29,7 @@ button,a,input,select {
 }
 button {
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   cursor: pointer;
 }
@@ -84,6 +85,7 @@ button:disabled:hover {
 .preview-stage {
   min-height: 100dvh;
   display: grid;
+  grid-template-columns: minmax(0,1fr);
   place-items: center;
   padding: 32px 20px;
   background: radial-gradient(ellipse at 50% 35%,color-mix(in srgb,var(--stage),var(--accent) 10%),var(--stage) 70%);
@@ -224,6 +226,9 @@ button:disabled:hover {
 .account-filters button:hover {
   background: var(--hover);
 }
+.account-filters button:focus-visible {
+  outline-offset: -2px;
+}
 .account-filters button.active {
   background: var(--accent-soft);
   color: var(--ink);
@@ -237,6 +242,7 @@ button:disabled:hover {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0 22px 12px;
+  scroll-padding-block: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--track) transparent;
 }
@@ -647,7 +653,7 @@ button:disabled:hover {
   gap: 6px;
   color: var(--tertiary);
   font-size: 13px;
-  white-space: nowrap;
+  line-height: 1.35;
   min-width: 0;
 }
 .status-dot {
@@ -772,7 +778,7 @@ button:disabled:hover {
 .command-copy.copied .command-copy-state {
   color: var(--accent-ink);
 }
-.sign-in-copy {
+.stale-note+.sign-in-copy {
   width: calc(100% - 19px);
   margin-left: 19px;
 }
@@ -783,8 +789,6 @@ button:disabled:hover {
 }
 .empty-scroll {
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .empty-state {
   text-align: center;
@@ -793,6 +797,7 @@ button:disabled:hover {
   flex-direction: column;
   padding: 10px 6px 35px;
   width: 100%;
+  margin: auto 0;
 }
 .empty-illustration {
   position: relative;
@@ -1017,7 +1022,7 @@ button:disabled:hover {
   background: #8885;
 }
 .toast-error>svg {
-  color: var(--warning);
+  color: var(--toast-warning);
 }
 .toast-enter-active,.toast-leave-active {
   transition: opacity .18s,transform .18s;
@@ -1036,7 +1041,7 @@ button:disabled:hover {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 20px 21px 19px;
+  padding: 20px 23px 19px 21px;
   flex-shrink: 0;
 }
 .settings-header h1 {
@@ -1056,7 +1061,7 @@ button:disabled:hover {
 .settings-tabs {
   display: flex;
   background: var(--hover);
-  margin: 0 23px 22px;
+  margin: 0 23px 16px;
   border-radius: 7px;
   padding: 3px;
   gap: 3px;
@@ -1087,7 +1092,8 @@ button:disabled:hover {
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--track) transparent;
-  padding: 0 23px 18px;
+  padding: 6px 23px 18px;
+  scroll-padding-block: 8px;
   flex: 1;
   overscroll-behavior: contain;
 }
@@ -1185,11 +1191,15 @@ button:disabled:hover {
 }
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   min-height: 38px;
   margin-top: 8px;
+}
+.setting-row>:first-child {
+  flex: 1 1 120px;
 }
 .setting-row label,.setting-label {
   font-size: 14px;
@@ -1263,8 +1273,6 @@ button:disabled:hover {
 }
 .section-heading h2 {
   margin-bottom: 5px;
-  color: var(--ink);
-  font-size: 13px;
 }
 .section-heading p {
   font-size: 13px;
@@ -1492,6 +1500,12 @@ input::placeholder {
   background: var(--surface);
   padding: 23px;
   box-shadow: 0 15px 50px #0004;
+  --inset: var(--card);
+}
+:root[data-theme=dark] .confirm-dialog {
+  background: var(--card);
+  box-shadow: 0 0 0 1px rgba(219,236,221,.1),0 15px 50px #0008;
+  --inset: var(--hover);
 }
 .dialog-icon {
   display: grid;
@@ -1499,7 +1513,7 @@ input::placeholder {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-lg);
-  background: var(--card);
+  background: var(--inset,var(--card));
   color: var(--secondary);
   margin-bottom: 18px;
 }
@@ -1804,8 +1818,9 @@ input::placeholder {
   grid-column: 5;
   color: var(--tertiary);
 }
-.account-stale .compact-value,.account-stale .compact-reset {
-  opacity: .55;
+.account-stale .compact-value {
+  font-weight: 500;
+  color: var(--tertiary);
 }
 .compact-chevron {
   color: var(--tertiary);
@@ -1912,10 +1927,6 @@ input::placeholder {
   .settings-footnote>span {
     display: none;
   }
-  .setting-row select {
-    min-width: 95px;
-    max-width: 125px;
-  }
   .dialog-actions {
     flex-direction: column;
   }
@@ -1925,6 +1936,32 @@ input::placeholder {
   .compact-columns,.compact-row {
     grid-template-columns: 24px minmax(0,1fr) 40px 40px 50px 10px;
     column-gap: 7px;
+  }
+  .settings-header {
+    padding-left: 15px;
+    padding-right: 17px;
+  }
+}
+@media(max-width:320px) {
+  .app-header:has(.account-filters) .wordmark,.account-filters button span,.settings-autosave {
+    display: none;
+  }
+}
+.account-list {
+  container-type: inline-size;
+}
+@container (max-width: 300px) {
+  .compact-columns,.compact-row {
+    grid-template-columns: 24px minmax(0,1fr) 40px 40px 10px;
+  }
+  .compact-columns>span:last-child,.compact-reset {
+    display: none;
+  }
+  .compact-row.no-values .compact-identity {
+    grid-column: 2 / 4;
+  }
+  .compact-empty {
+    grid-column: 4;
   }
 }
 @media(prefers-reduced-motion:reduce) {

@@ -403,10 +403,12 @@ async function confirmRemove(): Promise<void> {
 }
 .path-field {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .path-field>input {
-  flex: 1;
+  flex: 1 1 150px;
+  min-width: 0;
 }
 .path-field>.button {
   gap: 6px;

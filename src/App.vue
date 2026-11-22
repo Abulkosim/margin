@@ -340,7 +340,7 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-button { position: relative; }
-.attention-button { padding: 0; font-size: inherit; color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb,currentColor 30%,transparent); text-underline-offset: 3px; }
+.attention-button { padding: 0; white-space: normal; text-align: left; font-size: inherit; color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb,currentColor 30%,transparent); text-underline-offset: 3px; }
 .attention-button:hover { color: inherit; text-decoration-color: currentColor; }
 .update-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1.5px var(--surface); }
 </style>

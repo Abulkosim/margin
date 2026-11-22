@@ -7,6 +7,8 @@ import AppIcon from '../AppIcon.vue'
 const props = defineProps<{ preview: MakeActivePreview | null; busy: boolean }>()
 const emit = defineEmits<{ confirm: []; close: []; closed: [event: Event] }>()
 const cli = computed(() => props.preview?.provider === 'codex' ? 'codex' : 'claude')
+/** Lets a long email wrap after the @ instead of mid-word. */
+const breakable = (text: string | null): string[] => text?.split(/(?<=@)/) ?? []
 
 function update(open: boolean): void {
   if (!open && !props.busy) emit('close')
@@ -25,10 +27,10 @@ function escape(event: KeyboardEvent): void {
       <AlertDialogOverlay class="modal-backdrop">
         <AlertDialogContent v-if="preview" class="confirm-dialog make-active-dialog" @escape-key-down="escape" @close-auto-focus="emit('closed', $event)">
           <span class="dialog-icon"><AppIcon name="swap" :size="19"/></span>
-          <AlertDialogTitle as="h2">Make {{ preview.target }} active?</AlertDialogTitle>
+          <AlertDialogTitle as="h2">Make <template v-for="(part, index) in breakable(preview.target)" :key="index"><wbr v-if="index">{{ part }}</template> active?</AlertDialogTitle>
           <AlertDialogDescription as="p">
-            <code>{{ cli }}</code> will use {{ preview.target }}.
-            <template v-if="preview.kind === 'swap'"> {{ preview.displaced }} moves to <code>{{ preview.folder }}</code>.</template>
+            <code>{{ cli }}</code> will use <template v-for="(part, index) in breakable(preview.target)" :key="index"><wbr v-if="index">{{ part }}</template>.
+            <template v-if="preview.kind === 'swap'"> <template v-for="(part, index) in breakable(preview.displaced)" :key="index"><wbr v-if="index">{{ part }}</template> moves to <code>{{ preview.folder }}</code>.</template>
             <template v-else> <code>{{ preview.folder }}</code> will be signed out.</template>
           </AlertDialogDescription>
           <p class="beta-note"><span class="beta-tag">Beta</span><span>Not yet tested enough on real machines.</span></p>
@@ -48,7 +50,7 @@ function escape(event: KeyboardEvent): void {
   font: 500 12.5px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   padding: 1px 5px;
   border-radius: var(--radius-xs);
-  background: var(--card);
+  background: var(--inset,var(--card));
   color: var(--ink);
   display: inline-block;
   max-width: 100%;
@@ -70,7 +72,7 @@ function escape(event: KeyboardEvent): void {
   align-items: flex-start;
   padding: 9px 11px;
   border-radius: var(--radius-md);
-  background: var(--card);
+  background: var(--inset,var(--card));
   font-size: 13px;
   line-height: 1.5;
   margin-top: 14px;

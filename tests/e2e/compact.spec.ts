@@ -85,7 +85,8 @@ test('stale, signed-out, and pinned accounts keep their markers in compact rows'
   await expect(stale).toHaveClass(/account-stale/)
   await expect(stale.locator('.compact-status')).toHaveText('Last known')
   await expect(stale.locator('.compact-value')).toHaveText(['36%', '9%'])
-  await expect(stale.locator('.compact-value').first()).toHaveCSS('opacity', '0.55')
+  await expect(stale.locator('.compact-value').first()).toHaveCSS('opacity', '1')
+  await expect(stale.locator('.compact-value').last()).toHaveCSS('font-weight', '500')
   const signedOut = row(page, 'Client work for Northwind Studio')
   await expect(signedOut.locator('.compact-status')).toHaveText('Signed out')
   await expect(signedOut.locator('.compact-value')).toHaveCount(0)
@@ -183,4 +184,28 @@ test('preview popover is shorter in compact and screenshots in both themes', asy
   console.log(`[${info.project.name}] preview popover heights ${JSON.stringify({ ...heights, 'cards-1-account': cardsSingle })}`)
   expect(heights['1-account']).toBeLessThan(cardsSingle)
   expect(heights['1-account']).toBeLessThan(heights['5-accounts']!)
+})
+
+test('compact status uses the card tone: only untrusted or missing readings warn', async ({ page }) => {
+  const color = (name: string) => row(page, name).locator('.compact-status').evaluate(element => getComputedStyle(element).color)
+  const token = (name: string) => page.evaluate(name => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const value = getComputedStyle(probe).color
+    probe.remove()
+    return value
+  }, name)
+  const cases: [string, string[], string[]][] = [
+    ['loading', ['Personal', 'Work', 'Studio'], []],
+    ['retrying', ['Personal', 'Work'], ['Studio']],
+    ['incomplete', ['Personal'], []],
+    ['compact', [], ['Side project', 'Client work for Northwind Studio']],
+  ]
+  for (const [state, quiet, warn] of cases) {
+    await page.goto(`/?demo=1&state=${state}&layout=compact`)
+    const [warning, secondary] = [await token('--warning'), await token('--secondary')]
+    for (const name of quiet) expect(await color(name), `${name} in ${state}`).toBe(secondary)
+    for (const name of warn) expect(await color(name), `${name} in ${state}`).toBe(warning)
+  }
 })
