@@ -160,11 +160,20 @@ pub(crate) fn clock_in(zone: &TimeZone, clock: Clock12h, at: Timestamp, now: Tim
     let local = at.civil(zone);
     if local.same_day(&now.civil(zone)) {
         local.time_of_day(clock.0)
-    } else if (at - now).abs() < time::days(6) {
+    } else if calendar_days(zone, at, now).is_some_and(|days| days.abs() < 7) {
         local.weekday_time(clock.0)
     } else {
         local.date_time(clock.0)
     }
+}
+
+/// Local calendar days from `now` to `at`, as the popover counts them, so a
+/// weekday name never stands for today or for the same weekday next week.
+fn calendar_days(zone: &TimeZone, at: Timestamp, now: Timestamp) -> Option<i32> {
+    at.date(zone)
+        .since(now.date(zone))
+        .ok()
+        .map(|span| span.get_days())
 }
 
 /// Reads the OS clock preference. Nothing here runs in tests: the formatters
@@ -754,6 +763,24 @@ mod tests {
         };
         assert_eq!(title(&unknown), "Personal · Session runs out before reset");
         assert_eq!(body(&unknown).as_deref(), Some("36% left"));
+    }
+
+    #[test]
+    fn reset_clock_counts_calendar_days_like_the_popover() {
+        let at = |value: &str| time::parse(value).unwrap();
+        // Mon 09:00 to the next Sun 21:00 is 6 days 12 hours, six calendar days.
+        let now = at("2026-11-23T09:00:00Z");
+        let sunday = at("2026-11-29T21:00:00Z");
+        assert_eq!(
+            clock_in(&TimeZone::UTC, Clock12h(false), sunday, now),
+            "Sun 21:00"
+        );
+        // Seven calendar days ahead is the same weekday, so it needs the date.
+        let next_monday = at("2026-11-30T08:59:00Z");
+        assert_eq!(
+            clock_in(&TimeZone::UTC, Clock12h(false), next_monday, now),
+            "Nov 30 08:59"
+        );
     }
 
     #[test]
