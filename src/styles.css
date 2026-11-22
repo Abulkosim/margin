@@ -773,7 +773,7 @@ button:disabled:hover {
 .command-copy.copied .command-copy-state {
   color: var(--accent-ink);
 }
-.sign-in-copy {
+.stale-note+.sign-in-copy {
   width: calc(100% - 19px);
   margin-left: 19px;
 }

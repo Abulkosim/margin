@@ -104,3 +104,13 @@ for (const theme of ['light', 'dark']) {
     })
   }
 }
+
+test('the sign-in command lines up with the note above it', async ({ page }) => {
+  const left = (locator: Locator) => locator.evaluate(element => Math.round(element.getBoundingClientRect().left))
+  await page.goto('/?demo=1&state=idle')
+  const idle = card(page, 'Personal, Claude')
+  expect(await left(idle.locator('.command-copy'))).toBe(await left(idle.locator('.idle-note')))
+  await page.goto('/?demo=1&state=signed-out')
+  const stale = card(page, 'Personal, Claude')
+  expect(await left(stale.locator('.command-copy'))).toBe(await left(stale.locator('.stale-note p')))
+})
