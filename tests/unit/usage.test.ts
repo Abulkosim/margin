@@ -19,7 +19,14 @@ test('remaining quota never implies available quota below 1%', () => {
   assert.equal(formatRemaining(99.9), '<1')
   assert.equal(formatRemaining(100), '0')
   assert.equal(formatRemaining(0), '100')
-  assert.equal(formatRemaining(93.2), '7')
+  assert.equal(formatRemaining(93.2), '6')
+})
+
+test('remaining rounds down like the tray, so the popover never shows more than is left', () => {
+  assert.equal(formatRemaining(0.4), '99')
+  assert.equal(formatRemaining(42.4), '57')
+  assert.equal(formatRemaining(42.6), '57')
+  assert.equal(formatRemaining(98.6), '1')
 })
 
 test('windows turn low at 20% remaining and empty at none', () => {

@@ -4,8 +4,12 @@ import { demoProblemReport, problemReportSchema, type ProblemReport } from './re
 import { accountSchema, activatedSchema, appStateSchema, defaultSettings, makeActivePreviewSchema, type AccountId, type AppState, type MakeActivePreview, type Provider, type Settings } from './model.ts'
 import { hasDesktop, invoke, useTauriEvent, type Command } from './tauri.ts'
 
-export type ToastAction = { label: string; run: () => void }
+type ToastAction = { label: string; run: () => void }
 const desktopOnly = 'Open the desktop app to manage your accounts.'
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : 'That did not work. Please try again.'
+}
 
 export function useMargin() {
   const query = new URLSearchParams(window.location.search)
@@ -109,7 +113,7 @@ export function useMargin() {
       }
       return true
     } catch (error: unknown) {
-      notify(error instanceof Error ? error.message : typeof error === 'string' ? error : 'That did not work. Please try again.', 'error')
+      notify(errorText(error), 'error')
       return false
     } finally {
       pending.value = null
@@ -216,7 +220,7 @@ export function useMargin() {
       }
       return await invoke(command, args, desktopOnly)
     } catch (error: unknown) {
-      notify(error instanceof Error ? error.message : typeof error === 'string' ? error : 'That did not work. Please try again.', 'error')
+      notify(errorText(error), 'error')
       return undefined
     } finally {
       pending.value = null

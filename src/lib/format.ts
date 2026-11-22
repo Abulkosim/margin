@@ -1,5 +1,5 @@
-import type { Account, ResetGrants, Settings, UsageWindow } from './model'
-import type { Pace } from './pace'
+import type { Account, ResetGrants, Settings, UsageWindow } from './model.ts'
+import type { Pace } from './pace.ts'
 
 export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, 100 - used))
@@ -10,9 +10,10 @@ export function quotaTone(usedPercent: number): { 'quota-low': boolean; 'quota-e
   return { 'quota-low': usedPercent >= 80, 'quota-empty': usedPercent >= 100 }
 }
 
+/** Rounds down, as the tray and `margin --line` do (Rust `percent_label`), so it never overstates what is left. */
 export function formatRemaining(used: number): string {
   const remaining = remainingPercent(used)
-  return remaining > 0 && remaining < 1 ? '<1' : Math.round(remaining).toString()
+  return remaining > 0 && remaining < 1 ? '<1' : Math.floor(remaining).toString()
 }
 
 function shortDuration(milliseconds: number): string {
@@ -83,12 +84,18 @@ export function fullDateTime(timestamp: string | null): string {
   return Number.isFinite(time) ? new Date(time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''
 }
 
-export function clockTime(time: Date, now: number): string {
+/** Local calendar days from `now` to `time`; counting days, not hours, keeps a clock change from shifting it. */
+function calendarDays(time: Date, now: number): number {
   const today = new Date(now)
-  const sameDay = time.getFullYear() === today.getFullYear() && time.getMonth() === today.getMonth() && time.getDate() === today.getDate()
-  if (sameDay) return timeOfDay(time)
-  const withinWeek = Math.abs(time.getTime() - now) < 6 * 86_400_000
-  return time.toLocaleString(undefined, withinWeek ? { weekday: 'short', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const day = (date: Date): number => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  return Math.round((day(time) - day(today)) / 86_400_000)
+}
+
+/** A weekday names one day only within six days either side of today. */
+export function clockTime(time: Date, now: number): string {
+  const days = calendarDays(time, now)
+  if (days === 0) return timeOfDay(time)
+  return time.toLocaleString(undefined, Math.abs(days) < 7 ? { weekday: 'short', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 export function paceText(pace: Pace, now: number): string | null {
@@ -141,7 +148,7 @@ function formatCount(amount: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(amount)
 }
 
-export type BalanceLine = { label: string; value: string; warn: boolean }
+type BalanceLine = { label: string; value: string; warn: boolean }
 
 /** Money for Claude extra usage; credits (a unit, never money) for Codex. */
 export function balanceLines(snapshot: Account['snapshot'], now: number): BalanceLine[] {
@@ -234,23 +241,24 @@ export function orderAccounts(accounts: Account[], settings: Settings, now: numb
   })
 }
 
+/** The reset as a Date, or null when it is unknown or already passed. */
+function upcomingReset(resetsAt: string | null, now: number): Date | null {
+  const time = resetsAt ? Date.parse(resetsAt) : Number.NaN
+  return Number.isFinite(time) && time > now ? new Date(time) : null
+}
+
 export function resetClock(resetsAt: string | null, now: number): string | null {
-  if (!resetsAt) return null
-  const time = Date.parse(resetsAt)
-  if (!Number.isFinite(time) || time <= now) return null
-  return clockTime(new Date(time), now)
+  const date = upcomingReset(resetsAt, now)
+  return date && clockTime(date, now)
 }
 
 /** Like resetClock, but a far-off reset shows only its day. */
 export function resetDay(resetsAt: string | null, now: number): string | null {
-  if (!resetsAt) return null
-  const time = Date.parse(resetsAt)
-  if (!Number.isFinite(time) || time <= now) return null
-  const date = new Date(time)
-  const today = new Date(now)
-  if (date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate()) return clockTime(date, now)
-  const withinWeek = time - now < 6 * 86_400_000
-  return date.toLocaleDateString(undefined, withinWeek ? { weekday: 'short' } : { month: 'short', day: 'numeric' })
+  const date = upcomingReset(resetsAt, now)
+  if (!date) return null
+  const days = calendarDays(date, now)
+  if (days === 0) return timeOfDay(date)
+  return date.toLocaleDateString(undefined, days < 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' })
 }
 
 export function resetGrantsText(grants: ResetGrants | null | undefined, now: number): string | null {

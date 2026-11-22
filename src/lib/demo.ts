@@ -165,7 +165,7 @@ export function createDemoState(scenario: string | null): AppState {
 
 const defaultFolder = { claude: '~/.claude', codex: '~/.codex' } as const
 
-export function demoActiveIds(accounts: Account[]): string[] {
+function demoActiveIds(accounts: Account[]): string[] {
   return accounts
     .filter(account => account.source.kind === 'keychain' || account.source.path === defaultFolder[account.provider])
     .map(account => account.id)

@@ -35,12 +35,12 @@ export const usageWindowSchema = z.object({
   windowSeconds: z.number().int().nonnegative().nullable(),
   scope: z.enum(['core', 'model', 'other']),
 })
-export const resetGrantsSchema = z.object({
+const resetGrantsSchema = z.object({
   available: z.number().int().nonnegative(),
   kind: z.string().nullable(),
   expiresAt: z.string().datetime({ offset: true }).nullable(),
 })
-export const balanceSchema = z.object({
+const balanceSchema = z.object({
   credits: z.object({ amount: z.number().nonnegative().nullable(), unlimited: z.boolean() }).nullable().default(null),
   spendLimit: z.object({
     used: z.number().nonnegative(),
@@ -83,13 +83,13 @@ export const accountSchema = z.object({
   }).nullable(),
   refreshing: z.boolean(),
 })
-export const restoreOfferSchema = z.object({
+const restoreOfferSchema = z.object({
   id: z.string(),
   provider: providerSchema,
   reason: z.enum(['unfinished', 'verifyFailed', 'rollbackFailed']),
   createdAt: z.string(),
 })
-export const switchViewSchema = z.object({
+const switchViewSchema = z.object({
   activeAccountIds: z.array(z.string()).default([]),
   restore: restoreOfferSchema.nullable().default(null),
 })

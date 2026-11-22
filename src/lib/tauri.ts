@@ -19,7 +19,7 @@ export const commands = [
   'make_active', 'restore_switch_backup', 'dismiss_switch_restore', 'get_update_status', 'check_for_update', 'install_update',
 ] as const
 export type Command = (typeof commands)[number] | 'plugin:dialog|open'
-export type TauriEvent = 'state_changed' | 'update_status_changed' | 'popover_placement_changed' | 'popover_shown' | 'open_settings'
+type TauriEvent = 'state_changed' | 'update_status_changed' | 'popover_placement_changed' | 'popover_shown' | 'open_settings'
 
 export function hasDesktop(): boolean {
   return typeof window.__TAURI__?.core.invoke === 'function'

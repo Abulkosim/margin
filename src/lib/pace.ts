@@ -4,11 +4,12 @@ import type { UsageWindow } from './model.ts'
 export type Pace = { kind: 'hidden' } | { kind: 'on-pace' } | { kind: 'runs-out'; at: Date; resetsAt: Date }
 export type PaceWindow = Pick<UsageWindow, 'id' | 'usedPercent' | 'resetsAt' | 'windowSeconds'>
 
-const resetJitter = 5 * 60_000
+const resetJitterSeconds = 300
 const hidden: Pace = { kind: 'hidden' }
 
 const resetOf = (value: string | null): number | null => value === null ? null : Date.parse(value)
-const sameReset = (a: number | null, b: number | null): boolean => a === null || b === null ? a === b : Math.abs(a - b) <= resetJitter
+// Whole seconds, as chrono's num_seconds() in burn.rs::same_reset.
+const sameReset = (a: number | null, b: number | null): boolean => a === null || b === null ? a === b : Math.abs(Math.trunc((a - b) / 1000)) <= resetJitterSeconds
 const inPeriod = (point: HistoryPoint, current: PaceWindow, resetsAt: number): boolean =>
   point.windowId === current.id && point.windowSeconds === current.windowSeconds && sameReset(resetOf(point.resetsAt), resetsAt)
 
@@ -35,23 +36,21 @@ export function forecastPace(points: HistoryPoint[], current: PaceWindow, at: nu
     .sort((a, b) => a.at - b.at)
   let index = readings.length - 1
   while (index >= 0 && (readings[index]?.at ?? 0) > target) index--
+  // With no reading at or before the target, `after` is the first reading.
+  const before = index >= 0 ? readings[index] : undefined
+  const after = readings[index + 1]
   let from: number
   let baseline: number
-  if (index < 0) {
-    const first = readings[0]
-    if (!first) return hidden
-    from = first.at
-    baseline = first.point.usedPercent
+  if (!before) {
+    if (!after) return hidden
+    from = after.at
+    baseline = after.point.usedPercent
+  } else if (after && !after.point.gapBefore && after.at > before.at) {
+    from = target
+    baseline = before.point.usedPercent + (after.point.usedPercent - before.point.usedPercent) * (target - before.at) / (after.at - before.at)
   } else {
-    const before = readings[index] as (typeof readings)[number]
-    const after = readings[index + 1]
-    if (after && !after.point.gapBefore && after.at > before.at) {
-      from = target
-      baseline = before.point.usedPercent + (after.point.usedPercent - before.point.usedPercent) * (target - before.at) / (after.at - before.at)
-    } else {
-      from = before.at
-      baseline = before.point.usedPercent
-    }
+    from = before.at
+    baseline = before.point.usedPercent
   }
   const span = Math.trunc((at - from) / 1000)
   const increase = current.usedPercent - baseline
