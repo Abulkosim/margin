@@ -110,7 +110,7 @@ A dispatch also re-runs the frontend and native checks; the release job stays sk
 
 👤 Owner steps:
 
-1. Create the public repo `Abulkosim/homebrew-tap` with a `Casks/` folder (the job copies the seed cask in on first run).
+1. The public repo `Abulkosim/homebrew-tap` exists with a `Casks/` folder but no `margin.rb` yet; the job copies the seed cask in on first run.
 2. Create a fine-grained PAT limited to that repo with **Contents: Read and write**.
 3. In `Abulkosim/margin` → Settings → Secrets and variables → Actions: add secret `HOMEBREW_TAP_TOKEN`, then variable `HOMEBREW_TAP_ENABLED=true`.
 4. After publishing a release, dispatch as above. Check with `brew install --cask Abulkosim/tap/margin` and `brew livecheck --cask Abulkosim/tap/margin`.
