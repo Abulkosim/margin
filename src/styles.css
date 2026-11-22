@@ -29,6 +29,7 @@ button,a,input,select {
 }
 button {
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   cursor: pointer;
 }
