@@ -305,7 +305,8 @@ export function useMargin() {
       await reload()
     } catch {
       connectionError.value ??= 'Couldn’t connect to Margin. Close and reopen the app to try again.'
-      notify(connectionError.value, 'error')
+      // With no accounts loaded the empty state already shows this message.
+      if (state.value.accounts.length) notify(connectionError.value, 'error')
     } finally {
       loading.value = false
     }

@@ -282,3 +282,15 @@ test('a toast that arrives while held waits for release', async t => {
   t.mock.timers.tick(1)
   assert.equal(controller.message.value, null)
 })
+
+test('a failed first read shows its error once, in the empty state, not also as a toast', async t => {
+  const harness = await mountMargin({ invoke: async command => {
+    if (command === 'get_state') throw new Error('Native connection closed')
+    return null
+  } })
+  t.after(() => harness.close())
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.match(harness.controller.connectionError.value ?? '', /Refresh to reconnect/)
+  assert.equal(harness.controller.state.value.accounts.length, 0)
+  assert.equal(harness.controller.message.value, null)
+})
