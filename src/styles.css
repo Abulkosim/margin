@@ -1199,7 +1199,7 @@ button:disabled:hover {
   margin-top: 8px;
 }
 .setting-row>:first-child {
-  flex: 1 1 140px;
+  flex: 1 1 120px;
 }
 .setting-row label,.setting-label {
   font-size: 14px;
