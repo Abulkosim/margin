@@ -4,11 +4,12 @@ import type { UsageWindow } from './model.ts'
 export type Pace = { kind: 'hidden' } | { kind: 'on-pace' } | { kind: 'runs-out'; at: Date; resetsAt: Date }
 export type PaceWindow = Pick<UsageWindow, 'id' | 'usedPercent' | 'resetsAt' | 'windowSeconds'>
 
-const resetJitter = 5 * 60_000
+const resetJitterSeconds = 300
 const hidden: Pace = { kind: 'hidden' }
 
 const resetOf = (value: string | null): number | null => value === null ? null : Date.parse(value)
-const sameReset = (a: number | null, b: number | null): boolean => a === null || b === null ? a === b : Math.abs(a - b) <= resetJitter
+// Whole seconds, as chrono's num_seconds() in burn.rs::same_reset.
+const sameReset = (a: number | null, b: number | null): boolean => a === null || b === null ? a === b : Math.abs(Math.trunc((a - b) / 1000)) <= resetJitterSeconds
 const inPeriod = (point: HistoryPoint, current: PaceWindow, resetsAt: number): boolean =>
   point.windowId === current.id && point.windowSeconds === current.windowSeconds && sameReset(resetOf(point.resetsAt), resetsAt)
 

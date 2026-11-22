@@ -66,6 +66,14 @@ test('reset jitter is the same period and order does not matter', () => {
   assert.equal(runsOut(points.reverse(), 48), at(65))
 })
 
+test('reset jitter counts whole seconds like the Rust forecast', () => {
+  const shifted = (milliseconds: number): HistoryPoint[] =>
+    ramp(-60, 0, 0, 0.8).map(p => ({ ...p, resetsAt: new Date(Date.parse(resetsAt) + milliseconds).toISOString() }))
+  assert.equal(runsOut(shifted(300_999), 48), at(65))
+  assert.equal(runsOut(shifted(-300_999), 48), at(65))
+  assert.equal(runsOut(shifted(301_000), 48), 'hidden')
+})
+
 test('a week reads the last day and a half across gaps', () => {
   const weekReset = '2100-01-03T12:00:00Z'
   const reading = (minutes: number, usedPercent: number, gapBefore = false): HistoryPoint =>
