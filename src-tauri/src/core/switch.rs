@@ -1089,7 +1089,9 @@ pub fn restore(
     }
     let record = new_record(original.provider, true, &writes, original.locks.clone());
     let record = commit(record, &writes, store, journal)?;
-    journal.mark(id, RecordState::Restored)?;
+    // The backup is back in place, so the restore succeeded. If the original
+    // stays open, its live fingerprints no longer match and a retry is refused.
+    let _ = journal.mark(id, RecordState::Restored);
     Ok(record)
 }
 

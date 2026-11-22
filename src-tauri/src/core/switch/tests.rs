@@ -122,6 +122,7 @@ struct FakeJournal {
     records: Vec<SwitchRecord>,
     backups: HashMap<String, Vec<u8>>,
     fail_begin: bool,
+    fail_restored: bool,
 }
 
 impl Journal for FakeJournal {
@@ -139,6 +140,9 @@ impl Journal for FakeJournal {
     }
 
     fn mark(&mut self, id: &str, state: RecordState) -> Result<(), SwitchError> {
+        if self.fail_restored && state == RecordState::Restored {
+            return Err(SwitchError::Journal);
+        }
         let record = self
             .records
             .iter_mut()
@@ -1108,6 +1112,28 @@ fn restore_writes_the_backup_back_while_the_stores_are_unchanged() {
     let records = journal.records();
     assert_eq!(records[0].state, RecordState::Restored);
     assert_eq!(records[1].state, RecordState::Written);
+}
+
+#[test]
+fn a_restore_that_wrote_the_backup_succeeds_when_closing_the_original_fails() {
+    let fixture = Fixture::default_claude();
+    let before = fixture.store.snapshot();
+    let mut journal = FakeJournal {
+        fail_restored: true,
+        ..FakeJournal::default()
+    };
+    let id = verify_failed(&fixture, &mut journal);
+    let record = restore(
+        &id,
+        time::now(),
+        Running::No,
+        &fixture.store,
+        &FakeLocks::default(),
+        &mut journal,
+    )
+    .unwrap();
+    assert!(record.restore);
+    assert_eq!(fixture.store.snapshot(), before);
 }
 
 #[test]
