@@ -21,6 +21,9 @@ pub mod store;
 pub mod switch;
 pub mod tray;
 
+#[cfg(test)]
+pub(crate) mod time_golden;
+
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

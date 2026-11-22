@@ -1189,6 +1189,10 @@ fn attach_console() {
 fn attach_console() {}
 
 #[cfg(test)]
+#[path = "cli_golden.rs"]
+mod golden;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::{json, Value};

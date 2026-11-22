@@ -1094,6 +1094,14 @@ pub fn restore(
     Ok(record)
 }
 
+pub(crate) fn record_stamp(now: chrono::DateTime<chrono::Utc>) -> String {
+    now.format("%Y%m%dT%H%M%SZ").to_string()
+}
+
+pub(crate) fn aside_stamp(now: chrono::DateTime<chrono::Utc>) -> String {
+    now.format("%Y%m%dT%H%M%S%.3fZ").to_string()
+}
+
 fn new_record(
     provider: Provider,
     restore: bool,
@@ -1109,12 +1117,7 @@ fn new_record(
     )
     .as_bytes());
     SwitchRecord {
-        id: format!(
-            "{}-{}-{}",
-            provider.key(),
-            now.format("%Y%m%dT%H%M%SZ"),
-            &nonce[..8]
-        ),
+        id: format!("{}-{}-{}", provider.key(), record_stamp(now), &nonce[..8]),
         provider,
         created_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         restore,
@@ -1421,7 +1424,7 @@ impl DiskJournal {
     }
 
     fn set_aside(&self) -> Result<(), SwitchError> {
-        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ");
+        let stamp = aside_stamp(chrono::Utc::now());
         let aside = self.dir.join(format!("switches.unreadable-{stamp}.json"));
         std::fs::rename(self.index(), aside).map_err(|_| SwitchError::Journal)
     }

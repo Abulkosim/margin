@@ -1,0 +1,63 @@
+America/New_York
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · Sun 01:30")
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · Sun 1:30 AM")
+  "Work · Weekly runs out around Sun 01:10"
+    Some("36% left · Resets in 2d 15h · Tue 09:00")
+  "Work · Weekly runs out around Sun 1:10 AM"
+    Some("36% left · Resets in 2d 15h · Tue 9:00 AM")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Sun 20:00, before the Nov 9 14:00 reset")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Sun 8:00 PM, before the Nov 9 2:00 PM reset")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 18:40")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 6:40 PM")
+  "Work · Session limit reached"
+    None
+  "Work · Session limit reached"
+    None
+Asia/Tashkent
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · 10:30")
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · 10:30 AM")
+  "Work · Weekly runs out around 11:10"
+    Some("36% left · Resets in 2d 15h · Tue 19:00")
+  "Work · Weekly runs out around 11:10 AM"
+    Some("36% left · Resets in 2d 15h · Tue 7:00 PM")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Mon 06:00, before the Nov 10 00:00 reset")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Mon 6:00 AM, before the Nov 10 12:00 AM reset")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 03:40")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 3:40 AM")
+  "Work · Session limit reached"
+    None
+  "Work · Session limit reached"
+    None
+UTC
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · Sun 05:30")
+  "Work · Session 18% left"
+    Some("Resets in 6h 51m · Sun 5:30 AM")
+  "Work · Weekly runs out around Sun 06:10"
+    Some("36% left · Resets in 2d 15h · Tue 14:00")
+  "Work · Weekly runs out around Sun 6:10 AM"
+    Some("36% left · Resets in 2d 15h · Tue 2:00 PM")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Mon 01:00, before the Nov 9 19:00 reset")
+  "Work · Weekly: 12% used in the last hour"
+    Some("At this rate it runs out around Mon 1:00 AM, before the Nov 9 7:00 PM reset")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 22:40")
+  "Work · Session limit reset"
+    Some("Resets in <1m · 10:40 PM")
+  "Work · Session limit reached"
+    None
+  "Work · Session limit reached"
+    None

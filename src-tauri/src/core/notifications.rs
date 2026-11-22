@@ -66,7 +66,7 @@ impl Alert {
         self.title_in(&Local, clock, account_label, now)
     }
 
-    fn title_in<Tz: TimeZone>(
+    pub(crate) fn title_in<Tz: TimeZone>(
         &self,
         zone: &Tz,
         clock: Clock12h,
@@ -103,7 +103,7 @@ impl Alert {
         self.body_in(&Local, clock, now)
     }
 
-    fn body_in<Tz: TimeZone>(
+    pub(crate) fn body_in<Tz: TimeZone>(
         &self,
         zone: &Tz,
         clock: Clock12h,
@@ -159,7 +159,7 @@ pub fn reset_clock(at: DateTime<Utc>, now: DateTime<Utc>, clock: Clock12h) -> St
     clock_in(&Local, clock, at, now)
 }
 
-fn clock_in<Tz: TimeZone>(
+pub(crate) fn clock_in<Tz: TimeZone>(
     zone: &Tz,
     clock: Clock12h,
     at: DateTime<Utc>,

@@ -1761,7 +1761,11 @@ fn only_the_switch_module_writes_cli_files() {
     let mut checked = 0;
     for (path, source) in found {
         let source = source.replace("\r\n", "\n");
-        if path == root.join("core").join("switch.rs") || path.starts_with(&switch) {
+        // Golden tests are test-only modules that write their expected text and temp files.
+        let test_only = path == root.join("cli_golden.rs")
+            || path == root.join("core").join("time_golden.rs")
+            || path.starts_with(root.join("core").join("time_golden"));
+        if path == root.join("core").join("switch.rs") || path.starts_with(&switch) || test_only {
             continue;
         }
         let production = source

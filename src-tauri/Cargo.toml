@@ -41,6 +41,7 @@ tauri = { version = "2.12.5", features = ["test"] }
 wiremock = "0.6.5"
 png = "0.18"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+chrono-tz = "0.10"
 
 [[test]]
 name = "native_geometry"

@@ -1,0 +1,30 @@
+America/New_York 2026-11-02T14:00:00.250Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Sun, 9 of 34 sessions hit 0%, busiest Thu\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00.250+00:00","to":"2026-11-02T14:00:00.250+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[166.0, 28.0]
+America/New_York 2026-11-02T14:00:00Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Sun, 9 of 34 sessions hit 0%, busiest Thu\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00+00:00","to":"2026-11-02T14:00:00+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[167.0, 29.0]
+Asia/Tashkent 2026-11-02T14:00:00.250Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Mon, 9 of 34 sessions hit 0%, busiest Sat\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00.250+00:00","to":"2026-11-02T14:00:00.250+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[166.0, 28.0]
+Asia/Tashkent 2026-11-02T14:00:00Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Mon, 9 of 34 sessions hit 0%, busiest Sat\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00+00:00","to":"2026-11-02T14:00:00+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[167.0, 29.0]
+UTC 2026-11-02T14:00:00.250Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Sun, 9 of 34 sessions hit 0%, busiest Fri\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00.250+00:00","to":"2026-11-02T14:00:00.250+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[166.0, 28.0]
+UTC 2026-11-02T14:00:00Z
+  title="Last 7 days · Personal weekly limit hit"
+  body="Personal: weekly limit reached Sun, 9 of 34 sessions hit 0%, busiest Fri\nWork: weekly low 73% left, 2 of 6 sessions hit 0%, busiest Tue (1 day of data)"
+  summary={"from":"2026-10-26T14:00:00+00:00","to":"2026-11-02T14:00:00+00:00","accounts":[{"id":"claude-1","weeklyPeak":100.0,"sessionHits":9,"sessionPeriods":34},{"id":"codex-1","weeklyPeak":27.4,"sessionHits":2,"sessionPeriods":6}]}
+  coverage=[167.0, 29.0]

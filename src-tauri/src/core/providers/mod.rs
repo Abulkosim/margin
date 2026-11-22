@@ -232,7 +232,7 @@ fn http_error(provider: Provider, status: reqwest::StatusCode, headers: &HeaderM
     }
 }
 
-fn retry_after(headers: &HeaderMap, now: DateTime<Utc>) -> Option<u64> {
+pub(crate) fn retry_after(headers: &HeaderMap, now: DateTime<Utc>) -> Option<u64> {
     let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
     if let Ok(seconds) = value.parse::<u64>() {
         return Some(seconds.clamp(1, MAX_RETRY_AFTER_SECONDS));
@@ -254,7 +254,7 @@ fn percent(value: &Value) -> Result<f64, UsageError> {
     Ok(value.min(100.0))
 }
 
-fn timestamp(value: Option<&Value>) -> Result<Option<String>, UsageError> {
+pub(crate) fn timestamp(value: Option<&Value>) -> Result<Option<String>, UsageError> {
     let Some(value) = value.filter(|value| !value.is_null()) else {
         return Ok(None);
     };

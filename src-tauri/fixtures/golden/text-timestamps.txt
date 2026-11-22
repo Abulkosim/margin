@@ -1,0 +1,518 @@
+"2026-10-16T12:00:00Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T12:00:00+00:00"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T12:00:00-00:00"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T12:00:00z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16t12:00:00Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16 12:00:00Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T17:30:00+05:30"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T07:00:00-05:00"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T12:00:00+23:59"
+  provider=Some("2026-10-15T12:01:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-15T12:01:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("23h ago") stale=true
+  update_due=false
+"2026-10-16T12:00:00-23:59"
+  provider=Some("2026-10-17T11:59:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-17T11:59:00Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00+24:00"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00+05:60"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00+0500"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00+05"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00−05:00"
+  provider=Some("2026-10-16T17:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T17:00:00Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.5Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.500Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.500Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.500Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.123Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.123Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.123456Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.123456Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.123456789Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.123456789Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.1234567891Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.123456789Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.123456789123456789+01:00"
+  provider=Some("2026-10-16T11:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T11:00:00.123456789Z\")")
+  unread=true unread_fetched=true
+  age=Some("59m ago") stale=true
+  update_due=false
+"2026-10-16T12:00:00.000Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00Z\")")
+  unread=true unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=false
+"2026-10-16T12:00:00.000001Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.000001Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.000000001Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.000000001Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.999999999Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.999999999Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.5-00:00"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.500Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00,5Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T24:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:60:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T23:59:60Z"
+  provider=Some("2026-10-16T23:59:60Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T23:59:60Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T23:59:60.5Z"
+  provider=Some("2026-10-16T23:59:60Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T23:59:60.500Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:30:60+01:00"
+  provider=Some("2026-10-16T11:30:60Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T11:30:60Z\")")
+  unread=true unread_fetched=false
+  age=Some("29m ago") stale=true
+  update_due=false
+"2026-10-16T12:00:61Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-02-29T00:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2024-02-29T00:00:00Z"
+  provider=Some("2024-02-29T00:00:00Z")
+  store=true
+  digest=Some("() Some(\"2024-02-29T00:00:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("960d ago") stale=true
+  update_due=true
+"2026-13-01T00:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-00-10T00:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-00T00:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-1-16T12:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"26-10-16T12:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"+2026-10-16T12:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"+002026-10-16T12:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+" 2026-10-16T12:00:00Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00Z "
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00ZZ"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00Z[UTC]"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00+05:30[Asia/Kolkata]"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00UTC"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00 Z"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"2026-10-16T12:00:00+05:30:00"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+""
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"now"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"1792180800"
+  provider=error
+  store=false
+  digest=Some("error None")
+  unread=false unread_fetched=true
+  age=None stale=true
+  update_due=true
+"0000-01-01T00:00:00Z"
+  provider=Some("0000-01-01T00:00:00Z")
+  store=true
+  digest=Some("() Some(\"0000-01-01T00:00:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("740270d ago") stale=true
+  update_due=true
+"0000-01-01T00:00:00+00:01"
+  provider=error
+  store=true
+  digest=Some("() Some(\"-0001-12-31T23:59:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("740270d ago") stale=true
+  update_due=true
+"0000-01-01T00:00:00-00:01"
+  provider=Some("0000-01-01T00:01:00Z")
+  store=true
+  digest=Some("() Some(\"0000-01-01T00:01:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("740270d ago") stale=true
+  update_due=true
+"0001-01-01T00:00:00Z"
+  provider=Some("0001-01-01T00:00:00Z")
+  store=true
+  digest=Some("() Some(\"0001-01-01T00:00:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("739904d ago") stale=true
+  update_due=true
+"1969-12-31T23:59:59.999999999Z"
+  provider=Some("1969-12-31T23:59:59Z")
+  store=true
+  digest=Some("() Some(\"1969-12-31T23:59:59.999999999Z\")")
+  unread=false unread_fetched=true
+  age=Some("20742d ago") stale=true
+  update_due=true
+"1970-01-01T00:00:00Z"
+  provider=Some("1970-01-01T00:00:00Z")
+  store=true
+  digest=Some("() Some(\"1970-01-01T00:00:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("20742d ago") stale=true
+  update_due=true
+"9999-12-30T21:59:59Z"
+  provider=Some("9999-12-30T21:59:59Z")
+  store=true
+  digest=Some("() Some(\"9999-12-30T21:59:59Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"9999-12-30T22:00:00Z"
+  provider=Some("9999-12-30T22:00:00Z")
+  store=true
+  digest=Some("() Some(\"9999-12-30T22:00:00Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"9999-12-31T23:59:59Z"
+  provider=Some("9999-12-31T23:59:59Z")
+  store=true
+  digest=Some("() Some(\"9999-12-31T23:59:59Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"9999-12-31T23:59:59.999999999Z"
+  provider=Some("9999-12-31T23:59:59Z")
+  store=true
+  digest=Some("() Some(\"9999-12-31T23:59:59.999999999Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"9999-12-31T23:59:59+00:01"
+  provider=Some("9999-12-31T23:58:59Z")
+  store=true
+  digest=Some("() Some(\"9999-12-31T23:58:59Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"9999-12-31T23:59:59-00:01"
+  provider=error
+  store=true
+  digest=Some("() Some(\"+10000-01-01T00:00:59Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-03-08T02:30:00-05:00"
+  provider=Some("2026-03-08T07:30:00Z")
+  store=true
+  digest=Some("() Some(\"2026-03-08T07:30:00Z\")")
+  unread=false unread_fetched=true
+  age=Some("222d ago") stale=true
+  update_due=true
+"2026-11-01T01:30:00-04:00"
+  provider=Some("2026-11-01T05:30:00Z")
+  store=true
+  digest=Some("() Some(\"2026-11-01T05:30:00Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-11-01T01:30:00-05:00"
+  provider=Some("2026-11-01T06:30:00Z")
+  store=true
+  digest=Some("() Some(\"2026-11-01T06:30:00Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true
+"2026-10-16T12:00:00.123456789123456789123456789Z"
+  provider=Some("2026-10-16T12:00:00Z")
+  store=true
+  digest=Some("() Some(\"2026-10-16T12:00:00.123456789Z\")")
+  unread=false unread_fetched=false
+  age=Some("just now") stale=false
+  update_due=true

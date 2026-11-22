@@ -121,7 +121,7 @@ fn backup_path(path: &Path) -> Result<PathBuf, String> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or("Invalid settings location.")?;
-    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let stamp = backup_stamp(chrono::Utc::now());
     (0..100)
         .map(|attempt| match attempt {
             0 => path.with_file_name(format!("{name}.bak-{stamp}")),
@@ -159,7 +159,11 @@ fn prune_backups(path: &Path, latest: &Path) {
     }
 }
 
-fn backup_order(suffix: &str) -> Option<(String, u32)> {
+pub(crate) fn backup_stamp(now: chrono::DateTime<chrono::Utc>) -> String {
+    now.format("%Y%m%dT%H%M%SZ").to_string()
+}
+
+pub(crate) fn backup_order(suffix: &str) -> Option<(String, u32)> {
     let (stamp, attempt) = match suffix.split_once('-') {
         Some((stamp, attempt)) => (stamp, attempt.parse().ok().filter(|attempt| *attempt > 0)?),
         None => (suffix, 0),
@@ -546,7 +550,7 @@ fn valid_ignored_source(value: &str) -> bool {
         })
 }
 
-fn valid_timestamp(value: &str) -> bool {
+pub(crate) fn valid_timestamp(value: &str) -> bool {
     value.len() <= 64 && DateTime::parse_from_rfc3339(value).is_ok()
 }
 
