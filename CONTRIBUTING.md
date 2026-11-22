@@ -37,6 +37,10 @@ Open the printed URL with `?demo=1`. Sample accounts are labeled as such. The pl
 | State | Shows |
 | --- | --- |
 | `empty` | No accounts |
+| `single` | One account |
+| `claude-only` | Claude accounts only |
+| `compact` | Compact overview with a pinned tray account and an extra account |
+| `same-email` | Two accounts with the same email |
 | `loading` | First refresh in progress |
 | `stale` | Expired session with the last reading and its age |
 | `error` | Expired session with no reading |
@@ -48,6 +52,8 @@ Open the printed URL with `?demo=1`. Sample accounts are labeled as such. The pl
 | `recovered` | An account skipped while loading settings |
 | `hidden` | Removed accounts kept out of discovery |
 | `notification-failed` | Last notification could not be sent (Settings) |
+| `switch-restore` | A failed Make active with its Restore backup offer (Settings) |
+| `update-available` | An update ready to install (Settings) |
 
 Add `&prompt=1` to show the Start at login prompt, and `&location=outside` to show the warning for a copy outside Applications.
 
@@ -72,6 +78,9 @@ Never commit real tokens, credential files, account IDs, unredacted emails, or r
 ```
 src-tauri/src/
   commands.rs          Tauri command surface
+  runtime.rs           shared app state and saving
+  cli.rs               margin --line and --json
+  make_active.rs       Make active commands
   updates.rs           explicit update check and install
   support.rs           install location warning and Report a problem
   core/
@@ -79,6 +88,8 @@ src-tauri/src/
     accounts.rs        discovery and account list
     poller.rs          refresh schedule, backoff, stale handling
     store.rs           local state file
+    settings.rs        settings defaults and validation
+    switch.rs, switch/ Make active: the only writer of CLI sign-ins
     history.rs         local usage history
     fsutil.rs          size-capped reads and private atomic writes
     security.rs        macOS Keychain access through /usr/bin/security
@@ -86,6 +97,7 @@ src-tauri/src/
     autostart.rs       Start at login path repair
     report.rs          problem report allowlist
     notifications.rs   threshold notifications
+    forecast.rs, burn.rs, outage.rs, digest.rs  run-out, fast usage, not updating, weekly digest
     delivery.rs        notification submission and retries
     tray.rs, ring.rs   tray menu and icon rendering
 src-tauri/fixtures/    provider response fixtures
