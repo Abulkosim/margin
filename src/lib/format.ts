@@ -241,19 +241,21 @@ export function orderAccounts(accounts: Account[], settings: Settings, now: numb
   })
 }
 
+/** The reset as a Date, or null when it is unknown or already passed. */
+function upcomingReset(resetsAt: string | null, now: number): Date | null {
+  const time = resetsAt ? Date.parse(resetsAt) : Number.NaN
+  return Number.isFinite(time) && time > now ? new Date(time) : null
+}
+
 export function resetClock(resetsAt: string | null, now: number): string | null {
-  if (!resetsAt) return null
-  const time = Date.parse(resetsAt)
-  if (!Number.isFinite(time) || time <= now) return null
-  return clockTime(new Date(time), now)
+  const date = upcomingReset(resetsAt, now)
+  return date && clockTime(date, now)
 }
 
 /** Like resetClock, but a far-off reset shows only its day. */
 export function resetDay(resetsAt: string | null, now: number): string | null {
-  if (!resetsAt) return null
-  const time = Date.parse(resetsAt)
-  if (!Number.isFinite(time) || time <= now) return null
-  const date = new Date(time)
+  const date = upcomingReset(resetsAt, now)
+  if (!date) return null
   const days = calendarDays(date, now)
   if (days === 0) return timeOfDay(date)
   return date.toLocaleDateString(undefined, days < 7 ? { weekday: 'short' } : { month: 'short', day: 'numeric' })

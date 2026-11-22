@@ -20,10 +20,12 @@ export type AccountHistory = z.infer<typeof accountHistorySchema>
 type HistoryReading = HistoryPoint & { timestamp: number; remaining: number; boundary: 'gap' | 'reset' | 'reading' | null }
 
 export function historyReadings(points: HistoryPoint[], windowId: string): HistoryReading[] {
-  const sorted = points.filter(point => point.windowId === windowId).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  const sorted = points
+    .filter(point => point.windowId === windowId)
+    .map(point => ({ point, timestamp: Date.parse(point.at) }))
+    .sort((a, b) => a.timestamp - b.timestamp)
   const readings: HistoryReading[] = []
-  for (const point of sorted) {
-    const timestamp = Date.parse(point.at)
+  for (const { point, timestamp } of sorted) {
     const previous = readings.at(-1)
     if (previous?.timestamp === timestamp) continue
     let boundary: HistoryReading['boundary'] = null
