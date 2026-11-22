@@ -83,6 +83,7 @@ Quit Margin and reinstall an older release. Each row says what that version does
 
 | Reinstall | What it ignores or changes |
 | --- | --- |
+| [v0.11.0](https://github.com/Abulkosim/margin/releases/tag/v0.11.0) | Nothing; the settings and history formats are identical to v0.12.0 (pinned by golden tests). |
 | [v0.10.2](https://github.com/Abulkosim/margin/releases/tag/v0.10.2), [v0.10.1](https://github.com/Abulkosim/margin/releases/tag/v0.10.1) or [v0.10.0](https://github.com/Abulkosim/margin/releases/tag/v0.10.0) | Nothing; the settings format is identical to v0.11.0. Settings backups beyond the newest five, already deleted by v0.11.0, don't come back. |
 | [v0.9.0](https://github.com/Abulkosim/margin/releases/tag/v0.9.0) | Ignores `autostartPromptDismissed` and `incomplete` on saved readings; keeps everything else. Start at login stays as you set it. |
 | [v0.8.2](https://github.com/Abulkosim/margin/releases/tag/v0.8.2) | Ignores `paceAlerts`, `staleAlerts` and the run-out alert memory; keeps everything else. The card pace line goes back to the older estimate. |
@@ -108,11 +109,11 @@ A dispatch also re-runs the frontend and native checks; the release job stays sk
 
 `packaging/homebrew/Casks/margin.rb` is the seed cask; `update-cask.mjs` rewrites `version` and `sha256` from the release's `SHA256SUMS.txt` (`node packaging/homebrew/update-cask.mjs <cask.rb> vX.Y.Z SHA256SUMS.txt`). Cask stanzas follow the [Cask Cookbook](https://docs.brew.sh/Cask-Cookbook) and [livecheck strategies](https://docs.brew.sh/Brew-Livecheck).
 
-👤 Owner steps:
+Setup (done 2026-11-22):
 
-1. The public repo `Abulkosim/homebrew-tap` exists with a `Casks/` folder but no `margin.rb` yet; the job copies the seed cask in on first run.
-2. Create a fine-grained PAT limited to that repo with **Contents: Read and write**.
-3. In `Abulkosim/margin` → Settings → Secrets and variables → Actions: add secret `HOMEBREW_TAP_TOKEN`, then variable `HOMEBREW_TAP_ENABLED=true`.
+1. The public repo `Abulkosim/homebrew-tap` holds the casks in `Casks/`; the job copies the seed cask in on its first run.
+2. An SSH deploy key with write access to that repo only (Settings → Deploy keys → `margin release CI`). Its private half is the `HOMEBREW_TAP_DEPLOY_KEY` Actions secret in `Abulkosim/margin`, and the variable `HOMEBREW_TAP_ENABLED` is `true`. To rotate, generate a new ed25519 key, replace both halves, and delete the old deploy key.
+3. A deploy key can write only to the tap, unlike a personal token, and needs no expiry renewal.
 4. After publishing a release, dispatch as above. Check with `brew install --cask Abulkosim/tap/margin` and `brew livecheck --cask Abulkosim/tap/margin`.
 
 `auto_updates true` tells `brew upgrade` to leave updates to Margin's own updater. The cask is not notarized; Homebrew's Gatekeeper rules for `homebrew/cask` do not bind a personal tap, but users still see the macOS block on first launch (the cask's caveats explain Open Anyway).

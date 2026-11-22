@@ -2,6 +2,7 @@
 
 | Version | Date (UTC) | Changes |
 | --- | --- | --- |
+| [v0.12.0](changelogs/v0.12.0.md) | 2026-11-22 | Safer Make active recovery, alerts after clock fixes, matching reset days and rounding, menu keyboard fix, better contrast and narrow layouts. |
 | [v0.11.0](changelogs/v0.11.0.md) | 2026-11-10 | Bundled Inter font, accessible toasts, clearer focus and copy, lighter history reloads, internal cleanup. |
 | [v0.10.2](changelogs/v0.10.2.md) | 2026-11-10 | Start at login after moving the app, alerts kept across restarts, safer handling of broken responses. |
 | [v0.10.1](changelogs/v0.10.1.md) | 2026-11-06 | Dependency updates. |
