@@ -879,6 +879,61 @@ mod tests {
         );
     }
 
+    /// Seconds from 0001-01-01 to 9999-12-30, inside jiff's range.
+    const SECONDS: std::ops::Range<i64> = -62_135_596_800..253_402_214_399;
+
+    proptest::proptest! {
+        #[test]
+        fn arithmetic_and_text_match_jiff_without_leap_seconds(
+            (a, a_nanos) in (SECONDS, 0..1_000_000_000_i32),
+            (b, b_nanos) in (SECONDS, 0..1_000_000_000_i32),
+            (shift, shift_nanos) in (-400_000_000_000_i64..400_000_000_000, -999_999_999..=999_999_999_i32),
+            zone in proptest::sample::select(vec!["America/New_York", "Asia/Tashkent", "UTC"]),
+        ) {
+            let (jiff_a, jiff_b) = (
+                jiff::Timestamp::new(a, a_nanos).unwrap(),
+                jiff::Timestamp::new(b, b_nanos).unwrap(),
+            );
+            let (ours_a, ours_b) = (Timestamp::from(jiff_a), Timestamp::from(jiff_b));
+            proptest::prop_assert_eq!(ours_a.cmp(&ours_b), jiff_a.cmp(&jiff_b));
+            proptest::prop_assert_eq!(ours_a - ours_b, jiff_a.duration_since(jiff_b));
+            proptest::prop_assert_eq!(ours_a.timestamp(), jiff_a);
+            proptest::prop_assert_eq!(parse(&ours_a.to_rfc3339()), Some(ours_a));
+            proptest::prop_assert_eq!(
+                ours_a.to_rfc3339_secs(),
+                jiff_a.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
+            );
+            proptest::prop_assert_eq!(
+                ours_a.compact(),
+                jiff_a.strftime("%Y%m%dT%H%M%SZ").to_string()
+            );
+            let shift = SignedDuration::new(shift, shift_nanos);
+            if let Ok(moved) = jiff_a.checked_add(shift) {
+                proptest::prop_assert_eq!(ours_a + shift, Timestamp::from(moved));
+                proptest::prop_assert_eq!((ours_a + shift) - shift, ours_a);
+            }
+            let zone = TimeZone::get(zone).unwrap();
+            let theirs = zone.to_datetime(jiff_a);
+            let civil = ours_a.civil(&zone);
+            proptest::prop_assert_eq!(
+                (civil.year, civil.month, civil.day, civil.hour, civil.minute, civil.second),
+                (
+                    i64::from(theirs.year()),
+                    i64::from(theirs.month()),
+                    i64::from(theirs.day()),
+                    i64::from(theirs.hour()),
+                    i64::from(theirs.minute()),
+                    i64::from(theirs.second()),
+                )
+            );
+            proptest::prop_assert_eq!(ours_a.date(&zone), theirs.date());
+            proptest::prop_assert_eq!(
+                civil.weekday_time(false),
+                theirs.strftime("%a %H:%M").to_string()
+            );
+        }
+    }
+
     #[test]
     fn earliest_picks_the_first_of_a_repeated_hour_and_skips_a_gap() {
         let zone = TimeZone::get("America/New_York").unwrap();
