@@ -250,6 +250,7 @@ fn submit_pending(
         Clock12h::system(),
         |title, body| submit(app, title, body),
     );
+    attempt.take_back(alerts);
     if attempt.save {
         view.notice = runtime.persist(view, alerts, delivery).err();
     }
