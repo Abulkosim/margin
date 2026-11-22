@@ -57,7 +57,7 @@ States are defined in [`src/lib/demo.ts`](src/lib/demo.ts). Public screenshots f
 
 ```sh
 pnpm verify       # build, unit tests, cargo fmt --check, strict Clippy, cargo test
-pnpm test:scripts # release and packaging script tests
+pnpm test:scripts # release, packaging and docs checks
 pnpm test:e2e
 ```
 
