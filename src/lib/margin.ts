@@ -4,7 +4,7 @@ import { demoProblemReport, problemReportSchema, type ProblemReport } from './re
 import { accountSchema, activatedSchema, appStateSchema, defaultSettings, makeActivePreviewSchema, type AccountId, type AppState, type MakeActivePreview, type Provider, type Settings } from './model.ts'
 import { hasDesktop, invoke, useTauriEvent, type Command } from './tauri.ts'
 
-export type ToastAction = { label: string; run: () => void }
+type ToastAction = { label: string; run: () => void }
 const desktopOnly = 'Open the desktop app to manage your accounts.'
 
 export function useMargin() {

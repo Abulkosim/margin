@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { invoke, useTauriEvent } from './tauri.ts'
 
 const counterSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-export const updateStateSchema = z.discriminatedUnion('kind', [
+const updateStateSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('idle') }),
   z.object({ kind: z.literal('checking') }),
   z.object({ kind: z.literal('current') }),

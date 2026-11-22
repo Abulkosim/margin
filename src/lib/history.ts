@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { accountIdSchema, type Account, type UsageWindow } from './model.ts'
 
 export const maxHistoryPoints = 80_000
-export const historyPointSchema = z.object({
+const historyPointSchema = z.object({
   windowId: z.string().min(1),
   at: z.string().datetime({ offset: true }),
   usedPercent: z.number().min(0).max(100),
@@ -17,7 +17,7 @@ export const accountHistorySchema = z.object({
 })
 export type HistoryPoint = z.infer<typeof historyPointSchema>
 export type AccountHistory = z.infer<typeof accountHistorySchema>
-export type HistoryReading = HistoryPoint & { timestamp: number; remaining: number; boundary: 'gap' | 'reset' | 'reading' | null }
+type HistoryReading = HistoryPoint & { timestamp: number; remaining: number; boundary: 'gap' | 'reset' | 'reading' | null }
 
 export function historyReadings(points: HistoryPoint[], windowId: string): HistoryReading[] {
   const sorted = points.filter(point => point.windowId === windowId).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))

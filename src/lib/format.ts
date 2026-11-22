@@ -147,7 +147,7 @@ function formatCount(amount: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(amount)
 }
 
-export type BalanceLine = { label: string; value: string; warn: boolean }
+type BalanceLine = { label: string; value: string; warn: boolean }
 
 /** Money for Claude extra usage; credits (a unit, never money) for Codex. */
 export function balanceLines(snapshot: Account['snapshot'], now: number): BalanceLine[] {
