@@ -51,8 +51,8 @@ const detailsLabel = computed(() => {
     <div class="account-heading">
       <span class="provider-mark" :class="account.provider"><AppIcon :name="account.provider" :size="20" /></span>
       <div class="account-heading-copy">
-        <div class="account-title"><h2>{{ account.label }}</h2><span v-if="active" class="active-tag">Active</span></div>
-        <p class="account-subline"><span class="account-email">{{ account.identity.email ?? providerName(account.provider) }}</span><template v-if="plan"><span class="middot">·</span><span class="account-plan">{{ plan }}</span></template></p>
+        <div class="account-title"><h2 :title="account.label">{{ account.label }}</h2><span v-if="active" class="active-tag">Active</span></div>
+        <p class="account-subline"><span class="account-email" :title="account.identity.email ?? undefined">{{ account.identity.email ?? providerName(account.provider) }}</span><template v-if="plan"><span class="middot">·</span><span class="account-plan">{{ plan }}</span></template></p>
       </div>
       <span v-if="stale && account.snapshot" class="stale-badge" :class="{ 'idle-badge': idle }">{{ idle ? 'Idle' : 'Last known' }}</span>
       <AppTooltip :text="pinned ? 'Pinned to tray' : 'Show this account in tray'"><button class="icon-button pin-button" :class="{ 'is-pinned': pinned }" :aria-label="pinned ? `Unpin ${account.label} from tray` : `Pin ${account.label} to tray`" :disabled="busy" :aria-pressed="pinned" @click="$emit('pin')"><AppIcon name="pin" :size="14" /></button></AppTooltip>

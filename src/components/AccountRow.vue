@@ -61,9 +61,9 @@ const label = computed(() => {
   <button class="compact-row" :class="{ 'account-stale': stale, 'account-refreshing': refreshing, 'no-values': !hasValues, expanded }" :aria-expanded="expanded" :aria-controls="controls" :aria-label="label" @click="$emit('toggle')">
     <span class="provider-mark compact-mark" :class="account.provider"><AppIcon :name="account.provider" :size="16"/></span>
     <span class="compact-identity">
-      <span class="compact-name"><span class="compact-label">{{ account.label }}</span><AppIcon v-if="pinned" name="pin" :size="11" class="compact-pin"/></span>
+      <span class="compact-name"><span class="compact-label" :title="account.label">{{ account.label }}</span><AppIcon v-if="pinned" name="pin" :size="11" class="compact-pin"/></span>
       <span v-if="status" class="compact-status" :class="{ 'compact-status-quiet': !urgent }" :title="retrying ?? idle ?? undefined">{{ shownStatus }}</span>
-      <span v-else class="compact-plan">{{ providerName(account.provider) }}<template v-if="plan"> · {{ plan }}</template></span>
+      <span v-else class="compact-plan" :title="plan ? `${providerName(account.provider)} · ${plan}` : undefined">{{ providerName(account.provider) }}<template v-if="plan"> · {{ plan }}</template></span>
     </span>
     <template v-if="hasValues">
       <span class="compact-value" :class="tone(summary.session)" :title="passed(summary.session)">{{ value(summary.session) }}</span>
