@@ -90,7 +90,7 @@ Sign in through Claude Code or Codex first. Margin reads those OAuth credentials
 
 | Provider | Default credentials | Custom configuration |
 | --- | --- | --- |
-| Claude | `~/.claude/.credentials.json`; macOS `Claude Code-credentials` Keychain item as fallback | `CLAUDE_CONFIG_DIR` or an added folder; macOS `Claude Code-credentials-<suffix>` Keychain item |
+| Claude | `~/.claude/.credentials.json`; on macOS the `Claude Code-credentials` Keychain item, read first | `CLAUDE_CONFIG_DIR` or an added folder; on macOS its `Claude Code-credentials-<suffix>` Keychain item, read first |
 | Codex | `~/.codex/auth.json` | `CODEX_HOME` or an added folder |
 
 For a second Claude account, start Claude Code with its own folder and sign in:

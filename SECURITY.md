@@ -33,7 +33,7 @@ Every push to `main`, every pull request, and a weekly schedule run `cargo audit
 In scope:
 
 - Exposure of CLI tokens or credential contents outside Margin's Rust process, including to the interface, logs, or Margin's own files.
-- Any write to CLI credential files or Keychain items outside a confirmed **Make active**, or one that loses or mixes up a sign-in.
+- Any write to CLI credential files or Keychain items outside a confirmed **Make active** (including its **Undo**) or **Restore backup**, or one that loses or mixes up a sign-in.
 - Requests to hosts other than those listed in [PRIVACY.md](PRIVACY.md#network-requests), or tokens sent to the wrong host.
 - Update checks or installs that accept an unsigned, altered, or mismatched-version release, or a download from an unexpected address.
 - Reading files or Keychain items beyond those listed in [PRIVACY.md](PRIVACY.md#what-margin-reads).
