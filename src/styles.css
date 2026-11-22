@@ -1017,7 +1017,7 @@ button:disabled:hover {
   background: #8885;
 }
 .toast-error>svg {
-  color: var(--warning);
+  color: var(--toast-warning);
 }
 .toast-enter-active,.toast-leave-active {
   transition: opacity .18s,transform .18s;
@@ -1808,8 +1808,9 @@ input::placeholder {
   grid-column: 5;
   color: var(--tertiary);
 }
-.account-stale .compact-value,.account-stale .compact-reset {
-  opacity: .55;
+.account-stale .compact-value {
+  font-weight: 500;
+  color: var(--tertiary);
 }
 .compact-chevron {
   color: var(--tertiary);
