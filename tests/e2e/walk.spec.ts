@@ -234,6 +234,13 @@ async function settings(page: Page, tab: 'General' | 'Accounts' = 'General'): Pr
   if (tab === 'Accounts') await page.getByRole('tab', { name: /^Accounts/ }).click()
 }
 
+/** Hovering a toast pauses its dismissal, so slow runs still capture it. */
+async function holdToast(page: Page, text: string): Promise<void> {
+  const toast = page.locator('.toast-message').filter({ hasText: text })
+  await expect(toast).toBeVisible()
+  await toast.hover()
+}
+
 async function section(page: Page, heading: string): Promise<void> {
   await page.locator('.settings-content[data-state="active"]').evaluate((element, heading) => {
     const target = [...element.querySelectorAll('h2')].find(node => node.textContent?.trim() === heading)
@@ -289,16 +296,18 @@ const shots: Shot[] = [
   } },
   { name: 'toast-success', url: '/?demo=1', run: async page => {
     await page.getByRole('button', { name: 'Refresh usage' }).click()
-    await page.mouse.move(2, 2)
+    await holdToast(page, 'Preview refreshed')
   } },
   { name: 'toast-error', url: '/?demo=1&running=1', run: async page => {
     await settings(page, 'Accounts')
     await page.getByRole('button', { name: 'Make Work active', exact: true }).click()
+    await holdToast(page, 'Codex is still running')
   } },
   { name: 'toast-undo', url: '/?demo=1', run: async page => {
     await settings(page, 'Accounts')
     await page.getByRole('button', { name: 'Make Studio active', exact: true }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: 'Make active', exact: true }).click()
+    await holdToast(page, 'is active')
   } },
   { name: 'make-active', url: '/?demo=1', run: async page => {
     await settings(page, 'Accounts')
