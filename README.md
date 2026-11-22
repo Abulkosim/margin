@@ -28,7 +28,7 @@ Builds are not signed with an Apple Developer ID or Windows publisher certificat
 - **macOS.** Drag Margin to Applications and open it. On macOS 15 and later, when **“Margin” Not Opened** appears, click **Done**, then **System Settings → Privacy & Security → Open Anyway**. Margin lives in the menu bar, with no Dock icon.
 - **Windows.** On **Windows protected your PC**, click **More info → Run anyway**. Smart App Control blocks unsigned apps.
 
-Updates are signed and verified in the app. Margin checks daily and never installs on its own. Homebrew and winget are not available yet. Full guide with uninstall: [docs/install.md](docs/install.md).
+Updates are signed and verified in the app. Margin checks daily and never installs on its own. On a Mac you can also run `brew install --cask Abulkosim/tap/margin`; winget is not available yet. Full guide with uninstall: [docs/install.md](docs/install.md).
 
 ## What it shows
 
