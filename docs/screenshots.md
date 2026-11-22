@@ -9,7 +9,7 @@ Use Playwright WebKit at 420×660 CSS pixels and 2× scale. The app bundles Inte
 | Image | State |
 | --- | --- |
 | `docs/images/overview-light.png`, `overview-dark.png` | `?demo=1` cards, lowest remaining first: Studio (18% session) with email, plan, pace lines, and the Sonnet chip, then Personal. |
-| `docs/images/compact-light.png`, `compact-dark.png` | `?demo=1&state=compact&layout=compact`: five accounts in one row each, pinned first, limiting value at full ink, last-known and signed-out rows last. |
+| `docs/images/compact-light.png`, `compact-dark.png` | `?demo=1&state=compact&layout=compact`: five accounts in one row each, pinned first, limiting value at full ink, last-known and signed-out rows last. Last-known values use the muted text color at full opacity. Recaptured 2026-11-22. |
 | `docs/images/history-light.png`, `history-dark.png` | History open on Personal, Session tab, scrolled so the panel starts at the top of the list: a new period, a recording gap, and the legend. |
 | `docs/images/settings-light.png` | Top of Settings, General tab: theme, Overview, Account order, Tray account, Tray shows, Show percentage, and Refresh while open. Notifications and updates are below the fold and not shown. |
 | `docs/images/settings-menu-light.png`, `settings-menu-dark.png` | Settings with the Tray account menu open and its selected option visible. |
