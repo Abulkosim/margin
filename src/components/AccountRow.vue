@@ -29,6 +29,8 @@ const status = computed(() => {
   if (retrying.value) return 'Retrying'
   return props.account.snapshot.incomplete ? 'Incomplete' : null
 })
+/** Same tones as the card: only an unusable or untrusted reading warns; checking, retrying, idle and incomplete stay quiet. */
+const urgent = computed(() => status.value === 'Last known' || status.value === 'Signed out' || status.value === 'Unavailable')
 const shownStatus = computed(() => status.value === idle.value ? idleStatusShort(props.account, props.now) : status.value)
 const tone = (window: UsageWindow | null) => unread(window) ? {} : { ...quotaTone(window?.usedPercent ?? 0), limiting: window !== null && window === summary.value.limiting }
 const value = (window: UsageWindow | null): string => window && !unread(window) ? `${formatRemaining(window.usedPercent)}%` : '–'
@@ -60,7 +62,7 @@ const label = computed(() => {
     <span class="provider-mark compact-mark" :class="account.provider"><AppIcon :name="account.provider" :size="16"/></span>
     <span class="compact-identity">
       <span class="compact-name"><span class="compact-label">{{ account.label }}</span><AppIcon v-if="pinned" name="pin" :size="11" class="compact-pin"/></span>
-      <span v-if="status" class="compact-status" :class="{ 'compact-status-quiet': idle }" :title="retrying ?? idle ?? undefined">{{ shownStatus }}</span>
+      <span v-if="status" class="compact-status" :class="{ 'compact-status-quiet': !urgent }" :title="retrying ?? idle ?? undefined">{{ shownStatus }}</span>
       <span v-else class="compact-plan">{{ providerName(account.provider) }}<template v-if="plan"> · {{ plan }}</template></span>
     </span>
     <template v-if="hasValues">

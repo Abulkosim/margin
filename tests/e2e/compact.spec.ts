@@ -184,3 +184,27 @@ test('preview popover is shorter in compact and screenshots in both themes', asy
   expect(heights['1-account']).toBeLessThan(cardsSingle)
   expect(heights['1-account']).toBeLessThan(heights['5-accounts']!)
 })
+
+test('compact status uses the card tone: only untrusted or missing readings warn', async ({ page }) => {
+  const color = (name: string) => row(page, name).locator('.compact-status').evaluate(element => getComputedStyle(element).color)
+  const token = (name: string) => page.evaluate(name => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const value = getComputedStyle(probe).color
+    probe.remove()
+    return value
+  }, name)
+  const cases: [string, string[], string[]][] = [
+    ['loading', ['Personal', 'Work', 'Studio'], []],
+    ['retrying', ['Personal', 'Work'], ['Studio']],
+    ['incomplete', ['Personal'], []],
+    ['compact', [], ['Side project', 'Client work for Northwind Studio']],
+  ]
+  for (const [state, quiet, warn] of cases) {
+    await page.goto(`/?demo=1&state=${state}&layout=compact`)
+    const [warning, secondary] = [await token('--warning'), await token('--secondary')]
+    for (const name of quiet) expect(await color(name), `${name} in ${state}`).toBe(secondary)
+    for (const name of warn) expect(await color(name), `${name} in ${state}`).toBe(warning)
+  }
+})
